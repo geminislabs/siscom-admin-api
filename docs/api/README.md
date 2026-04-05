@@ -49,11 +49,7 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 - [trips.md](./trips.md) - Consulta de viajes y trayectorias
 
 ### 🚨 Alertas
-- Endpoints de reglas de alerta y alertas generadas:
-- `POST /api/v1/alert_rules`, `GET /api/v1/alert_rules`, `PATCH /api/v1/alert_rules/{rule_id}`
-- `DELETE /api/v1/alert_rules/{rule_id}`, `POST|DELETE /api/v1/alert_rules/{rule_id}/units`
-- `GET /api/v1/alerts`
-- Nota de deduplicación: si el fingerprint ya existe, responde `409` con `{ "id": "existing_rule_id", "message": "Regla ya existente" }`
+- [alerts.md](./alerts.md) - Reglas de alerta y alertas generadas, con ejemplos curl
 
 ### 🛒 Órdenes
 - [orders.md](./orders.md) - Órdenes de compra

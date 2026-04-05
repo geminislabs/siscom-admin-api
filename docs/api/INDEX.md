@@ -220,20 +220,25 @@ Consulta de viajes y trayectorias de unidades.
 
 ## 🚨 Alertas y Reglas
 
-Gestión de reglas de alerta y consulta de alertas generadas.
+### [alerts.md](./alerts.md)
+
+Reglas de alerta por organizacion y consulta de alertas generadas por unidad.
 
 **Endpoints:**
-- `POST /api/v1/alert_rules` - Crear regla de alerta (con fingerprint para deduplicación)
+
+- `POST /api/v1/alert_rules` - Crear regla de alerta
 - `GET /api/v1/alert_rules` - Listar reglas activas
 - `GET /api/v1/alert_rules/{rule_id}` - Detalle de regla
-- `PATCH /api/v1/alert_rules/{rule_id}` - Actualizar regla (recalcula fingerprint)
+- `PATCH /api/v1/alert_rules/{rule_id}` - Actualizar regla
 - `DELETE /api/v1/alert_rules/{rule_id}` - Desactivar regla
 - `POST /api/v1/alert_rules/{rule_id}/units` - Asignar unidades
 - `DELETE /api/v1/alert_rules/{rule_id}/units` - Desasignar unidades
 - `GET /api/v1/alerts` - Listar alertas por unidad y rango de fecha
 
-**Regla de duplicado:**
-- Si `POST` o `PATCH` colisiona por fingerprint, la API responde `409` con: `{"id":"existing_rule_id","message":"Regla ya existente"}`
+**Notas:**
+
+- Duplicados por fingerprint responden `409 Conflict`
+- `GET /api/v1/alerts` requiere `unit_id`
 
 ---
 

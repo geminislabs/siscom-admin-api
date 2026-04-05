@@ -1910,93 +1910,27 @@ Gestión de pagos del cliente.
 
 Gestión de reglas de alertas configurables por organización y consulta de alertas generadas.
 
+Documentación detallada y ejemplos `curl`: [docs/api/alerts.md](docs/api/alerts.md)
+
 ### 🔒 Todos requieren autenticación
 
-### `POST /api/v1/alert_rules`
+### Resumen funcional
 
-**Crear regla de alerta**
+- `POST /api/v1/alert_rules`: crea una regla y deduplica por fingerprint
+- `GET /api/v1/alert_rules`: lista reglas activas de la organización autenticada
+- `GET /api/v1/alert_rules/{rule_id}`: obtiene una regla activa
+- `PATCH /api/v1/alert_rules/{rule_id}`: actualiza una regla y recalcula fingerprint si aplica
+- `DELETE /api/v1/alert_rules/{rule_id}`: desactiva la regla (`soft delete`)
+- `POST /api/v1/alert_rules/{rule_id}/units`: asigna unidades a la regla
+- `DELETE /api/v1/alert_rules/{rule_id}/units`: desasigna unidades de la regla
+- `GET /api/v1/alerts`: lista alertas por unidad con filtros opcionales de tipo y fecha
 
-Al crear una regla se normaliza `config` (orden determinístico y sin claves con `null`) y se genera un `fingerprint` SHA-256 con:
+### Notas importantes
 
-```
-organization_id|type|canonical_json(config)
-```
-
-Si el fingerprint ya existe, la API devuelve conflicto de duplicado.
-
-**Headers:** `Authorization: Bearer {access_token}`
-
-**Request:**
-
-```json
-{
-  "name": "Regla ignicion off",
-  "type": "ignition_off",
-  "config": {
-    "event": "Engine OFF",
-    "threshold": null
-  },
-  "unit_ids": ["uuid-unit-1"]
-}
-```
-
-**Response:** `201 Created`
-
-```json
-{
-  "id": "uuid",
-  "organization_id": "uuid",
-  "created_by": "uuid",
-  "name": "Regla ignicion off",
-  "type": "ignition_off",
-  "config": {
-    "event": "Engine OFF"
-  },
-  "unit_ids": ["uuid-unit-1"],
-  "is_active": true,
-  "created_at": "2026-04-04T10:00:00Z",
-  "updated_at": "2026-04-04T10:00:00Z"
-}
-```
-
-**Response duplicado:** `409 Conflict`
-
-```json
-{
-  "id": "existing_rule_id",
-  "message": "Regla ya existente"
-}
-```
-
-### `PATCH /api/v1/alert_rules/{rule_id}`
-
-**Actualizar regla de alerta**
-
-Si cambia `type` o `config`, se recalcula fingerprint. Si el resultado colisiona con otra regla, devuelve `409 Conflict` con el mismo formato de respuesta de duplicado.
-
-### `GET /api/v1/alert_rules`
-
-Lista reglas activas de la organización autenticada. Soporta filtros por `type` y `unit_id`.
-
-### `GET /api/v1/alert_rules/{rule_id}`
-
-Obtiene una regla activa por id.
-
-### `DELETE /api/v1/alert_rules/{rule_id}`
-
-Desactiva la regla (soft delete).
-
-### `POST /api/v1/alert_rules/{rule_id}/units`
-
-Asigna unidades a la regla.
-
-### `DELETE /api/v1/alert_rules/{rule_id}/units`
-
-Desasigna unidades de la regla.
-
-### `GET /api/v1/alerts`
-
-Lista alertas por `unit_id` con filtros opcionales `type`, `date_from`, `date_to`, `limit`, `offset`.
+- Todas las consultas usan la organización del usuario autenticado
+- `GET /api/v1/alerts` requiere `unit_id`
+- Si la organización no está activa, los endpoints de listado devuelven `[]`
+- Si el fingerprint ya existe, la API responde `409 Conflict` con `{ "id": "existing_rule_id", "message": "Regla ya existente" }`
 
 ---
 
