@@ -31,10 +31,10 @@ from app.schemas.alert_rule import (
     AlertRuleCreate,
     AlertRuleDeleteOut,
     AlertRuleOut,
-    AlertRuleUpdate,
     AlertRuleUnitsAssign,
     AlertRuleUnitsOut,
     AlertRuleUnitsUnassign,
+    AlertRuleUpdate,
 )
 
 # Capabilities

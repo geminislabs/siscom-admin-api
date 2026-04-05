@@ -34,8 +34,8 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     accounts,
-    alerts,
     alert_rules,
+    alerts,
     auth,
     billing,
     capabilities,

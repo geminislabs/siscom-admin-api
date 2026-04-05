@@ -12,16 +12,16 @@ from app.models.alert_rule import AlertRule, AlertRuleUnit
 from app.models.organization import Organization, OrganizationStatus
 from app.models.unit import Unit
 from app.models.user import User
-from app.utils.json_normalization import generate_fingerprint, normalize_json
 from app.schemas.alert_rule import (
     AlertRuleCreate,
     AlertRuleDeleteOut,
     AlertRuleOut,
-    AlertRuleUpdate,
     AlertRuleUnitsAssign,
     AlertRuleUnitsOut,
     AlertRuleUnitsUnassign,
+    AlertRuleUpdate,
 )
+from app.utils.json_normalization import generate_fingerprint, normalize_json
 
 router = APIRouter()
 
@@ -91,7 +91,9 @@ def _build_rule_out(db: Session, rule: AlertRule) -> AlertRuleOut:
     )
 
 
-def _get_active_rule_or_404(db: Session, rule_id: UUID, organization_id: UUID) -> AlertRule:
+def _get_active_rule_or_404(
+    db: Session, rule_id: UUID, organization_id: UUID
+) -> AlertRule:
     rule = (
         db.query(AlertRule)
         .filter(
@@ -137,9 +139,7 @@ def create_alert_rule(
     except IntegrityError:
         db.rollback()
         existing = (
-            db.query(AlertRule)
-            .filter(AlertRule.fingerprint == fingerprint)
-            .first()
+            db.query(AlertRule).filter(AlertRule.fingerprint == fingerprint).first()
         )
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
@@ -287,7 +287,9 @@ def assign_units_to_rule(
     current_user: User = Depends(get_current_user_full),
 ):
     rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
-    valid_unit_ids = _validate_unit_ids(db, current_user.organization_id, payload.unit_ids)
+    valid_unit_ids = _validate_unit_ids(
+        db, current_user.organization_id, payload.unit_ids
+    )
 
     existing_rows = (
         db.query(AlertRuleUnit.unit_id)

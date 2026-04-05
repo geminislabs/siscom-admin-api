@@ -47,9 +47,13 @@ class Alert(SQLModel, table=True):
     )
 
     source_type: str = Field(sa_column=Column(Text, nullable=False))
-    source_id: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    source_id: Optional[str] = Field(
+        default=None, sa_column=Column(Text, nullable=True)
+    )
     type: str = Field(sa_column=Column(Text, nullable=False))
-    payload: Optional[dict] = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    payload: Optional[dict] = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
 
     occurred_at: datetime = Field(
         sa_column=Column(TIMESTAMP(timezone=True), nullable=False)
