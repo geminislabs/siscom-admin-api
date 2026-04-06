@@ -1928,7 +1928,7 @@ Documentación detallada y ejemplos `curl`: [docs/api/alerts.md](docs/api/alerts
 ### Notas importantes
 
 - Todas las consultas usan la organización del usuario autenticado
-- `GET /api/v1/alerts` requiere `unit_id`
+- Sin `unit_id`, `GET /api/v1/alerts` devuelve las ultimas 20 alertas de la organizacion
 - Si la organización no está activa, los endpoints de listado devuelven `[]`
 - Si el fingerprint ya existe, la API responde `409 Conflict` con `{ "id": "existing_rule_id", "message": "Regla ya existente" }`
 

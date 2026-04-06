@@ -238,7 +238,7 @@ Reglas de alerta por organizacion y consulta de alertas generadas por unidad.
 **Notas:**
 
 - Duplicados por fingerprint responden `409 Conflict`
-- `GET /api/v1/alerts` requiere `unit_id`
+- Sin `unit_id`, `GET /api/v1/alerts` devuelve las ultimas 20 alertas de la organizacion
 
 ---
 

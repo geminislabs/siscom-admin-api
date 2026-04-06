@@ -63,7 +63,7 @@ Todas las operaciones usan el contexto del usuario autenticado. El cliente no de
 | Soft delete | `DELETE /alert_rules/{rule_id}` no elimina la regla; marca `is_active=false` |
 | Deduplicacion | Crear o actualizar una regla puede responder `409` si el fingerprint colisiona con otra regla activa o existente |
 | Unidades validas | Los `unit_ids` deben pertenecer a la organizacion del usuario y no estar eliminados |
-| Filtro por unidad en alertas | `GET /alerts` requiere `unit_id` y valida acceso a esa unidad |
+| Filtro por unidad en alertas | Si se envia `unit_id`, el endpoint valida acceso a esa unidad |
 | Normalizacion de config | `config` se normaliza antes de persistir: elimina claves con `null` y ordena llaves de forma deterministica |
 
 ### Fingerprint de reglas
@@ -375,12 +375,14 @@ Lista alertas de una unidad dentro de la organizacion autenticada.
 
 | Parametro | Tipo | Requerido | Descripcion |
 | --- | --- | --- | --- |
-| `unit_id` | UUID | Si | Unidad a consultar |
+| `unit_id` | UUID | No | Unidad a consultar |
 | `type` | string | No | Filtra por tipo exacto |
 | `date_from` | datetime ISO 8601 | No | Retorna alertas con `occurred_at >= date_from` |
 | `date_to` | datetime ISO 8601 | No | Retorna alertas con `occurred_at <= date_to` |
 | `limit` | integer | No | Default `100`, minimo `1`, maximo `500` |
 | `offset` | integer | No | Default `0` |
+
+Si no se envía `unit_id`, el endpoint devuelve las ultimas 20 alertas de la organizacion autenticada (sin filtrar por unidad).
 
 #### Response `200 OK`
 

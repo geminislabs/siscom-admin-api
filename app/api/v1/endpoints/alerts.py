@@ -47,7 +47,7 @@ def _organization_is_active(db: Session, organization_id: UUID) -> bool:
 
 @router.get("", response_model=list[AlertOut])
 def list_alerts(
-    unit_id: UUID = Query(..., description="ID de la unidad"),
+    unit_id: UUID | None = Query(None, description="ID de la unidad"),
     type_filter: str | None = Query(None, alias="type"),
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
@@ -56,19 +56,23 @@ def list_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
 ):
-    _validate_unit_access(db, current_user, unit_id)
-
     if not _organization_is_active(db, current_user.organization_id):
         return []
 
-    query = (
-        db.query(Alert)
-        .filter(
-            Alert.organization_id == current_user.organization_id,
-            Alert.unit_id == unit_id,
-        )
-        .order_by(Alert.occurred_at.desc())
+    query = db.query(Alert).filter(
+        Alert.organization_id == current_user.organization_id
     )
+
+    if unit_id is not None:
+        _validate_unit_access(db, current_user, unit_id)
+        query = query.filter(Alert.unit_id == unit_id)
+    else:
+        # Si no se envía unit_id, el endpoint devuelve las últimas 20 alertas
+        # de la organización autenticada, ignorando paginación de entrada.
+        limit = 20
+        offset = 0
+
+    query = query.order_by(Alert.occurred_at.desc())
 
     if type_filter:
         query = query.filter(Alert.type == type_filter)

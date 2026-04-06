@@ -6,7 +6,6 @@ from fastapi import status
 from app.models.alert_rule import AlertRule, AlertRuleUnit
 from app.models.organization import Organization
 from app.models.unit import Unit
-from app.models.user import User
 
 
 def _create_unit(db_session, organization_id, name):
@@ -33,7 +32,9 @@ def test_alert_rules_crud_soft_delete(authenticated_client, db_session, test_use
         "unit_ids": [str(unit_1.id), str(unit_2.id)],
     }
 
-    create_response = authenticated_client.post("/api/v1/alert_rules", json=create_payload)
+    create_response = authenticated_client.post(
+        "/api/v1/alert_rules", json=create_payload
+    )
     assert create_response.status_code == status.HTTP_201_CREATED
     created = create_response.json()
     assert created["name"] == "Regla ignicion off"
@@ -71,9 +72,15 @@ def test_alert_rules_crud_soft_delete(authenticated_client, db_session, test_use
 
 
 def test_alert_rule_rejects_unit_from_other_organization(
-    authenticated_client, db_session, test_account_data, test_organization_data, test_user_data
+    authenticated_client,
+    db_session,
+    test_account_data,
+    test_organization_data,
+    test_user_data,
 ):
-    valid_unit = _create_unit(db_session, test_user_data.organization_id, "Unidad valida")
+    valid_unit = _create_unit(
+        db_session, test_user_data.organization_id, "Unidad valida"
+    )
 
     other_org = Organization(
         id=uuid4(),
@@ -157,7 +164,9 @@ def test_assign_and_unassign_units_for_rule(
         "type": "ignition_off",
         "config": {"event": "Engine OFF"},
     }
-    create_response = authenticated_client.post("/api/v1/alert_rules", json=create_payload)
+    create_response = authenticated_client.post(
+        "/api/v1/alert_rules", json=create_payload
+    )
     assert create_response.status_code == status.HTTP_201_CREATED
     rule_id = create_response.json()["id"]
 
@@ -229,7 +238,9 @@ def test_update_alert_rule_normalizes_only_when_config_is_sent(
         "config": {"event": "Engine OFF", "threshold": {"max": 10, "min": 1}},
         "unit_ids": [str(unit.id)],
     }
-    create_response = authenticated_client.post("/api/v1/alert_rules", json=create_payload)
+    create_response = authenticated_client.post(
+        "/api/v1/alert_rules", json=create_payload
+    )
     assert create_response.status_code == status.HTTP_201_CREATED
     created = create_response.json()
     rule_id = created["id"]
@@ -269,4 +280,6 @@ def test_update_alert_rule_normalizes_only_when_config_is_sent(
 
     # Mantiene orden de listas, pero ordena claves de objetos internos.
     serialized = json.dumps(updated_config, ensure_ascii=False)
-    assert serialized == '{"a": {"keep": true}, "list": [{"x": 1, "y": 2}], "z": "last"}'
+    assert (
+        serialized == '{"a": {"keep": true}, "list": [{"x": 1, "y": 2}], "z": "last"}'
+    )
