@@ -126,6 +126,12 @@ from app.schemas.trip import (
 
 # Users
 from app.schemas.user import UserBase, UserCreate, UserOut
+from app.schemas.user_device import (
+    DeviceDeactivateIn,
+    DeviceDeactivateOut,
+    DeviceRegisterIn,
+    DeviceRegisterOut,
+)
 
 __all__ = [
     # Account
@@ -175,6 +181,10 @@ __all__ = [
     "UserBase",
     "UserCreate",
     "UserOut",
+    "DeviceRegisterIn",
+    "DeviceRegisterOut",
+    "DeviceDeactivateIn",
+    "DeviceDeactivateOut",
     # Devices
     "DeviceBase",
     "DeviceCreate",

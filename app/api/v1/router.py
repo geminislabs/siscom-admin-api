@@ -55,6 +55,7 @@ from app.api.v1.endpoints import (
     trips,
     unit_devices,
     units,
+    user_devices,
     user_units,
     users,
 )
@@ -115,6 +116,9 @@ api_router.include_router(devices.router, prefix="/devices", tags=["devices"])
 api_router.include_router(units.router, prefix="/units", tags=["units"])
 api_router.include_router(
     unit_devices.router, prefix="/unit-devices", tags=["unit-devices"]
+)
+api_router.include_router(
+    user_devices.router, prefix="/user-devices", tags=["user-devices"]
 )
 api_router.include_router(user_units.router, prefix="/user-units", tags=["user-units"])
 api_router.include_router(

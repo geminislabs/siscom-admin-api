@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # AWS Credentials - Opcionales si usas IAM Role en EC2
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+
+    # AWS SNS - Push notifications
+    SNS_PLATFORM_APPLICATION_ARN_IOS: Optional[str] = None
+    SNS_PLATFORM_APPLICATION_ARN_ANDROID: Optional[str] = None
 
     # AWS Cognito - Requeridos
     COGNITO_REGION: str
@@ -55,6 +60,19 @@ class Settings(BaseSettings):
     KAFKA_SASL_PASSWORD: Optional[str] = "eventsalertconsumerpassword"
     KAFKA_SASL_MECHANISM: str = "SCRAM-SHA-256"
     KAFKA_SECURITY_PROTOCOL: str = "SASL_PLAINTEXT"
+
+    @field_validator(
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "SNS_PLATFORM_APPLICATION_ARN_IOS",
+        "SNS_PLATFORM_APPLICATION_ARN_ANDROID",
+        mode="before",
+    )
+    @classmethod
+    def empty_string_to_none(cls, v: Optional[str]) -> Optional[str]:
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
     @field_validator("COGNITO_REGION")
     @classmethod

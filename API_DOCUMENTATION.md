@@ -130,6 +130,34 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ### 🔓 Endpoints Públicos (No requieren autenticación)
 
+#### `POST /api/v1/auth/register`
+
+**Onboarding inicial (Account + Organization + User master)**
+
+Registra la cuenta inicial del tenant y crea usuario master en el sistema.
+
+**Request:**
+
+```json
+{
+  "account_name": "Mi Empresa S.A.",
+  "email": "admin@miempresa.com",
+  "password": "Password123!"
+}
+```
+
+**Response:** `201 Created`
+
+```json
+{
+  "account_id": "uuid",
+  "organization_id": "uuid",
+  "user_id": "uuid"
+}
+```
+
+---
+
 #### `POST /api/v1/auth/login`
 
 **Iniciar sesión**
@@ -235,19 +263,11 @@ Reenvía el correo de verificación a usuarios no verificados.
 
 ---
 
-#### `POST /api/v1/auth/confirm-email`
+#### `POST /api/v1/auth/verify-email?token={token}`
 
 **Confirmar email con token**
 
 Verifica el email del usuario usando el token enviado por correo.
-
-**Request:**
-
-```json
-{
-  "token": "uuid-token-from-email"
-}
-```
 
 **Response:** `200 OK`
 
@@ -259,7 +279,47 @@ Verifica el email del usuario usando el token enviado por correo.
 
 ---
 
+#### `POST /api/v1/auth/refresh`
+
+**Renovar access token usando refresh token**
+
+Retorna nuevos `access_token` e `id_token` usando un refresh token válido.
+
+**Request:**
+
+```json
+{
+  "email": "usuario@ejemplo.com",
+  "refresh_token": "token-refresh"
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "access_token": "...",
+  "id_token": "...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+---
+
 ### 🔒 Endpoints Autenticados
+
+#### `GET /api/v1/auth/me`
+
+**Obtener perfil autenticado y contexto organizacional**
+
+Retorna información de usuario autenticado, organización y capacidades resueltas.
+
+**Headers:** `Authorization: Bearer {access_token}`
+
+**Response:** `200 OK`
+
+---
 
 #### `POST /api/v1/auth/logout`
 
@@ -301,6 +361,35 @@ Permite al usuario cambiar su contraseña proporcionando la actual.
 ```json
 {
   "message": "Contraseña actualizada exitosamente."
+}
+```
+
+---
+
+#### `POST /api/v1/auth/internal`
+
+**Generar token interno PASETO para servicios**
+
+Retorna token interno para integraciones servicio-a-servicio.
+
+**Request:**
+
+```json
+{
+  "email": "service@internal",
+  "service": "gac",
+  "role": "GAC_ADMIN",
+  "expires_in_hours": 24
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "token": "v4.public....",
+  "expires_at": "2026-04-13T12:00:00Z",
+  "token_type": "Bearer"
 }
 ```
 
@@ -401,7 +490,7 @@ Permite al usuario cambiar su contraseña proporcionando la actual.
 **Listar todos los usuarios de la organización**
 
 **Headers:** `Authorization: Bearer {access_token}`
-**Permisos:** `owner`, `admin`
+**Permisos:** cualquier usuario autenticado de la organización
 
 **Response:** `200 OK`
 
@@ -466,12 +555,12 @@ Permite al usuario cambiar su contraseña proporcionando la actual.
 
 #### `POST /api/v1/users/invite`
 
-**Invitar nuevo usuario** (Solo owner/admin)
+**Invitar nuevo usuario** (Solo usuario maestro)
 
 Envía una invitación por email para que un nuevo usuario se registre con un rol específico.
 
 **Headers:** `Authorization: Bearer {access_token}`
-**Permisos:** `owner`, `admin`
+**Permisos:** `is_master = true`
 
 **Request:**
 
@@ -840,6 +929,68 @@ Gestión del inventario de dispositivos GPS.
 
 ### 🔒 Todos requieren autenticación
 
+#### `POST /api/v1/user-devices/register`
+
+**Registrar dispositivo de notificaciones push (SNS)**
+
+Registra o actualiza un dispositivo de usuario por `device_token`.
+- Si no existe, crea endpoint SNS y guarda registro.
+- Si existe, reasigna al usuario actual, activa el registro y actualiza `last_seen_at`.
+- Si el endpoint SNS está inválido, lo recrea automáticamente.
+
+**Headers:** `Authorization: Bearer {access_token}`
+
+**Request:**
+
+```json
+{
+  "device_token": "abc123",
+  "platform": "ios"
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "device_token": "abc123",
+  "platform": "ios",
+  "endpoint_arn": "arn:aws:sns:us-east-1:123456789012:endpoint/APNS/app/...",
+  "is_active": true,
+  "last_seen_at": "2026-04-12T20:00:00Z"
+}
+```
+
+---
+
+#### `POST /api/v1/user-devices/deactivate`
+
+**Desactivar dispositivo push**
+
+Marca `is_active=false` para el `device_token` enviado.
+
+**Headers:** `Authorization: Bearer {access_token}`
+
+**Request:**
+
+```json
+{
+  "device_token": "abc123"
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "message": "Dispositivo desactivado exitosamente",
+  "device_token": "abc123",
+  "is_active": false
+}
+```
+
+---
+
 #### `POST /api/v1/devices/`
 
 **Registrar nuevo dispositivo**
@@ -869,38 +1020,37 @@ Agrega un dispositivo al inventario con estado "nuevo".
   "model": "FMB120",
   "firmware_version": "03.28.07",
   "status": "nuevo",
-  "active": false,
   "client_id": null,
   "notes": "Dispositivo para instalación en vehículo comercial",
   "created_at": "2024-11-08T10:00:00Z"
 }
 ```
 
-**Estados del dispositivo:**
+**Estados del dispositivo (reales):**
 
-- `nuevo`: Recién registrado, sin asignar
-- `asignado`: Asignado a un cliente
-- `instalado`: Instalado en una unidad
-- `activo`: Con servicio activo
-- `suspendido`: Servicio suspendido por falta de pago
-- `desinstalado`: Desinstalado de la unidad
-- `inactivo`: Sin servicio
-- `baja`: Dado de baja del sistema
+- `nuevo`: Recién ingresado al inventario
+- `preparado`: Asignado a cliente y listo para envío
+- `enviado`: En tránsito al cliente
+- `entregado`: Recibido por el cliente
+- `asignado`: Vinculado a una unidad
+- `devuelto`: Regresó al inventario
+- `inactivo`: Fuera de uso o baja definitiva
 
 ---
 
 #### `GET /api/v1/devices/`
 
-**Listar dispositivos del cliente**
+**Listar dispositivos**
 
-Lista todos los dispositivos asignados al cliente autenticado.
+Lista dispositivos del inventario y permite filtrar por estado, organización o marca.
 
 **Headers:** `Authorization: Bearer {access_token}`
 
 **Query Parameters (opcionales):**
 
-- `status` (string): Filtrar por estado (nuevo, asignado, instalado, activo, etc.)
-- `active` (boolean): Filtrar por estado de servicio activo
+- `status_filter` (string): Filtrar por estado (`nuevo`, `preparado`, `enviado`, `entregado`, `asignado`, `devuelto`, `inactivo`)
+- `client_id` (uuid): Filtrar por organización
+- `brand` (string): Filtrar por marca
 
 **Response:** `200 OK`
 
@@ -911,8 +1061,7 @@ Lista todos los dispositivos asignados al cliente autenticado.
     "brand": "Teltonika",
     "model": "FMB120",
     "firmware_version": "03.28.07",
-    "status": "activo",
-    "active": true,
+    "status": "asignado",
     "client_id": "uuid",
     "notes": null,
     "created_at": "2024-11-08T10:00:00Z",
@@ -937,8 +1086,7 @@ Lista todos los dispositivos asignados al cliente autenticado.
   "brand": "Teltonika",
   "model": "FMB120",
   "firmware_version": "03.28.07",
-  "status": "instalado",
-  "active": false,
+  "status": "entregado",
   "client_id": "uuid",
   "notes": "Instalado en camioneta Toyota Hilux",
   "created_at": "2024-11-08T10:00:00Z",
@@ -973,8 +1121,7 @@ Actualiza información del dispositivo (firmware, notas, etc.).
   "brand": "Teltonika",
   "model": "FMB120",
   "firmware_version": "03.28.08",
-  "status": "activo",
-  "active": true,
+  "status": "asignado",
   "client_id": "uuid",
   "notes": "Firmware actualizado remotamente",
   "updated_at": "2024-11-08T14:00:00Z"
@@ -995,8 +1142,8 @@ Actualiza el estado operativo del dispositivo.
 
 ```json
 {
-  "new_status": "suspendido",
-  "reason": "Falta de pago del servicio mensual"
+  "new_status": "devuelto",
+  "notes": "Unidad retirada de operación"
 }
 ```
 
@@ -1005,29 +1152,51 @@ Actualiza el estado operativo del dispositivo.
 ```json
 {
   "device_id": "IMEI123456789",
-  "old_status": "activo",
-  "new_status": "suspendido",
+  "old_status": "asignado",
+  "new_status": "devuelto",
   "updated_at": "2024-11-08T15:00:00Z"
 }
 ```
 
 ---
 
-#### `DELETE /api/v1/devices/{device_id}`
+#### `GET /api/v1/devices/my-devices`
 
-**Eliminar dispositivo** (Soft delete)
+**Listar dispositivos de mi organización con perfil de unidad**
 
-Marca el dispositivo como dado de baja.
+Incluye información de unidad/perfil cuando existe asignación activa.
 
-**Headers:** `Authorization: Bearer {access_token}`
+---
 
-**Response:** `200 OK`
+#### `GET /api/v1/devices/unassigned`
 
-```json
-{
-  "message": "Dispositivo IMEI123456789 dado de baja exitosamente"
-}
-```
+**Listar dispositivos no asignados a unidad**
+
+Retorna dispositivos elegibles para instalación.
+
+---
+
+#### `GET /api/v1/devices/status`
+
+**Obtener catálogo de estados de dispositivos**
+
+Retorna colección estática de estados válidos.
+
+---
+
+#### `POST /api/v1/devices/{device_id}/notes`
+
+**Agregar nota administrativa a dispositivo**
+
+Agrega una nota y registra evento de auditoría.
+
+---
+
+#### `GET /api/v1/devices/{device_id}/trips`
+
+**Consultar trips del dispositivo por rango de fechas**
+
+Requiere `start_date` y `end_date` como query params.
 
 ---
 
@@ -1078,14 +1247,15 @@ Historial de auditoría de todos los cambios en dispositivos.
 
 **Tipos de eventos:**
 
-- `creado`: Dispositivo registrado
-- `asignado`: Asignado a cliente
-- `instalado`: Instalado en unidad
-- `desinstalado`: Desinstalado de unidad
-- `activado`: Servicio activado
-- `suspendido`: Servicio suspendido
-- `actualizado`: Información actualizada
-- `dado_de_baja`: Dispositivo eliminado
+- `creado`: Dispositivo registrado en inventario
+- `preparado`: Dispositivo preparado para cliente
+- `enviado`: Dispositivo enviado al cliente
+- `entregado`: Dispositivo entregado
+- `asignado`: Dispositivo vinculado a unidad
+- `devuelto`: Dispositivo devuelto a inventario
+- `firmware_actualizado`: Cambio de firmware
+- `nota`: Nota administrativa agregada
+- `estado_cambiado`: Cambio de estado registrado
 
 ---
 
@@ -1202,7 +1372,7 @@ Incluye dispositivos asignados y usuarios con acceso.
       "device_id": "IMEI123456789",
       "brand": "Teltonika",
       "model": "FMB120",
-      "status": "activo",
+      "status": "asignado",
       "installed_at": "2024-11-08T11:00:00Z"
     }
   ],

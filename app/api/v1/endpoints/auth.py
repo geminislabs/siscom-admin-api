@@ -58,12 +58,11 @@ router = APIRouter()
 # ------------------------------------------
 # Cognito client
 # ------------------------------------------
-cognito = boto3.client(
-    "cognito-idp",
-    region_name=settings.COGNITO_REGION,
-    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-)
+cognito_client_kwargs = {"region_name": settings.COGNITO_REGION}
+if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+    cognito_client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
+    cognito_client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+cognito = boto3.client("cognito-idp", **cognito_client_kwargs)
 
 # Security bearer para obtener el token
 security = HTTPBearer()

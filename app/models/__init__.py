@@ -95,6 +95,7 @@ from app.models.unit_profile import UnitProfile
 
 # Users
 from app.models.user import User
+from app.models.user_device import UserDevice
 from app.models.user_unit import UserUnit
 from app.models.vehicle_profile import VehicleProfile
 
@@ -140,6 +141,7 @@ __all__ = [
     "Device",
     "DeviceEvent",
     "UnitDevice",
+    "UserDevice",
     "UserUnit",
     # Payments & Orders
     "Payment",
