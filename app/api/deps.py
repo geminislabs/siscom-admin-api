@@ -30,12 +30,16 @@ from sqlalchemy.orm import Session
 
 from app.core.security import verify_cognito_token
 from app.db.session import get_db
-from app.services.messaging.kafka_producer import RulesKafkaProducer
+from app.services.messaging.kafka_producer import (
+    RulesKafkaProducer,
+    UserDevicesKafkaProducer,
+)
 from app.services.organization import OrganizationService
 from app.utils.paseto_token import decode_service_token
 
 security = HTTPBearer()
 _rules_kafka_producer: Optional[RulesKafkaProducer] = None
+_user_devices_kafka_producer: Optional[UserDevicesKafkaProducer] = None
 
 
 def get_rules_kafka_producer() -> RulesKafkaProducer:
@@ -46,11 +50,26 @@ def get_rules_kafka_producer() -> RulesKafkaProducer:
     return _rules_kafka_producer
 
 
+def get_user_devices_kafka_producer() -> UserDevicesKafkaProducer:
+    """Retorna una instancia singleton del producer de user devices."""
+    global _user_devices_kafka_producer
+    if _user_devices_kafka_producer is None:
+        _user_devices_kafka_producer = UserDevicesKafkaProducer()
+    return _user_devices_kafka_producer
+
+
 def close_rules_kafka_producer() -> None:
     global _rules_kafka_producer
     if _rules_kafka_producer is not None:
         _rules_kafka_producer.close()
         _rules_kafka_producer = None
+
+
+def close_user_devices_kafka_producer() -> None:
+    global _user_devices_kafka_producer
+    if _user_devices_kafka_producer is not None:
+        _user_devices_kafka_producer.close()
+        _user_devices_kafka_producer = None
 
 
 @dataclass

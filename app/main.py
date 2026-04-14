@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.deps import close_rules_kafka_producer
+from app.api.deps import close_rules_kafka_producer, close_user_devices_kafka_producer
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.services.health import check_kafka_accessibility
@@ -82,3 +82,4 @@ def on_startup() -> None:
 def on_shutdown() -> None:
     """Cierra recursos compartidos al apagar la aplicación."""
     close_rules_kafka_producer()
+    close_user_devices_kafka_producer()

@@ -36,6 +36,7 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 
 ### 📱 Dispositivos
 - [devices.md](./devices.md) - Gestión de dispositivos GPS
+- [user-devices.md](./user-devices.md) - Registro y desactivación de dispositivos push de usuario
 - [device-events.md](./device-events.md) - Historial de eventos
 - [commands.md](./commands.md) - Comandos a dispositivos
 
@@ -178,4 +179,4 @@ MÉTODO /api/v1/recurso/{parametro}
 
 ---
 
-**Última actualización**: 6 de abril de 2026
+**Última actualización**: 13 de abril de 2026

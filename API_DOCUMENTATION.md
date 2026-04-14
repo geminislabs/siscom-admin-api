@@ -113,6 +113,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 4. [**Suscripciones** (`/subscriptions`)](#4-suscripciones-subscriptions) - Gestión de suscripciones múltiples
 5. [**Capabilities** (`/capabilities`)](#5-capabilities-capabilities) - Límites y features de la organización
 6. [**Dispositivos** (`/devices`)](#6-dispositivos-devices) - Inventario y gestión de GPS
+  - [**Dispositivos de Usuario (Push)** (`/user-devices`)](#dispositivos-de-usuario-push-user-devices)
 7. [**Eventos de Dispositivos** (`/device-events`)](#7-eventos-de-dispositivos-device-events) - Historial de eventos
 8. [**Unidades/Vehículos** (`/units`)](#8-unidades-units) - Gestión de flotas
 9. [**Asignación Unidad-Dispositivo** (`/unit-devices`)](#9-asignación-unidad-dispositivo-unit-devices) - Instalaciones
@@ -929,6 +930,10 @@ Gestión del inventario de dispositivos GPS.
 
 ### 🔒 Todos requieren autenticación
 
+### Dispositivos de Usuario (Push) (`/user-devices`)
+
+> Documentación completa: [docs/api/user-devices.md](docs/api/user-devices.md)
+
 #### `POST /api/v1/user-devices/register`
 
 **Registrar dispositivo de notificaciones push (SNS)**
@@ -969,7 +974,7 @@ Registra o actualiza un dispositivo de usuario por `device_token`.
 
 Marca `is_active=false` para el `device_token` enviado.
 
-**Headers:** `Authorization: Bearer {access_token}`
+**Auth:** No requiere token en la implementación actual.
 
 **Request:**
 

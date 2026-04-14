@@ -150,6 +150,13 @@ Gestión completa del inventario de dispositivos GPS.
 - `PATCH /api/v1/devices/{device_id}/status` - Cambiar estado
 - `POST /api/v1/devices/{device_id}/notes` - Agregar nota
 
+### [user-devices.md](./user-devices.md)
+Gestión de dispositivos móviles de usuario para notificaciones push (SNS).
+
+**Endpoints:**
+- `POST /api/v1/user-devices/register` - Registrar/actualizar dispositivo push
+- `POST /api/v1/user-devices/deactivate` - Desactivar dispositivo push
+
 ### [device-events.md](./device-events.md)
 Historial de eventos y auditoría de dispositivos.
 

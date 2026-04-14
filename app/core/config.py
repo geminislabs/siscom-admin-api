@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     # Kafka - Alert rules updates
     KAFKA_BROKERS: str = "localhost:9092"
     KAFKA_RULES_UPDATES_TOPIC: str = "alert-rules-updates"
+    KAFKA_USER_DEVICES_UPDATES_TOPIC: str = "user-devices-updates"
     KAFKA_RULES_UPDATES_GROUP_ID: str = "alert-rules-updates-group"
     KAFKA_SASL_USERNAME: Optional[str] = "events-alert-consumer"
     KAFKA_SASL_PASSWORD: Optional[str] = "eventsalertconsumerpassword"
