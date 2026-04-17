@@ -271,6 +271,78 @@ curl -X DELETE "http://localhost:8090/api/v1/geofences/550e8400-e29b-41d4-a716-4
 
 ---
 
+## Publicacion de Eventos en Kafka
+
+Al completar exitosamente `POST`, `PATCH` o `DELETE`, la API publica un evento en el topico configurado por `KAFKA_GEOFENCES_UPDATES_TOPIC`.
+
+Si la publicacion en Kafka falla, la operacion HTTP no falla: la persistencia en BD se mantiene y el error se registra en logs.
+
+### Variables de entorno
+
+```dotenv
+KAFKA_BROKERS=127.0.0.1:9092
+KAFKA_GEOFENCES_UPDATES_TOPIC=geofences-updates
+KAFKA_SASL_USERNAME=alerts-rules-producer
+KAFKA_SASL_PASSWORD=alertsrulesproducerpassword
+KAFKA_SASL_MECHANISM=SCRAM-SHA-256
+KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT
+```
+
+### Mensaje de actualizacion de geocerca (PATCH -> UPSERT)
+
+Este es el mensaje que se publica cuando una geocerca se actualiza. El payload incluye snapshot completo y `cells` siempre es obligatorio.
+
+```json
+{
+  "event_id": "6c8e3c7c-1f92-4b9f-8f7a-2c9c2fbb9d1a",
+  "event_type": "UPSERT",
+  "entity": "geofence",
+  "timestamp": "2026-04-16T18:00:00Z",
+  "organization_id": "c24ba579-6a27-42d9-a398-0486fbe54f8c",
+  "data": {
+    "id": "geofence-uuid",
+    "created_by": "user-uuid",
+    "name": "Test",
+    "description": "",
+    "is_active": true,
+    "config": {
+      "color": "#2E86DE",
+      "category": ""
+    },
+    "cells": [
+      617733123123123123,
+      617733123123123124,
+      617733123123123125
+    ],
+    "updated_at": "2026-04-16T17:59:59Z"
+  }
+}
+```
+
+### Mensaje de eliminacion logica (DELETE)
+
+```json
+{
+  "event_id": "2f91d2a0-9c7a-4f12-8a11-2d9b2b8e7c11",
+  "event_type": "DELETE",
+  "entity": "geofence",
+  "timestamp": "2026-04-16T18:05:00Z",
+  "organization_id": "c24ba579-6a27-42d9-a398-0486fbe54f8c",
+  "data": {
+    "id": "geofence-uuid"
+  }
+}
+```
+
+### Contrato del evento
+
+- `event_type`: `UPSERT` para create/update, `DELETE` para desactivacion.
+- `config`: se publica directo como JSONB, sin transformaciones.
+- `cells`: obligatorio en todos los eventos `UPSERT`.
+- `timestamp` y `data.updated_at`: en formato UTC con sufijo `Z`.
+
+---
+
 ## Notas Técnicas
 
 - El backend no calcula celdas H3; solo persiste las recibidas.

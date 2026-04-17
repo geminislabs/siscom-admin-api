@@ -2132,6 +2132,8 @@ Documentación detallada y ejemplos `curl`: [docs/api/geofences.md](docs/api/geo
 - `h3_indexes` se deduplica antes de persistir
 - El reemplazo de celdas H3 en `PATCH` usa la estrategia `delete + insert` en una sola transacción
 - La eliminación es lógica (`is_active=false`), no física
+- En `POST`, `PATCH` y `DELETE` se publica evento Kafka a `KAFKA_GEOFENCES_UPDATES_TOPIC`
+- Ejemplos de mensajes de actualización (`UPSERT`) y eliminación (`DELETE`): [docs/api/geofences.md](docs/api/geofences.md)
 
 ---
 

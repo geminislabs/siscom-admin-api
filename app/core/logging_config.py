@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 import sys
 from datetime import datetime
 
@@ -35,13 +34,21 @@ class JSONFormatter(logging.Formatter):
 class HealthCheckFilter(logging.Filter):
     """Suprime los logs de acceso del endpoint /health cuando son exitosos (2xx)."""
 
-    health_success_pattern = re.compile(
-        r'"[A-Z]+ /health(?:\?.*)? HTTP/[^"]+" 2\d\d\b'
-    )
-
     def filter(self, record: logging.LogRecord) -> bool:
+        # Formato preferente de uvicorn.access:
+        # args = (client_addr, method, path_qs, http_version, status_code)
+        if record.name == "uvicorn.access" and isinstance(record.args, tuple):
+            if len(record.args) >= 3:
+                path = str(record.args[2]).split("?", 1)[0]
+                if path == "/health":
+                    return False
+
+        # Fallback para otros formatters que serializan solo el mensaje
         message = record.getMessage()
-        return not bool(self.health_success_pattern.search(message))
+        if " /health" in message and "HTTP/" in message:
+            return False
+
+        return True
 
 
 def setup_logging(level: str = "INFO") -> None:

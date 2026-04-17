@@ -1,12 +1,35 @@
 from uuid import uuid4
 
+import pytest
 from fastapi import status
 
+from app.api.deps import get_geofences_kafka_producer
+from app.main import app
 from app.models.geofence import Geofence, GeofenceCell
 from app.models.organization import Organization
 
 
-def test_geofences_crud_soft_delete(authenticated_client, test_user_data):
+class _StubGeofencesKafkaProducer:
+    def __init__(self):
+        self.messages = []
+        self.should_fail = False
+
+    def publish_update(self, payload, key=None):
+        self.messages.append({"payload": payload, "key": key})
+        return not self.should_fail
+
+
+@pytest.fixture(scope="function")
+def geofences_kafka_stub_producer():
+    stub = _StubGeofencesKafkaProducer()
+    app.dependency_overrides[get_geofences_kafka_producer] = lambda: stub
+    yield stub
+    app.dependency_overrides.pop(get_geofences_kafka_producer, None)
+
+
+def test_geofences_crud_soft_delete(
+    authenticated_client, test_user_data, geofences_kafka_stub_producer
+):
     create_payload = {
         "name": "Geocerca Centro",
         "description": "Zona principal",
@@ -63,7 +86,10 @@ def test_geofences_crud_soft_delete(authenticated_client, test_user_data):
 
 
 def test_geofence_patch_replaces_all_h3_cells(
-    authenticated_client, db_session, test_user_data
+    authenticated_client,
+    db_session,
+    test_user_data,
+    geofences_kafka_stub_producer,
 ):
     geofence = Geofence(
         id=uuid4(),
@@ -106,7 +132,10 @@ def test_geofence_patch_replaces_all_h3_cells(
 
 
 def test_geofence_patch_with_empty_h3_list_clears_cells(
-    authenticated_client, db_session, test_user_data
+    authenticated_client,
+    db_session,
+    test_user_data,
+    geofences_kafka_stub_producer,
 ):
     geofence = Geofence(
         id=uuid4(),
@@ -144,6 +173,7 @@ def test_geofences_are_isolated_by_organization(
     db_session,
     test_account_data,
     test_user_data,
+    geofences_kafka_stub_producer,
 ):
     own_geofence = Geofence(
         id=uuid4(),
@@ -188,3 +218,92 @@ def test_geofences_are_isolated_by_organization(
         f"/api/v1/geofences/{foreign_geofence.id}"
     )
     assert get_foreign_response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_geofence_write_endpoints_publish_kafka_events(
+    authenticated_client,
+    geofences_kafka_stub_producer,
+):
+    create_response = authenticated_client.post(
+        "/api/v1/geofences",
+        json={
+            "name": "Geocerca Kafka",
+            "description": "",
+            "config": {"color": "#2E86DE", "category": ""},
+            "h3_indexes": [617733123123123123, 617733123123123124],
+        },
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    created = create_response.json()
+    geofence_id = created["id"]
+
+    update_response = authenticated_client.patch(
+        f"/api/v1/geofences/{geofence_id}",
+        json={
+            "name": "Geocerca Kafka Actualizada",
+            "h3_indexes": [617733123123123125],
+        },
+    )
+    assert update_response.status_code == status.HTTP_200_OK
+
+    delete_response = authenticated_client.delete(f"/api/v1/geofences/{geofence_id}")
+    assert delete_response.status_code == status.HTTP_200_OK
+
+    events = geofences_kafka_stub_producer.messages
+    assert len(events) == 3
+    assert [event["payload"]["event_type"] for event in events] == [
+        "UPSERT",
+        "UPSERT",
+        "DELETE",
+    ]
+
+    upsert_payload = events[0]["payload"]
+    assert upsert_payload["entity"] == "geofence"
+    assert upsert_payload["event_id"]
+    assert upsert_payload["timestamp"].endswith("Z")
+    assert upsert_payload["organization_id"] == created["organization_id"]
+    assert upsert_payload["data"]["id"] == geofence_id
+    assert upsert_payload["data"]["created_by"] == created["created_by"]
+    assert upsert_payload["data"]["name"] == "Geocerca Kafka"
+    assert upsert_payload["data"]["description"] == ""
+    assert upsert_payload["data"]["is_active"] is True
+    assert upsert_payload["data"]["config"] == {
+        "color": "#2E86DE",
+        "category": "",
+    }
+    assert upsert_payload["data"]["cells"] == [617733123123123123, 617733123123123124]
+    assert upsert_payload["data"]["updated_at"].endswith("Z")
+
+    delete_payload = events[-1]["payload"]
+    assert delete_payload["event_type"] == "DELETE"
+    assert delete_payload["entity"] == "geofence"
+    assert delete_payload["data"] == {"id": geofence_id}
+
+
+def test_geofence_kafka_error_does_not_break_persistence(
+    authenticated_client,
+    caplog,
+    db_session,
+    geofences_kafka_stub_producer,
+):
+    geofences_kafka_stub_producer.should_fail = True
+
+    with caplog.at_level("ERROR"):
+        response = authenticated_client.post(
+            "/api/v1/geofences",
+            json={
+                "name": "Geocerca con error kafka",
+                "description": "",
+                "config": {"color": "#000000"},
+                "h3_indexes": [700000000001],
+            },
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    created_id = response.json()["id"]
+
+    persisted = db_session.query(Geofence).filter(Geofence.id == created_id).first()
+    assert persisted is not None
+    assert any(
+        "Fallo publicando evento en Kafka" in rec.message for rec in caplog.records
+    )
