@@ -68,6 +68,20 @@ Authorization: Bearer <access_token>
 
 #### Request Body
 
+El endpoint acepta payload mínimo o payload extendido para crear, en una sola llamada:
+
+- Registro en `units`
+- Registro en `unit_profile`
+- Registro en `vehicle_profile` (si se envía `plate` o `vin`)
+- Asignación de dispositivo (si se envía `deviceId`/`device_id`)
+
+Se acepta **camelCase** y **snake_case** para campos equivalentes:
+
+- `deviceId` o `device_id`
+- `iconType` o `icon_type`
+
+##### Ejemplo mínimo
+
 ```json
 {
   "name": "Camión #45",
@@ -75,10 +89,35 @@ Authorization: Bearer <access_token>
 }
 ```
 
+##### Ejemplo extendido
+
+```json
+{
+  "name": "Nombre de la unidad (requerido)",
+  "description": "Descripción (opcional)",
+  "deviceId": "ID del dispositivo (opcional)",
+  "iconType": "vehicle-car-sedan",
+  "brand": "Ford",
+  "model": "F-350",
+  "color": "Rojo",
+  "year": 2024,
+  "plate": "ABC-123",
+  "vin": "1FDUF3GT5GED12345"
+}
+```
+
 **Campos:**
 
 - `name` (string, requerido): Nombre de la unidad (1-200 caracteres)
-- `description` (string, opcional): Descripción adicional (máx. 500 caracteres)
+- `description` (string, opcional): Descripción adicional de la unidad (máx. 500 caracteres)
+- `deviceId` / `device_id` (string, opcional): ID del dispositivo a asignar (10-50 caracteres)
+- `iconType` / `icon_type` (string, opcional): Tipo de icono para `unit_profile`
+- `brand` (string, opcional): Marca en `unit_profile`
+- `model` (string, opcional): Modelo en `unit_profile`
+- `color` (string, opcional): Color en `unit_profile`
+- `year` (integer, opcional): Año en `unit_profile` (1900-2100)
+- `plate` (string, opcional): Placa en `vehicle_profile`
+- `vin` (string, opcional): VIN en `vehicle_profile`
 
 #### Response 201 Created
 
@@ -95,6 +134,8 @@ Authorization: Bearer <access_token>
 #### Errores Comunes
 
 - **403 Forbidden**: El usuario no es maestro
+- **404 Not Found**: El dispositivo enviado no existe o no pertenece a la organización
+- **400 Bad Request**: El dispositivo no está en estado válido para asignación o ya está asignado
 
 ---
 

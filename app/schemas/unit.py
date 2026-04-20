@@ -19,7 +19,48 @@ class UnitBase(BaseModel):
 class UnitCreate(UnitBase):
     """Schema para crear una nueva unidad"""
 
-    pass
+    device_id: Optional[str] = Field(
+        None,
+        alias="deviceId",
+        min_length=10,
+        max_length=50,
+        description="ID del dispositivo a asignar opcionalmente",
+    )
+
+    # Campos opcionales de unit_profile
+    icon_type: Optional[str] = Field(
+        None,
+        alias="iconType",
+        max_length=100,
+        description="Tipo de icono para la unidad",
+    )
+    brand: Optional[str] = Field(None, max_length=100, description="Marca")
+    model: Optional[str] = Field(None, max_length=100, description="Modelo")
+    color: Optional[str] = Field(None, max_length=50, description="Color")
+    year: Optional[int] = Field(None, ge=1900, le=2100, description="Año")
+
+    # Campos opcionales de vehicle_profile
+    plate: Optional[str] = Field(None, max_length=20, description="Placa")
+    vin: Optional[str] = Field(
+        None, min_length=11, max_length=50, description="VIN del vehículo"
+    )
+
+    class Config:
+        populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "name": "Camión #45",
+                "description": "Camión de reparto zona norte",
+                "deviceId": "864537040123456",
+                "iconType": "vehicle-car-truck",
+                "brand": "Ford",
+                "model": "F-350",
+                "color": "Rojo",
+                "year": 2024,
+                "plate": "ABC-123",
+                "vin": "1FDUF3GT5GED12345",
+            }
+        }
 
 
 class UnitUpdate(BaseModel):

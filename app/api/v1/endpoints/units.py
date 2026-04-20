@@ -233,6 +233,7 @@ def create_unit(
     unit: UnitCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    user_id: UUID = Depends(get_current_user_id),
 ):
     """
     Crea una nueva unidad.
@@ -240,6 +241,7 @@ def create_unit(
     Requiere: Usuario maestro del cliente.
 
     Automáticamente crea un unit_profile con unit_type="vehicle" por defecto.
+    Si el body incluye datos de perfil/dispositivo, los crea/asigna en la misma transacción.
     """
     # Validar que sea maestro
     if not current_user.is_master:
@@ -247,6 +249,45 @@ def create_unit(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden crear unidades",
         )
+
+    # Validar dispositivo opcional antes de crear registros
+    device = None
+    if unit.device_id:
+        device = (
+            db.query(Device)
+            .filter(
+                Device.device_id == unit.device_id,
+                Device.organization_id == current_user.organization_id,
+            )
+            .first()
+        )
+
+        if not device:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dispositivo no encontrado o no pertenece a tu organización",
+            )
+
+        if device.status not in ["entregado", "devuelto"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El dispositivo debe estar en estado 'entregado' o 'devuelto' (estado actual: {device.status})",
+            )
+
+        existing_assignment = (
+            db.query(UnitDevice)
+            .filter(
+                UnitDevice.device_id == unit.device_id,
+                UnitDevice.unassigned_at.is_(None),
+            )
+            .first()
+        )
+
+        if existing_assignment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El dispositivo ya está asignado a otra unidad activa",
+            )
 
     # Crear la unidad
     new_unit = Unit(
@@ -261,8 +302,48 @@ def create_unit(
     unit_profile = UnitProfile(
         unit_id=new_unit.id,
         unit_type="vehicle",  # Tipo por defecto
+        icon_type=unit.icon_type,
+        brand=unit.brand,
+        model=unit.model,
+        color=unit.color,
+        year=unit.year,
     )
     db.add(unit_profile)
+
+    # Crear vehicle_profile si llegan datos de vehículo
+    if unit.plate is not None or unit.vin is not None:
+        vehicle_profile = VehicleProfile(
+            unit_id=new_unit.id,
+            plate=unit.plate,
+            vin=unit.vin,
+        )
+        db.add(vehicle_profile)
+
+    # Asignar dispositivo opcional
+    if device:
+        now = datetime.utcnow()
+
+        new_assignment = UnitDevice(
+            unit_id=new_unit.id,
+            device_id=device.device_id,
+            assigned_at=now,
+        )
+        db.add(new_assignment)
+
+        old_status = device.status
+        device.status = "asignado"
+        device.last_assignment_at = now
+        db.add(device)
+
+        create_device_event(
+            db=db,
+            device_id=device.device_id,
+            event_type="asignado",
+            old_status=old_status,
+            new_status="asignado",
+            performed_by=user_id,
+            event_details=f"Dispositivo asignado a unidad '{new_unit.name}'",
+        )
 
     # Commit de ambos
     db.commit()
