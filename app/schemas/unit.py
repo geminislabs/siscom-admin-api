@@ -60,6 +60,15 @@ class UnitWithDevice(UnitBase):
     device_brand: Optional[str] = None
     device_model: Optional[str] = None
     assigned_at: Optional[datetime] = None
+    # Datos del perfil de unidad (unit_profile)
+    icon_type: Optional[str] = None
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    color: Optional[str] = None
+    year: Optional[int] = None
+    # Datos del perfil de vehiculo (vehicle_profile)
+    plate: Optional[str] = None
+    vin: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -74,6 +83,13 @@ class UnitWithDevice(UnitBase):
                 "device_brand": "Suntech",
                 "device_model": "ST300",
                 "assigned_at": "2025-11-15T10:30:00Z",
+                "icon_type": "truck",
+                "brand": "Hino",
+                "model": "500",
+                "color": "Blanco",
+                "year": 2022,
+                "plate": "ABC123",
+                "vin": "1HGCM82633A123456",
             }
         }
 

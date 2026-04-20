@@ -3,6 +3,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -157,13 +158,24 @@ def list_units(
             Unit.id,
             Unit.organization_id,
             Unit.name,
-            Unit.description,
+            func.coalesce(UnitProfile.description, Unit.description).label(
+                "description"
+            ),
             Unit.deleted_at,
             Device.device_id,
             Device.brand.label("device_brand"),
             Device.model.label("device_model"),
             UnitDevice.assigned_at,
+            UnitProfile.icon_type,
+            UnitProfile.brand,
+            UnitProfile.model,
+            UnitProfile.color,
+            UnitProfile.year,
+            VehicleProfile.plate,
+            VehicleProfile.vin,
         )
+        .outerjoin(UnitProfile, UnitProfile.unit_id == Unit.id)
+        .outerjoin(VehicleProfile, VehicleProfile.unit_id == Unit.id)
         .outerjoin(
             UnitDevice,
             (UnitDevice.unit_id == Unit.id) & (UnitDevice.unassigned_at.is_(None)),
@@ -203,6 +215,13 @@ def list_units(
             device_brand=row.device_brand,
             device_model=row.device_model,
             assigned_at=row.assigned_at,
+            icon_type=row.icon_type,
+            brand=row.brand,
+            model=row.model,
+            color=row.color,
+            year=row.year,
+            plate=row.plate,
+            vin=row.vin,
         )
         units.append(unit)
 

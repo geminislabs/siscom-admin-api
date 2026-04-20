@@ -10,6 +10,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging_config import setup_logging
 from app.services.health import check_kafka_accessibility
+from app.startup import print_startup_banner
 
 setup_logging()
 
@@ -83,6 +84,7 @@ def health_check():
 def on_startup() -> None:
     """Verifica accesibilidad de servicios externos al iniciar la aplicación."""
     setup_logging()
+    print_startup_banner()
     check_kafka_accessibility()
 
 

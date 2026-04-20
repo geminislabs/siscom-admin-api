@@ -4,6 +4,7 @@ from uuid import UUID
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_full, get_user_devices_kafka_producer
@@ -110,6 +111,7 @@ def register_user_device(
     ),
 ):
     now = datetime.now(timezone.utc)
+    created_new = False
     device = (
         db.query(UserDevice)
         .filter(UserDevice.device_token == payload.device_token)
@@ -145,31 +147,44 @@ def register_user_device(
                 updated_at=now,
             )
             db.add(device)
-            db.commit()
-            db.refresh(device)
+            try:
+                db.commit()
+                db.refresh(device)
+                created_new = True
+            except IntegrityError:
+                # Another concurrent request inserted the same token first.
+                db.rollback()
+                device = (
+                    db.query(UserDevice)
+                    .filter(UserDevice.device_token == payload.device_token)
+                    .first()
+                )
+                if not device:
+                    raise
 
-            kafka_payload = _build_user_device_event_payload(
-                event_type="UPSERT",
-                user_id=device.user_id,
-                device_id=device.device_token,
-                endpoint_arn=device.endpoint_arn,
-                unit_id=_resolve_user_unit_id(db, device.user_id),
-                is_active=device.is_active,
-                updated_at=device.updated_at,
-            )
-            _publish_user_device_event(
-                user_devices_kafka_producer,
-                kafka_payload,
-                endpoint="register_user_device",
-            )
+            if created_new:
+                kafka_payload = _build_user_device_event_payload(
+                    event_type="UPSERT",
+                    user_id=device.user_id,
+                    device_id=device.device_token,
+                    endpoint_arn=device.endpoint_arn,
+                    unit_id=_resolve_user_unit_id(db, device.user_id),
+                    is_active=device.is_active,
+                    updated_at=device.updated_at,
+                )
+                _publish_user_device_event(
+                    user_devices_kafka_producer,
+                    kafka_payload,
+                    endpoint="register_user_device",
+                )
 
-            return DeviceRegisterOut(
-                device_token=device.device_token,
-                platform=device.platform,
-                endpoint_arn=device.endpoint_arn,
-                is_active=device.is_active,
-                last_seen_at=device.last_seen_at,
-            )
+                return DeviceRegisterOut(
+                    device_token=device.device_token,
+                    platform=device.platform,
+                    endpoint_arn=device.endpoint_arn,
+                    is_active=device.is_active,
+                    last_seen_at=device.last_seen_at,
+                )
 
         endpoint_arn, recreated = get_or_recreate_endpoint(
             device_token=payload.device_token,
@@ -188,8 +203,29 @@ def register_user_device(
             device.endpoint_arn = endpoint_arn
 
         db.add(device)
-        db.commit()
-        db.refresh(device)
+        try:
+            db.commit()
+            db.refresh(device)
+        except IntegrityError:
+            # Token was claimed by another row while rotating token/user+platform.
+            db.rollback()
+            device = (
+                db.query(UserDevice)
+                .filter(UserDevice.device_token == payload.device_token)
+                .first()
+            )
+            if not device:
+                raise
+
+            device.user_id = current_user.id
+            device.platform = payload.platform
+            device.is_active = True
+            device.last_seen_at = now
+            device.updated_at = now
+
+            db.add(device)
+            db.commit()
+            db.refresh(device)
 
         kafka_payload = _build_user_device_event_payload(
             event_type="UPSERT",
