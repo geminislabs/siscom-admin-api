@@ -33,7 +33,17 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 # ---------------------------------------------------------------------------
 
 VALID_METRICS = frozenset(
-    ["speed", "main_battery", "backup_battery", "alerts", "comm_quality", "samples"]
+    [
+        "speed",
+        "main_battery",
+        "backup_battery",
+        "alerts",
+        "comm_quality",
+        "samples",
+        "signal",
+        "satellites",
+        "odometer",
+    ]
 )
 
 MAX_RANGE_HOURS = timedelta(days=7)
@@ -42,7 +52,15 @@ MAX_BATCH_DEVICES = 50
 
 Granularity = Literal["hour", "day"]
 MetricName = Literal[
-    "speed", "main_battery", "backup_battery", "alerts", "comm_quality", "samples"
+    "speed",
+    "main_battery",
+    "backup_battery",
+    "alerts",
+    "comm_quality",
+    "samples",
+    "signal",
+    "satellites",
+    "odometer",
 ]
 
 
@@ -53,12 +71,27 @@ MetricName = Literal[
 
 class SpeedOut(BaseModel):
     avg_speed: Optional[float] = Field(None, description="Velocidad promedio (km/h)")
+    min_speed: Optional[float] = Field(None, description="Velocidad mínima (km/h)")
     max_speed: Optional[float] = Field(None, description="Velocidad máxima (km/h)")
 
 
 class BatteryOut(BaseModel):
     avg_voltage: Optional[float] = Field(None, description="Voltaje promedio (V)")
     min_voltage: Optional[float] = Field(None, description="Voltaje mínimo (V)")
+    max_voltage: Optional[float] = Field(None, description="Voltaje máximo (V)")
+
+
+class AvgMinMaxOut(BaseModel):
+    avg: Optional[float] = Field(None, description="Valor promedio en el período")
+    min: Optional[float] = Field(None, description="Valor mínimo en el período")
+    max: Optional[float] = Field(None, description="Valor máximo en el período")
+
+
+class OdometerOut(BaseModel):
+    total_distance_mt: Optional[float] = Field(
+        None,
+        description="Distancia total recorrida en el período, en metros",
+    )
 
 
 class AlertsOut(BaseModel):
@@ -93,6 +126,9 @@ class TelemetryPointOut(BaseModel):
     alerts: Optional[AlertsOut] = None
     comm_quality: Optional[CommQualityOut] = None
     samples: Optional[SamplesOut] = None
+    signal: Optional[AvgMinMaxOut] = None
+    satellites: Optional[AvgMinMaxOut] = None
+    odometer: Optional[OdometerOut] = None
 
     model_config = {"populate_by_name": True}
 

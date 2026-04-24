@@ -27,10 +27,12 @@ from app.models.user import User
 from app.models.user_unit import UserUnit
 from app.schemas.telemetry import (
     AlertsOut,
+    AvgMinMaxOut,
     BatteryOut,
     CommQualityOut,
     Granularity,
     MetricName,
+    OdometerOut,
     SamplesOut,
     SpeedOut,
     TelemetryDeviceItemOut,
@@ -129,6 +131,7 @@ def _build_select_columns(metrics: Sequence[MetricName], prefix: str = "") -> st
     if "speed" in metrics:
         cols += [
             "SUM(sum_speed) / NULLIF(SUM(count_speed), 0) AS avg_speed",
+            "MIN(min_speed) AS min_speed",
             "MAX(max_speed) AS max_speed",
         ]
 
@@ -136,12 +139,14 @@ def _build_select_columns(metrics: Sequence[MetricName], prefix: str = "") -> st
         cols += [
             "SUM(sum_main_voltage) / NULLIF(SUM(count_main_voltage), 0) AS avg_main_voltage",
             "MIN(min_main_voltage) AS min_main_voltage",
+            "MAX(max_main_voltage) AS max_main_voltage",
         ]
 
     if "backup_battery" in metrics:
         cols += [
             "SUM(sum_backup_voltage) / NULLIF(SUM(count_backup_voltage), 0) AS avg_backup_voltage",
             "MIN(min_backup_voltage) AS min_backup_voltage",
+            "MAX(max_backup_voltage) AS max_backup_voltage",
         ]
 
     if "alerts" in metrics:
@@ -155,6 +160,26 @@ def _build_select_columns(metrics: Sequence[MetricName], prefix: str = "") -> st
 
     if "samples" in metrics:
         cols.append("SUM(samples) AS samples")
+
+    if "signal" in metrics:
+        cols += [
+            "SUM(sum_rx_lvl) / NULLIF(SUM(count_rx_lvl), 0) AS avg_rx_lvl",
+            "MIN(min_rx_lvl) AS min_rx_lvl",
+            "MAX(max_rx_lvl) AS max_rx_lvl",
+        ]
+
+    if "satellites" in metrics:
+        cols += [
+            "SUM(sum_satellites) / NULLIF(SUM(count_satellites), 0) AS avg_satellites",
+            "MIN(min_satellites) AS min_satellites",
+            "MAX(max_satellites) AS max_satellites",
+        ]
+
+    if "odometer" in metrics:
+        cols += [
+            "MIN(first_odometer) AS first_odometer",
+            "MAX(last_odometer) AS last_odometer",
+        ]
 
     return ",\n    ".join(cols)
 
@@ -326,10 +351,14 @@ def _map_row_to_point(row, metrics: Sequence[MetricName]) -> TelemetryPointOut:
     alerts_out: Optional[AlertsOut] = None
     comm_out: Optional[CommQualityOut] = None
     samples_out: Optional[SamplesOut] = None
+    signal_out: Optional[AvgMinMaxOut] = None
+    satellites_out: Optional[AvgMinMaxOut] = None
+    odometer_out: Optional[OdometerOut] = None
 
     if "speed" in metrics:
         speed_out = SpeedOut(
             avg_speed=mapping.get("avg_speed"),
+            min_speed=mapping.get("min_speed"),
             max_speed=mapping.get("max_speed"),
         )
 
@@ -337,12 +366,14 @@ def _map_row_to_point(row, metrics: Sequence[MetricName]) -> TelemetryPointOut:
         main_battery_out = BatteryOut(
             avg_voltage=mapping.get("avg_main_voltage"),
             min_voltage=mapping.get("min_main_voltage"),
+            max_voltage=mapping.get("max_main_voltage"),
         )
 
     if "backup_battery" in metrics:
         backup_battery_out = BatteryOut(
             avg_voltage=mapping.get("avg_backup_voltage"),
             min_voltage=mapping.get("min_backup_voltage"),
+            max_voltage=mapping.get("max_backup_voltage"),
         )
 
     if "alerts" in metrics:
@@ -357,6 +388,28 @@ def _map_row_to_point(row, metrics: Sequence[MetricName]) -> TelemetryPointOut:
     if "samples" in metrics:
         samples_out = SamplesOut(total=mapping.get("samples") or 0)
 
+    if "signal" in metrics:
+        signal_out = AvgMinMaxOut(
+            avg=mapping.get("avg_rx_lvl"),
+            min=mapping.get("min_rx_lvl"),
+            max=mapping.get("max_rx_lvl"),
+        )
+
+    if "satellites" in metrics:
+        satellites_out = AvgMinMaxOut(
+            avg=mapping.get("avg_satellites"),
+            min=mapping.get("min_satellites"),
+            max=mapping.get("max_satellites"),
+        )
+
+    if "odometer" in metrics:
+        first_odometer = mapping.get("first_odometer")
+        last_odometer = mapping.get("last_odometer")
+        total_distance_mt = None
+        if first_odometer is not None and last_odometer is not None:
+            total_distance_mt = last_odometer - first_odometer
+        odometer_out = OdometerOut(total_distance_mt=total_distance_mt)
+
     return TelemetryPointOut(
         bucket=mapping["bucket"],
         speed=speed_out,
@@ -365,6 +418,9 @@ def _map_row_to_point(row, metrics: Sequence[MetricName]) -> TelemetryPointOut:
         alerts=alerts_out,
         comm_quality=comm_out,
         samples=samples_out,
+        signal=signal_out,
+        satellites=satellites_out,
+        odometer=odometer_out,
     )
 
 

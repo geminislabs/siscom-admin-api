@@ -30,12 +30,14 @@ from app.main import app
 from app.models.user import User
 from app.schemas.telemetry import (
     AlertsOut,
+    AvgMinMaxOut,
+    BatteryOut,
+    OdometerOut,
     SpeedOut,
     TelemetryDeviceItemOut,
     TelemetryPointOut,
     TelemetryQueryRequest,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -66,8 +68,13 @@ def iso(dt: datetime) -> str:
 def _make_point(bucket: datetime) -> TelemetryPointOut:
     return TelemetryPointOut(
         bucket=bucket,
-        speed=SpeedOut(avg_speed=55.0, max_speed=90.0),
+        speed=SpeedOut(avg_speed=55.0, min_speed=10.0, max_speed=90.0),
+        main_battery=BatteryOut(avg_voltage=12.5, min_voltage=11.8, max_voltage=13.1),
+        backup_battery=BatteryOut(avg_voltage=4.2, min_voltage=3.9, max_voltage=4.4),
         alerts=AlertsOut(count=2),
+        signal=AvgMinMaxOut(avg=-67.5, min=-89.0, max=-51.0),
+        satellites=AvgMinMaxOut(avg=8.5, min=5.0, max=12.0),
+        odometer=OdometerOut(total_distance_mt=1250.0),
     )
 
 
@@ -147,7 +154,7 @@ class TestTelemetryQueryRequestValidation:
             )
 
     def test_from_equal_to_is_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="anterior"):
             TelemetryQueryRequest.model_validate(
                 self._make(**{"from": FROM_TS.isoformat(), "to": FROM_TS.isoformat()})
             )
@@ -174,7 +181,7 @@ class TestTelemetryQueryRequestValidation:
         assert req.granularity == "day"
 
     def test_invalid_metric_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Input should be"):
             TelemetryQueryRequest.model_validate(self._make(metrics=["invalid_metric"]))
 
     def test_metrics_deduplication(self):
@@ -195,7 +202,7 @@ class TestTelemetryQueryRequestValidation:
             TelemetryQueryRequest.model_validate(self._make(device_ids=ids))
 
     def test_empty_metrics_is_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="at least 1 item"):
             TelemetryQueryRequest.model_validate(self._make(metrics=[]))
 
     def test_all_valid_metrics_accepted(self):
@@ -206,9 +213,12 @@ class TestTelemetryQueryRequestValidation:
             "alerts",
             "comm_quality",
             "samples",
+            "signal",
+            "satellites",
+            "odometer",
         ]
         req = TelemetryQueryRequest.model_validate(self._make(metrics=all_metrics))
-        assert len(req.metrics) == 6
+        assert len(req.metrics) == 9
 
 
 # ===========================================================================
@@ -242,6 +252,7 @@ class TestTelemetryAccessControl:
 
     def test_validate_device_access_raises_404_for_inaccessible(self):
         from fastapi import HTTPException
+
         from app.services.telemetry import validate_device_access
 
         user = _make_user(is_master=False)
@@ -255,6 +266,7 @@ class TestTelemetryAccessControl:
 
     def test_validate_batch_raises_404_if_any_device_missing(self):
         from fastapi import HTTPException
+
         from app.services.telemetry import validate_batch_device_access
 
         user = _make_user(is_master=True)
@@ -310,7 +322,7 @@ class TestTelemetryAccessControl:
             mock_db.query.return_value.join.return_value.filter.return_value.distinct.return_value.all.return_value
         ) = mock_rows
 
-        result = _get_accessible_device_ids(mock_db, user)
+        _get_accessible_device_ids(mock_db, user)
         assert mock_db.query.called
 
 
@@ -379,7 +391,7 @@ class TestGetDeviceTelemetryEndpoint:
         series = [
             TelemetryPointOut(
                 bucket=FROM_TS,
-                speed=SpeedOut(avg_speed=60.0, max_speed=90.0),
+                speed=SpeedOut(avg_speed=60.0, min_speed=20.0, max_speed=90.0),
             )
         ]
         with patch(
@@ -395,6 +407,52 @@ class TestGetDeviceTelemetryEndpoint:
         assert "speed" in point
         assert "alerts" not in point
         assert "main_battery" not in point
+
+    def test_response_serializes_new_metrics_shape(self, api_client):
+        point = TelemetryPointOut(
+            bucket=FROM_TS,
+            speed=SpeedOut(avg_speed=60.0, min_speed=20.0, max_speed=90.0),
+            main_battery=BatteryOut(
+                avg_voltage=12.4,
+                min_voltage=11.9,
+                max_voltage=13.0,
+            ),
+            backup_battery=BatteryOut(
+                avg_voltage=4.1,
+                min_voltage=3.8,
+                max_voltage=4.3,
+            ),
+            signal=AvgMinMaxOut(avg=-65.0, min=-88.0, max=-49.0),
+            satellites=AvgMinMaxOut(avg=7.5, min=4.0, max=10.0),
+            odometer=OdometerOut(total_distance_mt=2400.0),
+        )
+
+        with patch(
+            "app.api.v1.endpoints.telemetry.get_telemetry_single",
+            return_value=[point],
+        ):
+            resp = api_client.get(
+                "/api/v1/devices/DEV-001/telemetry",
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                    ("metrics", "main_battery"),
+                    ("metrics", "backup_battery"),
+                    ("metrics", "signal"),
+                    ("metrics", "satellites"),
+                    ("metrics", "odometer"),
+                ],
+            )
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()["series"][0]
+        assert data["speed"]["min_speed"] == 20.0
+        assert data["main_battery"]["max_voltage"] == 13.0
+        assert data["backup_battery"]["max_voltage"] == 4.3
+        assert data["signal"] == {"avg": -65.0, "min": -88.0, "max": -49.0}
+        assert data["satellites"] == {"avg": 7.5, "min": 4.0, "max": 10.0}
+        assert data["odometer"]["total_distance_mt"] == 2400.0
 
     def test_empty_series_is_valid(self, api_client):
         with patch(
