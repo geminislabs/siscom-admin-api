@@ -124,6 +124,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 14. [**Pagos** (`/payments`)](#14-pagos-payments) - Gestión de pagos
 15. [**Alertas y Reglas** (`/alerts`, `/alert_rules`)](#15-alertas-y-reglas-alerts-alert_rules) - Consulta de alertas y administración de reglas
 16. [**Geocercas** (`/geofences`)](#16-geocercas-geofences) - CRUD de geocercas con índices H3
+17. [**Telemetría Agregada** (`/devices/{device_id}/telemetry`, `/telemetry/query`)](docs/api/telemetry.md) - Métricas agregadas de operación, señal y distancia
 
 ---
 

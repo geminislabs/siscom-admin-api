@@ -49,6 +49,9 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 ### 📍 Viajes
 - [trips.md](./trips.md) - Consulta de viajes y trayectorias
 
+### 📡 Telemetría
+- [telemetry.md](./telemetry.md) - Métricas agregadas por dispositivo y batch de flota
+
 ### 🚨 Alertas
 - [alerts.md](./alerts.md) - Reglas de alerta y alertas generadas, con ejemplos curl
 

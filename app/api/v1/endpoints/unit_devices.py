@@ -115,7 +115,7 @@ def create_unit_device(
         db.query(Device)
         .filter(
             Device.device_id == assignment.device_id,
-            Device.client_id == organization_id,
+            Device.organization_id == organization_id,
         )
         .first()
     )
@@ -127,10 +127,13 @@ def create_unit_device(
         )
 
     # Validar estado del dispositivo
-    if device.status not in ["entregado"]:
+    if device.status not in ["entregado", "devuelto"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El dispositivo debe estar en estado 'entregado' (estado actual: {device.status})",
+            detail=(
+                "El dispositivo debe estar en estado 'entregado' o 'devuelto' "
+                f"(estado actual: {device.status})"
+            ),
         )
 
     # Verificar que no existe una asignación activa

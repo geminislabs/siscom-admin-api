@@ -30,6 +30,7 @@ Dispositivo GPS → Kafka → telemetry_hourly_stats → API (agregación) → C
 | 7 | [Comparativa de flota — velocidad](#caso-7-comparativa-de-flota--velocidad) | POST | hour |
 | 8 | [Reporte mensual de flota (por día)](#caso-8-reporte-mensual-de-flota-por-día) | POST | day |
 | 9 | [Calidad de comunicación de múltiples dispositivos](#caso-9-calidad-de-comunicación-de-múltiples-dispositivos) | POST | day |
+| 10 | [Señal, satélites y distancia recorrida](#caso-10-señal-satélites-y-distancia-recorrida) | GET | hour/day |
 
 ---
 
@@ -66,12 +67,15 @@ Authorization: Bearer <access_token>
 
 | Valor | Campos en respuesta | Unidad | Descripción |
 |-------|---------------------|--------|-------------|
-| `speed` | `avg_speed`, `max_speed` | km/h | Velocidad promedio y máxima en el período |
-| `main_battery` | `avg_voltage`, `min_voltage` | V | Tensión de la batería principal |
-| `backup_battery` | `avg_voltage`, `min_voltage` | V | Tensión de la batería de respaldo |
+| `speed` | `avg_speed`, `min_speed`, `max_speed` | km/h | Velocidad promedio, mínima y máxima en el período |
+| `main_battery` | `avg_voltage`, `min_voltage`, `max_voltage` | V | Tensión de la batería principal |
+| `backup_battery` | `avg_voltage`, `min_voltage`, `max_voltage` | V | Tensión de la batería de respaldo |
 | `alerts` | `count` | — | Total de alertas generadas en el período |
 | `comm_quality` | `fixable_count`, `with_fix_count` | — | Mensajes con error recuperable y mensajes con corrección GPS aplicada |
 | `samples` | `total` | — | Total de mensajes procesados en el período |
+| `signal` | `avg`, `min`, `max` | dBm (rx level) | Nivel de señal celular promedio, mínimo y máximo |
+| `satellites` | `avg`, `min`, `max` | # | Cantidad de satélites promedio, mínima y máxima |
+| `odometer` | `total_distance_mt` | m | Distancia total recorrida en el período |
 
 #### Límites de rango
 
@@ -87,10 +91,10 @@ Authorization: Bearer <access_token>
 | `400` | Rango inválido, métricas inválidas o vacías, límite superado | `"Con granularity=hour el rango máximo es 7 días"` |
 | `400` | `from` >= `to` | `"'from' debe ser anterior a 'to'"` |
 | `400` | Sin métricas | `"Se debe especificar al menos una métrica"` |
-| `400` | Métrica desconocida | `"Métricas no válidas: ['temperatura']"` |
 | `401` | Sin token | `"Not authenticated"` |
 | `404` | Dispositivo sin acceso o inexistente | `"Dispositivo no encontrado"` |
 | `422` | Parámetro con formato inválido | `[{"loc": ["query", "granularity"], "msg": "..."}]` |
+| `422` | Métrica desconocida | `Input should be 'speed', ...` |
 
 ---
 
@@ -149,10 +153,11 @@ Re-agrega los buckets horarios por día calendario en UTC (`date_trunc('day', bu
 
 | Métrica | Fórmula día |
 |---------|-------------|
-| `avg_speed`, `avg_voltage` | `SUM(suma_horaria) / SUM(conteo_horario)` — **no** promedio de promedios |
-| `max_speed`, `min_voltage` | `MAX/MIN` sobre todos los registros del día |
+| `avg_speed`, `avg_voltage`, `signal.avg`, `satellites.avg` | `SUM(suma_horaria) / SUM(conteo_horario)` — **no** promedio de promedios |
+| `speed.min_speed`, `max_speed`, `min_voltage`, `max_voltage`, `signal.min/max`, `satellites.min/max` | `MAX/MIN` sobre todos los registros del día |
 | `alerts.count`, `samples.total` | `SUM` de todos los buckets del día |
 | `comm_quality` | `SUM` de `fixable_count` y `with_fix_count` del día |
+| `odometer.total_distance_mt` | `MAX(last_odometer) - MIN(first_odometer)` |
 
 ---
 
@@ -453,7 +458,10 @@ curl -G "https://api.ejemplo.com/api/v1/devices/864537040123456/telemetry" \
   -d "metrics=backup_battery" \
   -d "metrics=alerts" \
   -d "metrics=comm_quality" \
-  -d "metrics=samples"
+  -d "metrics=samples" \
+  -d "metrics=signal" \
+  -d "metrics=satellites" \
+  -d "metrics=odometer"
 ```
 
 **Respuesta 200 OK:**
@@ -464,40 +472,104 @@ curl -G "https://api.ejemplo.com/api/v1/devices/864537040123456/telemetry" \
   "granularity": "hour",
   "from": "2026-04-21T10:00:00Z",
   "to": "2026-04-21T14:00:00Z",
-  "metrics": ["speed", "main_battery", "backup_battery", "alerts", "comm_quality", "samples"],
+  "metrics": [
+    "speed",
+    "main_battery",
+    "backup_battery",
+    "alerts",
+    "comm_quality",
+    "samples",
+    "signal",
+    "satellites",
+    "odometer"
+  ],
   "series": [
     {
       "bucket": "2026-04-21T10:00:00Z",
-      "speed": { "avg_speed": 58.3, "max_speed": 95.0 },
-      "main_battery": { "avg_voltage": 12.7, "min_voltage": 12.4 },
-      "backup_battery": { "avg_voltage": 3.9, "min_voltage": 3.8 },
+      "speed": { "avg_speed": 58.3, "min_speed": 0.0, "max_speed": 95.0 },
+      "main_battery": { "avg_voltage": 12.7, "min_voltage": 12.4, "max_voltage": 13.1 },
+      "backup_battery": { "avg_voltage": 3.9, "min_voltage": 3.8, "max_voltage": 4.1 },
       "alerts": { "count": 1 },
       "comm_quality": { "fixable_count": 2, "with_fix_count": 118 },
-      "samples": { "total": 120 }
+      "samples": { "total": 120 },
+      "signal": { "avg": -64.4, "min": -87.0, "max": -45.0 },
+      "satellites": { "avg": 8.9, "min": 5.0, "max": 12.0 },
+      "odometer": { "total_distance_mt": 12400.0 }
     },
     {
       "bucket": "2026-04-21T11:00:00Z",
-      "speed": { "avg_speed": 43.1, "max_speed": 78.0 },
-      "main_battery": { "avg_voltage": 12.6, "min_voltage": 12.3 },
-      "backup_battery": { "avg_voltage": 3.9, "min_voltage": 3.9 },
+      "speed": { "avg_speed": 43.1, "min_speed": 0.0, "max_speed": 78.0 },
+      "main_battery": { "avg_voltage": 12.6, "min_voltage": 12.3, "max_voltage": 12.9 },
+      "backup_battery": { "avg_voltage": 3.9, "min_voltage": 3.9, "max_voltage": 4.0 },
       "alerts": { "count": 0 },
       "comm_quality": { "fixable_count": 0, "with_fix_count": 115 },
-      "samples": { "total": 115 }
+      "samples": { "total": 115 },
+      "signal": { "avg": -68.2, "min": -90.0, "max": -51.0 },
+      "satellites": { "avg": 8.1, "min": 4.0, "max": 11.0 },
+      "odometer": { "total_distance_mt": 10300.0 }
     },
     {
       "bucket": "2026-04-21T13:00:00Z",
-      "speed": { "avg_speed": 0.0, "max_speed": 0.0 },
-      "main_battery": { "avg_voltage": 12.5, "min_voltage": 12.5 },
-      "backup_battery": { "avg_voltage": 3.9, "min_voltage": 3.9 },
+      "speed": { "avg_speed": 0.0, "min_speed": 0.0, "max_speed": 0.0 },
+      "main_battery": { "avg_voltage": 12.5, "min_voltage": 12.5, "max_voltage": 12.7 },
+      "backup_battery": { "avg_voltage": 3.9, "min_voltage": 3.9, "max_voltage": 4.0 },
       "alerts": { "count": 0 },
       "comm_quality": { "fixable_count": 1, "with_fix_count": 59 },
-      "samples": { "total": 60 }
+      "samples": { "total": 60 },
+      "signal": { "avg": -71.0, "min": -92.0, "max": -56.0 },
+      "satellites": { "avg": 6.7, "min": 3.0, "max": 9.0 },
+      "odometer": { "total_distance_mt": 0.0 }
     }
   ]
 }
 ```
 
 > La hora 12:00 no aparece porque el dispositivo no transmitió (posible parada de motor). La hora 13:00 muestra `avg_speed: 0.0` porque el vehículo estaba detenido pero el tracker seguía reportando.
+
+---
+
+### Caso 10: Señal, satélites y distancia recorrida
+
+Consulta de salud de cobertura y distancia recorrida en una ventana operativa.
+
+```bash
+curl -G "https://api.ejemplo.com/api/v1/devices/864537040123456/telemetry" \
+  -H "Authorization: Bearer <token>" \
+  --data-urlencode "from=2026-04-21T06:00:00Z" \
+  --data-urlencode "to=2026-04-21T12:00:00Z" \
+  -d "granularity=hour" \
+  -d "metrics=signal" \
+  -d "metrics=satellites" \
+  -d "metrics=odometer"
+```
+
+**Respuesta 200 OK:**
+
+```json
+{
+  "device_id": "864537040123456",
+  "granularity": "hour",
+  "from": "2026-04-21T06:00:00Z",
+  "to": "2026-04-21T12:00:00Z",
+  "metrics": ["signal", "satellites", "odometer"],
+  "series": [
+    {
+      "bucket": "2026-04-21T09:00:00Z",
+      "signal": { "avg": -66.1, "min": -89.0, "max": -50.0 },
+      "satellites": { "avg": 8.4, "min": 5.0, "max": 11.0 },
+      "odometer": { "total_distance_mt": 9200.0 }
+    },
+    {
+      "bucket": "2026-04-21T10:00:00Z",
+      "signal": { "avg": -64.4, "min": -87.0, "max": -45.0 },
+      "satellites": { "avg": 8.9, "min": 5.0, "max": 12.0 },
+      "odometer": { "total_distance_mt": 12400.0 }
+    }
+  ]
+}
+```
+
+> `odometer.total_distance_mt` es un valor derivado del período: `MAX(last_odometer) - MIN(first_odometer)`. No se calcula como promedio.
 
 ---
 
