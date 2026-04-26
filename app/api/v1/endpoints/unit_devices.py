@@ -3,6 +3,7 @@ from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_organization_id, get_current_user_id
@@ -152,18 +153,39 @@ def create_unit_device(
             detail="El dispositivo ya está asignado a una unidad activa",
         )
 
-    # Crear la asignación
-    unit_device = UnitDevice(
-        unit_id=assignment.unit_id,
-        device_id=assignment.device_id,
-        assigned_at=datetime.utcnow(),
+    # Reutilizar una asignación histórica si ya existe para esta unidad-dispositivo
+    now = datetime.utcnow()
+    unit_device = (
+        db.query(UnitDevice)
+        .filter(
+            UnitDevice.unit_id == assignment.unit_id,
+            UnitDevice.device_id == assignment.device_id,
+        )
+        .first()
     )
-    db.add(unit_device)
+
+    if unit_device:
+        if unit_device.unassigned_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El dispositivo ya está asignado a esta unidad",
+            )
+
+        unit_device.assigned_at = now
+        unit_device.unassigned_at = None
+        db.add(unit_device)
+    else:
+        unit_device = UnitDevice(
+            unit_id=assignment.unit_id,
+            device_id=assignment.device_id,
+            assigned_at=now,
+        )
+        db.add(unit_device)
 
     # Actualizar estado del dispositivo
     old_status = device.status
     device.status = "asignado"
-    device.last_assignment_at = datetime.utcnow()
+    device.last_assignment_at = now
     db.add(device)
 
     # Crear evento
@@ -177,7 +199,15 @@ def create_unit_device(
         event_details=f"Dispositivo asignado a unidad '{unit.name}'",
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Conflicto al asignar dispositivo. Intenta nuevamente.",
+        )
+
     db.refresh(unit_device)
 
     return unit_device
