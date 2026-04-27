@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_full, get_rules_kafka_producer
 from app.db.session import get_db
+from app.models.alert import Alert
 from app.models.alert_rule import AlertRule, AlertRuleUnit
 from app.models.organization import Organization, OrganizationStatus
 from app.models.unit import Unit
@@ -80,6 +81,34 @@ def _build_delete_event_payload(rule: AlertRule) -> dict:
         "rule_id": str(rule.id),
         "updated_at": _to_utc_iso_z(rule.updated_at),
     }
+
+
+def _duplicate_rule_response(existing: AlertRule | None) -> JSONResponse:
+    message = (
+        "Ya existe una regla con el mismo tipo y configuracion para esta organizacion"
+    )
+
+    content = {
+        "message": message,
+        "detail": (
+            "El fingerprint se genera con organization_id, type y config normalizado. "
+            "Cambia el tipo o la configuracion de la regla para crear una nueva."
+        ),
+    }
+
+    if existing:
+        content["id"] = str(existing.id)
+        content["existing_rule"] = {
+            "id": str(existing.id),
+            "name": existing.name,
+            "type": existing.type,
+            "is_active": existing.is_active,
+        }
+
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=content,
+    )
 
 
 def _publish_rule_event(
@@ -235,10 +264,7 @@ def create_alert_rule(
         existing = (
             db.query(AlertRule).filter(AlertRule.fingerprint == fingerprint).first()
         )
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"id": str(existing.id), "message": "Regla ya existente"},
-        )
+        return _duplicate_rule_response(existing)
 
     if payload.unit_ids:
         valid_unit_ids = _validate_unit_ids(
@@ -351,10 +377,7 @@ def update_alert_rule(
             )
             .first()
         )
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"id": str(existing.id), "message": "Regla ya existente"},
-        )
+        return _duplicate_rule_response(existing)
 
     db.refresh(rule)
 
@@ -378,13 +401,20 @@ def delete_alert_rule(
 ):
     rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
 
-    rule.is_active = False
-    rule.updated_at = datetime.utcnow()
+    deleted_at = datetime.utcnow()
+    rule.updated_at = deleted_at
+    kafka_payload = _build_delete_event_payload(rule)
 
-    db.add(rule)
+    db.query(AlertRuleUnit).filter(AlertRuleUnit.rule_id == rule.id).delete(
+        synchronize_session=False
+    )
+    db.query(Alert).filter(Alert.rule_id == rule.id).update(
+        {Alert.rule_id: None},
+        synchronize_session=False,
+    )
+    db.delete(rule)
     db.commit()
 
-    kafka_payload = _build_delete_event_payload(rule)
     _publish_rule_event(
         rules_kafka_producer,
         kafka_payload,
@@ -393,9 +423,9 @@ def delete_alert_rule(
     )
 
     return AlertRuleDeleteOut(
-        message="Regla desactivada exitosamente",
+        message="Regla eliminada exitosamente",
         rule_id=rule_id,
-        is_active=False,
+        deleted=True,
     )
 
 

@@ -2097,7 +2097,7 @@ Documentación detallada y ejemplos `curl`: [docs/api/alerts.md](docs/api/alerts
 - `GET /api/v1/alert_rules`: lista reglas activas de la organización autenticada
 - `GET /api/v1/alert_rules/{rule_id}`: obtiene una regla activa
 - `PATCH /api/v1/alert_rules/{rule_id}`: actualiza una regla y recalcula fingerprint si aplica
-- `DELETE /api/v1/alert_rules/{rule_id}`: desactiva la regla (`soft delete`)
+- `DELETE /api/v1/alert_rules/{rule_id}`: elimina la regla fisicamente
 - `POST /api/v1/alert_rules/{rule_id}/units`: asigna unidades a la regla
 - `DELETE /api/v1/alert_rules/{rule_id}/units`: desasigna unidades de la regla
 - `GET /api/v1/alerts`: lista alertas por unidad con filtros opcionales de tipo y fecha
@@ -2107,7 +2107,24 @@ Documentación detallada y ejemplos `curl`: [docs/api/alerts.md](docs/api/alerts
 - Todas las consultas usan la organización del usuario autenticado
 - Sin `unit_id`, `GET /api/v1/alerts` devuelve las ultimas 20 alertas de la organizacion
 - Si la organización no está activa, los endpoints de listado devuelven `[]`
-- Si el fingerprint ya existe, la API responde `409 Conflict` con `{ "id": "existing_rule_id", "message": "Regla ya existente" }`
+- El fingerprint es SHA-256 de `organization_id|type|canonical_json(config)`. `name` y `unit_ids` **no participan**
+- Si el fingerprint ya existe, `POST` y `PATCH` responden `409 Conflict`:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655449999",
+  "message": "Ya existe una regla con el mismo tipo y configuracion para esta organizacion",
+  "detail": "El fingerprint se genera con organization_id, type y config normalizado. Cambia el tipo o la configuracion de la regla para crear una nueva.",
+  "existing_rule": {
+    "id": "550e8400-e29b-41d4-a716-446655449999",
+    "name": "Regla ignition on existente",
+    "type": "ignition_on",
+    "is_active": true
+  }
+}
+```
+
+- `DELETE /api/v1/alert_rules/{rule_id}` elimina fisicamente el registro; esto libera el fingerprint para poder crear una regla equivalente nuevamente
 
 ---
 

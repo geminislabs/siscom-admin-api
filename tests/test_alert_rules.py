@@ -42,7 +42,7 @@ def kafka_stub_producer():
     app.dependency_overrides.pop(get_rules_kafka_producer, None)
 
 
-def test_alert_rules_crud_soft_delete(
+def test_alert_rules_crud_hard_delete(
     authenticated_client, db_session, test_user_data, kafka_stub_producer
 ):
     unit_1 = _create_unit(db_session, test_user_data.organization_id, "Unidad 1")
@@ -86,12 +86,70 @@ def test_alert_rules_crud_soft_delete(
     delete_response = authenticated_client.delete(f"/api/v1/alert_rules/{rule_id}")
     assert delete_response.status_code == status.HTTP_200_OK
     deleted_data = delete_response.json()
-    assert deleted_data["is_active"] is False
+    assert deleted_data["deleted"] is True
+
+    deleted_rule = db_session.query(AlertRule).filter(AlertRule.id == rule_id).first()
+    assert deleted_rule is None
 
     list_after_delete_response = authenticated_client.get("/api/v1/alert_rules")
     assert list_after_delete_response.status_code == status.HTTP_200_OK
     after_delete = list_after_delete_response.json()
     assert not any(rule["id"] == rule_id for rule in after_delete)
+
+
+def test_create_alert_rule_returns_clear_conflict_message(
+    authenticated_client, kafka_stub_producer
+):
+    payload = {
+        "name": "Regla duplicada 1",
+        "type": "ignition_on",
+        "config": {"event": "Engine ON"},
+    }
+
+    create_response = authenticated_client.post("/api/v1/alert_rules", json=payload)
+    assert create_response.status_code == status.HTTP_201_CREATED
+    existing_rule_id = create_response.json()["id"]
+
+    duplicate_response = authenticated_client.post(
+        "/api/v1/alert_rules",
+        json={
+            "name": "Regla duplicada 2",
+            "type": "ignition_on",
+            "config": {"event": "Engine ON"},
+        },
+    )
+
+    assert duplicate_response.status_code == status.HTTP_409_CONFLICT
+    data = duplicate_response.json()
+    assert data["id"] == existing_rule_id
+    assert (
+        data["message"]
+        == "Ya existe una regla con el mismo tipo y configuracion para esta organizacion"
+    )
+    assert "fingerprint" in data["detail"]
+    assert data["existing_rule"]["id"] == existing_rule_id
+    assert data["existing_rule"]["is_active"] is True
+
+
+def test_hard_delete_releases_fingerprint_for_new_rule(
+    authenticated_client, kafka_stub_producer
+):
+    payload = {
+        "name": "Regla reemplazable",
+        "type": "ignition_on",
+        "config": {"event": "Engine ON"},
+    }
+
+    create_response = authenticated_client.post("/api/v1/alert_rules", json=payload)
+    assert create_response.status_code == status.HTTP_201_CREATED
+    rule_id = create_response.json()["id"]
+
+    delete_response = authenticated_client.delete(f"/api/v1/alert_rules/{rule_id}")
+    assert delete_response.status_code == status.HTTP_200_OK
+
+    recreate_response = authenticated_client.post("/api/v1/alert_rules", json=payload)
+    assert recreate_response.status_code == status.HTTP_201_CREATED
+    assert recreate_response.json()["id"] != rule_id
 
 
 def test_alert_rule_rejects_unit_from_other_organization(

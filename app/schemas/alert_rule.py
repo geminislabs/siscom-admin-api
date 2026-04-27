@@ -46,7 +46,7 @@ class AlertRuleOut(AlertRuleBase):
 class AlertRuleDeleteOut(BaseModel):
     message: str
     rule_id: UUID
-    is_active: bool
+    deleted: bool
 
 
 class AlertRuleUnitsOut(BaseModel):

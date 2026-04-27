@@ -61,7 +61,7 @@ Todas las operaciones usan el contexto del usuario autenticado. El cliente no de
 | Tenant actual | Todas las consultas se filtran por la organizacion del usuario autenticado |
 | Organizacion inactiva | `GET /alert_rules` y `GET /alerts` responden lista vacia si la organizacion no esta activa |
 | Visibilidad por unidad | Usuarios `is_master` ven alertas de todas las unidades activas de la organizacion; usuarios normales solo de sus unidades asignadas en `user_units` |
-| Soft delete | `DELETE /alert_rules/{rule_id}` no elimina la regla; marca `is_active=false` |
+| Delete fisico | `DELETE /alert_rules/{rule_id}` elimina la regla de la BD, borra sus asignaciones y deja `alerts.rule_id` en `null` |
 | Deduplicacion | Crear o actualizar una regla puede responder `409` si el fingerprint colisiona con otra regla activa o existente |
 | Unidades validas | Los `unit_ids` deben pertenecer a la organizacion del usuario y no estar eliminados |
 | Filtro por unidad en alertas | Si se envia `unit_id`, el endpoint valida que la unidad pertenezca a la organizacion y que el usuario tenga acceso a ella |
@@ -75,14 +75,42 @@ El backend genera un fingerprint SHA-256 a partir de:
 organization_id|type|canonical_json(config)
 ```
 
-Si el fingerprint ya existe, la API responde:
+Si el fingerprint ya existe, la API responde `409 Conflict`. El fingerprint **no incluye** `name` ni `unit_ids`; solo `organization_id`, `type` y `config` normalizado. Por eso dos reglas con distinto nombre o distintas unidades pero mismo `type` y `config` colisionan.
+
+**Ejemplo:** se intenta crear una segunda regla `ignition_on` con el mismo `config` que una ya existente:
+
+```http
+POST /api/v1/alert_rules
+
+{
+  "unit_ids": ["18961401-9405-4124-8d2a-e2c445d11e1a"],
+  "config": {"event": "Engine ON"},
+  "name": "Prueba",
+  "type": "ignition_on"
+}
+```
+
+Respuesta:
 
 ```json
 {
-  "id": "existing_rule_id",
-  "message": "Regla ya existente"
+  "id": "550e8400-e29b-41d4-a716-446655449999",
+  "message": "Ya existe una regla con el mismo tipo y configuracion para esta organizacion",
+  "detail": "El fingerprint se genera con organization_id, type y config normalizado. Cambia el tipo o la configuracion de la regla para crear una nueva.",
+  "existing_rule": {
+    "id": "550e8400-e29b-41d4-a716-446655449999",
+    "name": "Regla ignition on existente",
+    "type": "ignition_on",
+    "is_active": true
+  }
 }
 ```
+
+> **Nota:** el campo `id` de raiz y `existing_rule.id` son el mismo; se expone en raiz por compatibilidad con clientes previos.
+
+### Por que `unit_ids` no evita la colision
+
+Las unidades se guardan en la tabla `alert_rule_units`, separadas de `alert_rules`. El fingerprint solo cubre la semantica de la regla (`type` + `config`), no a que unidades aplica. Si necesitas la misma logica en unidades distintas, crea la regla una sola vez y luego asigna las unidades con `POST /api/v1/alert_rules/{rule_id}/units`.
 
 ### Normalizacion de `config`
 
@@ -187,12 +215,33 @@ Content-Type: application/json
 
 #### Response `409 Conflict`
 
+Se produce cuando ya existe una regla activa (o inactiva no eliminada) con el mismo `organization_id`, `type` y `config` normalizado.
+
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655449999",
-  "message": "Regla ya existente"
+  "message": "Ya existe una regla con el mismo tipo y configuracion para esta organizacion",
+  "detail": "El fingerprint se genera con organization_id, type y config normalizado. Cambia el tipo o la configuracion de la regla para crear una nueva.",
+  "existing_rule": {
+    "id": "550e8400-e29b-41d4-a716-446655449999",
+    "name": "Regla ignition on existente",
+    "type": "ignition_on",
+    "is_active": true
+  }
 }
 ```
+
+**Campos:**
+
+| Campo | Descripcion |
+| --- | --- |
+| `id` | ID de la regla que ya existe (atajo para acceso rapido) |
+| `message` | Descripcion del conflicto |
+| `detail` | Explicacion de como se construye el fingerprint y como resolverlo |
+| `existing_rule.id` | UUID de la regla existente |
+| `existing_rule.name` | Nombre actual de esa regla |
+| `existing_rule.type` | Tipo de la regla (`ignition_on`, `ignition_off`, etc.) |
+| `existing_rule.is_active` | Si `true`, la regla esta activa; si `false`, fue eliminada logicamente pero el fingerprint sigue ocupado (ver endpoint DELETE) |
 
 ---
 
@@ -284,21 +333,44 @@ Todos los campos son opcionales. Solo se actualizan los enviados.
 
 Devuelve el objeto `AlertRule` actualizado.
 
+#### Response `409 Conflict`
+
+Mismo formato que el `POST`. Se produce si al actualizar `type` o `config` el nuevo fingerprint ya lo tiene otra regla distinta.
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655449888",
+  "message": "Ya existe una regla con el mismo tipo y configuracion para esta organizacion",
+  "detail": "El fingerprint se genera con organization_id, type y config normalizado. Cambia el tipo o la configuracion de la regla para crear una nueva.",
+  "existing_rule": {
+    "id": "550e8400-e29b-41d4-a716-446655449888",
+    "name": "Regla ignition on existente",
+    "type": "ignition_on",
+    "is_active": true
+  }
+}
+```
+
 ---
 
-### 5. Desactivar Regla
+### 5. Eliminar Regla
 
 **DELETE** `/api/v1/alert_rules/{rule_id}`
 
-Desactiva la regla sin eliminar el registro fisico.
+Elimina la regla de forma fisica.
+
+#### Efectos secundarios
+
+- Elimina las relaciones en `alert_rule_units`
+- Las alertas historicas que referenciaban la regla conservan su registro, pero `rule_id` pasa a `null`
 
 #### Response `200 OK`
 
 ```json
 {
-  "message": "Regla desactivada exitosamente",
+  "message": "Regla eliminada exitosamente",
   "rule_id": "550e8400-e29b-41d4-a716-446655440000",
-  "is_active": false
+  "deleted": true
 }
 ```
 
