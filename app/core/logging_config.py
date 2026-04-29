@@ -1,7 +1,9 @@
 import json
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
+
+from app.core.config import settings
 
 
 class JSONFormatter(logging.Formatter):
@@ -11,7 +13,7 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -51,7 +53,7 @@ class HealthCheckFilter(logging.Filter):
         return True
 
 
-def setup_logging(level: str = "INFO") -> None:
+def setup_logging(level: str = settings.LOG_LEVEL) -> None:
     """
     Configura el sistema de logging con formato JSON.
 
@@ -78,8 +80,6 @@ def setup_logging(level: str = "INFO") -> None:
     uvicorn_access.setLevel(logging.INFO)
     health_filter = HealthCheckFilter()
     uvicorn_access.addFilter(health_filter)
-    for handler in uvicorn_access.handlers:
-        handler.addFilter(health_filter)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
