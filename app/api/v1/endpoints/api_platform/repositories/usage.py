@@ -68,9 +68,7 @@ class UsageRepository:
         return int(result)
 
     @staticmethod
-    def get_by_key_today(
-        db: Session, organization_id: UUID
-    ) -> list[tuple[UUID, int]]:
+    def get_by_key_today(db: Session, organization_id: UUID) -> list[tuple[UUID, int]]:
         today = date.today()
         rows = (
             db.query(ApiUsageDaily.api_key_id, ApiUsageDaily.request_count)

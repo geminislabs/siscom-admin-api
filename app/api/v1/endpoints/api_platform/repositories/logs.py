@@ -65,9 +65,7 @@ class LogRepository:
             q = q.filter(ApiRequestLog.ip == ip)
 
         rows = (
-            q.order_by(
-                ApiRequestLog.created_at.desc(), ApiRequestLog.id.desc()
-            )
+            q.order_by(ApiRequestLog.created_at.desc(), ApiRequestLog.id.desc())
             .limit(limit + 1)
             .all()
         )
@@ -89,9 +87,9 @@ class LogRepository:
         today_counts = (
             db.query(
                 func.count(ApiRequestLog.id).label("total"),
-                func.sum(
-                    case((ApiRequestLog.status_code < 400, 1), else_=0)
-                ).label("success"),
+                func.sum(case((ApiRequestLog.status_code < 400, 1), else_=0)).label(
+                    "success"
+                ),
             )
             .filter(
                 ApiRequestLog.organization_id == organization_id,
@@ -110,16 +108,14 @@ class LogRepository:
             .scalar()
         ) or 0
 
-        p50 = (
-            db.execute(
-                text(
-                    "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms) "
-                    "FROM api_platform.api_request_logs "
-                    "WHERE organization_id = :org_id AND created_at >= :since"
-                ),
-                {"org_id": str(organization_id), "since": start_of_day},
-            ).scalar()
-        )
+        p50 = db.execute(
+            text(
+                "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY latency_ms) "
+                "FROM api_platform.api_request_logs "
+                "WHERE organization_id = :org_id AND created_at >= :since"
+            ),
+            {"org_id": str(organization_id), "since": start_of_day},
+        ).scalar()
 
         total = today_counts.total or 0
         success = int(today_counts.success or 0)

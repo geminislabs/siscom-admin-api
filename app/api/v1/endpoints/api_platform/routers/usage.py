@@ -48,7 +48,9 @@ def usage_timeseries(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="'from' must be before 'to'",
         )
-    return UsageService.get_timeseries(db, org_id, from_dt, to_dt, granularity, api_key_id)
+    return UsageService.get_timeseries(
+        db, org_id, from_dt, to_dt, granularity, api_key_id
+    )
 
 
 @router.get("/limits", response_model=LimitsStatus)

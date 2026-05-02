@@ -37,7 +37,9 @@ def list_api_keys(
     db: Session = Depends(get_db),
     org_id: UUID = Depends(get_current_organization_id),
 ):
-    return ApiKeyService.list(db, org_id, status_filter=status, product_code=product_code)
+    return ApiKeyService.list(
+        db, org_id, status_filter=status, product_code=product_code
+    )
 
 
 @router.get("/{key_id}", response_model=ApiKeyOut)

@@ -16,9 +16,7 @@ from app.api.v1.endpoints.api_platform.schemas.alerts import AlertCreate, AlertU
 
 class AlertService:
     @staticmethod
-    def create(
-        db: Session, organization_id: UUID, data: AlertCreate
-    ) -> ApiAlert:
+    def create(db: Session, organization_id: UUID, data: AlertCreate) -> ApiAlert:
         alert = ApiAlert(
             id=uuid4(),
             organization_id=organization_id,

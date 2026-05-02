@@ -35,6 +35,7 @@ class ApiKeyOut(BaseModel):
 
 class ApiKeyCreated(ApiKeyOut):
     """Returned only once at creation — includes the full plaintext key."""
+
     full_key: str
 
 
