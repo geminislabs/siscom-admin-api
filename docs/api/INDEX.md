@@ -249,6 +249,38 @@ Reglas de alerta por organizacion y consulta de alertas generadas por unidad.
 
 ---
 
+## 🔑 API Platform
+
+### [api-platform.md](./api-platform.md)
+
+Gestión de API keys de integración, métricas de uso, logs de solicitudes y alertas operativas.
+
+**Endpoints:**
+
+- `POST /api/v1/api-platform/keys` - Crear API key (retorna clave en texto plano solo una vez)
+- `GET /api/v1/api-platform/keys` - Listar keys (filtro por status, product_id)
+- `GET /api/v1/api-platform/keys/{key_id}` - Detalle de key
+- `POST /api/v1/api-platform/keys/{key_id}/revoke` - Revocar key
+- `PATCH /api/v1/api-platform/keys/{key_id}` - Actualizar nombre/status
+- `GET /api/v1/api-platform/usage/summary` - Resumen: active_keys, requests hoy/mes, error_rate
+- `GET /api/v1/api-platform/usage/by-key` - Desglose de tráfico por key con porcentaje
+- `GET /api/v1/api-platform/usage/timeseries` - Serie temporal (minute/day/month)
+- `GET /api/v1/api-platform/usage/limits` - Límites del plan vs consumo actual
+- `GET /api/v1/api-platform/logs` - Logs con paginación cursor-based
+- `GET /api/v1/api-platform/logs/stats` - p50 latency, success rate, errors 24h
+- `GET /api/v1/api-platform/throttles` - Eventos de throttling
+- `POST /api/v1/api-platform/alerts` - Crear alerta (ERROR_RATE, USAGE_THRESHOLD)
+- `GET /api/v1/api-platform/alerts` - Listar alertas
+- `PATCH /api/v1/api-platform/alerts/{alert_id}` - Activar/desactivar alerta
+
+**Notas:**
+
+- `full_key` solo se retorna al crear; el backend guarda únicamente el hash SHA-256
+- Logs usan paginación por cursor, no offset
+- Dashboard de uso consulta tablas de agregados, no logs crudos
+
+---
+
 ## 🗺️ Geocercas (H3)
 
 ### [geofences.md](./geofences.md)

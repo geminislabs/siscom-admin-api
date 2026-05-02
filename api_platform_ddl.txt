@@ -1,0 +1,198 @@
+
+
+CREATE SCHEMA api_platform;
+
+
+CREATE TABLE api_platform.api_keys (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    organization_id uuid NOT NULL,
+    product_id uuid NOT NULL,
+
+    name text NOT NULL, -- "backend prod", "mobile app"
+
+    key_hash text NOT NULL UNIQUE,
+
+    prefix text NOT NULL, -- ej: "orion_live_abc123" (solo referencia)
+
+    status text NOT NULL DEFAULT 'ACTIVE',
+
+    created_at timestamptz DEFAULT now(),
+    last_used_at timestamptz NULL,
+    expires_at timestamptz NULL,
+    revoked_at timestamptz NULL,
+
+    metadata jsonb DEFAULT '{}'::jsonb
+);
+
+
+ALTER TABLE api_platform.api_keys
+ADD CONSTRAINT api_keys_status_check
+CHECK (status IN ('ACTIVE', 'REVOKED', 'EXPIRED'));
+
+-- FKs
+ALTER TABLE api_platform.api_keys
+ADD CONSTRAINT api_keys_org_fk
+FOREIGN KEY (organization_id) REFERENCES organizations(id);
+
+ALTER TABLE api_platform.api_keys
+ADD CONSTRAINT api_keys_product_fk
+FOREIGN KEY (product_id) REFERENCES products(id);
+
+CREATE TABLE api_platform.api_request_logs (
+    id uuid not null DEFAULT gen_random_uuid(),
+
+    api_key_id uuid NOT NULL,
+    organization_id uuid NOT NULL,
+
+    method text NOT NULL, -- GET, POST
+    endpoint text NOT NULL, -- /v1/locate
+
+    status_code int NOT NULL,
+    latency_ms int NOT NULL,
+
+    ip inet,
+    user_agent text,
+
+    request_size int,
+    response_size int,
+
+    error_code text NULL, -- para clasificar errores
+
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (id, created_at)
+)PARTITION BY RANGE (created_at);
+
+DROP EXTENSION pg_partman CASCADE;
+
+CREATE SCHEMA IF NOT EXISTS partman;
+
+CREATE EXTENSION pg_partman WITH SCHEMA partman;
+
+
+SELECT partman.create_parent(
+    p_parent_table := 'api_platform.api_request_logs',
+    p_control := 'created_at',
+    p_type := 'range',
+    p_interval := '1 month',
+    p_premake := 3
+);
+
+CREATE INDEX idx_logs_api_key_time ON api_platform.api_request_logs (api_key_id, created_at DESC);
+CREATE INDEX idx_logs_org_time ON api_platform.api_request_logs (organization_id, created_at DESC);
+
+CREATE TABLE api_platform.api_usage_minute (
+    api_key_id uuid,
+    organization_id uuid,
+
+    bucket timestamptz NOT NULL, -- trunc('minute')
+
+    request_count int NOT NULL,
+    error_count int NOT NULL,
+
+    sum_latency int NOT NULL,
+    max_latency int,
+
+    status_2xx int,
+    status_4xx int,
+    status_5xx int,
+
+    PRIMARY KEY (api_key_id, bucket)
+);
+
+CREATE TABLE api_platform.api_usage_daily (
+    api_key_id uuid,
+    organization_id uuid,
+
+    day date NOT NULL,
+
+    request_count int NOT NULL,
+    error_count int NOT NULL,
+
+    PRIMARY KEY (api_key_id, day)
+);
+
+CREATE TABLE api_platform.api_usage_monthly (
+    api_key_id uuid,
+    organization_id uuid,
+
+    month date NOT NULL, -- primer día del mes
+
+    request_count int NOT NULL,
+    error_count int NOT NULL,
+
+    PRIMARY KEY (api_key_id, month)
+);
+
+CREATE TABLE api_platform.api_limits (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    plan_id uuid NOT NULL,
+
+    rpm_limit int,
+    daily_limit int,
+    monthly_limit int,
+    burst_limit int,
+
+    created_at timestamptz DEFAULT now()
+);
+
+
+CREATE TABLE api_platform.api_usage_counters (
+    api_key_id uuid PRIMARY KEY,
+
+    current_minute_count int,
+    current_day_count int,
+    current_month_count int,
+
+    updated_at timestamptz NOT NULL
+);
+
+
+CREATE TABLE api_platform.api_throttle_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    api_key_id uuid,
+    organization_id uuid,
+
+    type text NOT NULL, -- RPM_LIMIT, DAILY_LIMIT, BURST
+
+    limit_value int,
+    actual_value int,
+
+    created_at timestamptz DEFAULT now()
+);
+
+
+CREATE TABLE api_platform.api_alerts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    organization_id uuid,
+    api_key_id uuid NULL, -- puede ser global
+
+    type text NOT NULL, -- ERROR_RATE, USAGE_THRESHOLD
+
+    threshold numeric,
+    time_window text, -- "1h", "5m"
+
+    enabled boolean DEFAULT true,
+
+    created_at timestamptz DEFAULT now()
+);
+
+
+CREATE EXTENSION pg_cron;
+
+SELECT cron.schedule(
+    'partman-maintenance',
+    '*/5 * * * *',
+    $$SELECT partman.run_maintenance();$$
+);
+
+UPDATE partman.part_config
+SET retention = '3 months',
+    retention_keep_table = false
+WHERE parent_table = 'api_platform.api_request_logs';
+
+CREATE INDEX idx_logs_api_key_time
+ON api_platform.api_request_logs (api_key_id, created_at DESC);

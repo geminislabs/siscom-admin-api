@@ -32,6 +32,7 @@ ENDPOINTS PRINCIPALES:
 
 from fastapi import APIRouter
 
+from app.api.v1.endpoints.api_platform.router import api_platform_router
 from app.api.v1.endpoints import (
     accounts,
     alert_rules,
@@ -156,6 +157,13 @@ api_router.include_router(commands.router, prefix="/commands", tags=["commands"]
 
 # Contacto
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])
+
+# API Platform (API keys, usage, logs, alerts)
+api_router.include_router(
+    api_platform_router,
+    prefix="/api-platform",
+    tags=["api-platform"],
+)
 
 # ============================================
 # API Interna (Autenticación: PASETO)
