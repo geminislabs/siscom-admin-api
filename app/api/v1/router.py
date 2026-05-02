@@ -32,7 +32,6 @@ ENDPOINTS PRINCIPALES:
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints.api_platform.router import api_platform_router
 from app.api.v1.endpoints import (
     accounts,
     alert_rules,
@@ -61,6 +60,7 @@ from app.api.v1.endpoints import (
     user_units,
     users,
 )
+from app.api.v1.endpoints.api_platform.router import api_platform_router
 from app.api.v1.endpoints.internal import accounts as internal_accounts
 from app.api.v1.endpoints.internal import organizations as internal_organizations
 from app.api.v1.endpoints.internal import plans as internal_plans
