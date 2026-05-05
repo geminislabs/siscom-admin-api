@@ -85,10 +85,9 @@ async def create_command(
     else:  # paseto
         request_user_email = auth.payload.get("email")
         if not request_user_email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Token PASETO inválido: falta el campo 'email'",
-            )
+            # Tokens generados antes de incluir email usan el nombre del servicio como fallback
+            service = auth.payload.get("service", "unknown")
+            request_user_email = f"{service}@internal"
 
     # Crear el comando
     command = Command(
