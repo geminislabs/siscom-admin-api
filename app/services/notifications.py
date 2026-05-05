@@ -21,6 +21,8 @@ ses_client_kwargs = {"region_name": ses_region}
 if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
     ses_client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
     ses_client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+if getattr(settings, "SES_ENDPOINT", None):
+    ses_client_kwargs["endpoint_url"] = settings.SES_ENDPOINT   # ← agregar
 ses_client = boto3.client("ses", **ses_client_kwargs)
 
 

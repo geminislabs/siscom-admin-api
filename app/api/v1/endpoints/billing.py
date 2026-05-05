@@ -1,21 +1,7 @@
 """
-Endpoints de Billing (Read-Only).
+Endpoints de Billing.
 
-Expone información de facturación y pagos de forma estructurada
-para que el frontend pueda mostrar:
-- Resumen de estado de facturación
-- Historial de pagos
-- Invoices/facturas (provisional)
-
-IMPORTANTE:
------------
-Estos endpoints son READ-ONLY. No implementan lógica de cobro.
-La integración con PSP (Stripe, etc.) se hará posteriormente.
-
-Actualmente la información se obtiene de:
-- Tabla payments: pagos registrados
-- Tabla subscriptions: contexto de suscripciones
-- Tabla organizations: información de la organización
+Expone información de facturación y pagos de forma estructurada.
 """
 
 from datetime import datetime
@@ -46,15 +32,36 @@ from app.services.subscription_query import get_primary_active_subscription
 router = APIRouter()
 
 
+def _get_account_id(db: Session, organization_id: UUID) -> UUID | None:
+    """
+    Obtiene el account_id de una organización.
+    Los pagos están ligados a la cuenta (account), no a la organización directamente.
+    """
+    org = db.query(Organization.account_id).filter(Organization.id == organization_id).first()
+    return org.account_id if org else None
+
+
 def _get_billing_stats(db: Session, organization_id: UUID) -> BillingStats:
     """
     Calcula estadísticas de facturación para una organización.
     """
+    # Resolver account_id desde la organización
+    account_id = _get_account_id(db, organization_id)
+
+    if not account_id:
+        return BillingStats(
+            total_paid=Decimal(0),
+            payments_count=0,
+            last_payment_date=None,
+            last_payment_amount=None,
+            currency="MXN",
+        )
+
     # Total pagado (solo SUCCESS)
     total_result = (
         db.query(func.sum(Payment.amount))
         .filter(
-            Payment.client_id == organization_id,
+            Payment.account_id == account_id,
             Payment.status == PaymentStatus.SUCCESS.value,
         )
         .scalar()
@@ -65,7 +72,7 @@ def _get_billing_stats(db: Session, organization_id: UUID) -> BillingStats:
     payments_count = (
         db.query(Payment)
         .filter(
-            Payment.client_id == organization_id,
+            Payment.account_id == account_id,
             Payment.status == PaymentStatus.SUCCESS.value,
         )
         .count()
@@ -75,7 +82,7 @@ def _get_billing_stats(db: Session, organization_id: UUID) -> BillingStats:
     last_payment = (
         db.query(Payment)
         .filter(
-            Payment.client_id == organization_id,
+            Payment.account_id == account_id,
             Payment.status == PaymentStatus.SUCCESS.value,
         )
         .order_by(Payment.paid_at.desc())
@@ -95,10 +102,14 @@ def _get_pending_amount(db: Session, organization_id: UUID) -> Decimal:
     """
     Calcula el monto pendiente de pago.
     """
+    account_id = _get_account_id(db, organization_id)
+    if not account_id:
+        return Decimal(0)
+
     pending_result = (
         db.query(func.sum(Payment.amount))
         .filter(
-            Payment.client_id == organization_id,
+            Payment.account_id == account_id,
             Payment.status == PaymentStatus.PENDING.value,
         )
         .scalar()
@@ -113,31 +124,17 @@ def get_billing_summary(
 ):
     """
     Obtiene el resumen de facturación de la organización.
-
-    Incluye:
-    - Estado de la suscripción actual
-    - Información del plan y próximo cobro
-    - Estadísticas de pagos históricos
-    - Balance pendiente
-
-    Notas:
-        - Este endpoint es READ-ONLY
-        - La integración con PSP aún no está implementada
-        - next_billing_date se obtiene de subscription.expires_at
     """
-    # Obtener organización
     organization = (
         db.query(Organization).filter(Organization.id == organization_id).first()
     )
 
-    # Obtener suscripción activa principal
     active_sub = get_primary_active_subscription(db, organization_id)
 
     current_plan = None
     if active_sub:
         plan = db.query(Plan).filter(Plan.id == active_sub.plan_id).first()
         if plan:
-            # Determinar el monto según el ciclo
             amount_due = plan.price_monthly
             if active_sub.billing_cycle == "YEARLY":
                 amount_due = plan.price_yearly
@@ -152,7 +149,6 @@ def get_billing_summary(
                 currency="MXN",
             )
 
-    # Estadísticas
     stats = _get_billing_stats(db, organization_id)
     pending_amount = _get_pending_amount(db, organization_id)
 
@@ -179,30 +175,20 @@ def list_payments(
 ):
     """
     Lista el historial de pagos de la organización.
-
-    Args:
-        limit: Número máximo de resultados (máx 100)
-        offset: Offset para paginación
-        status: Filtrar por estado de pago (opcional)
-
-    Returns:
-        Lista de pagos ordenados por fecha (más reciente primero)
-
-    Notas:
-        - Los pagos pueden venir de integración manual o futura integración con PSP
-        - invoice_url apunta a la factura cuando está disponible
     """
-    query = db.query(Payment).filter(Payment.client_id == organization_id)
+    account_id = _get_account_id(db, organization_id)
+    if not account_id:
+        return PaymentsListOut(payments=[], total=0, has_more=False)
+
+    query = db.query(Payment).filter(Payment.account_id == account_id)
 
     if status:
         query = query.filter(Payment.status == status.value)
 
-    # Total sin paginación
     total = query.count()
 
-    # Aplicar paginación
     payments = (
-        query.order_by(Payment.created_at.desc()).limit(limit).offset(offset).all()
+        query.order_by(Payment.paid_at.desc()).limit(limit).offset(offset).all()
     )
 
     payments_out = [PaymentOut.model_validate(p) for p in payments]
@@ -222,24 +208,15 @@ def list_invoices(
     """
     Lista las facturas/invoices de la organización.
 
-    NOTA IMPORTANTE:
-    ----------------
-    Este endpoint es PROVISIONAL. Actualmente genera invoices
-    a partir de los pagos exitosos (payments con status=SUCCESS).
-
-    Cuando se integre un PSP como Stripe, las invoices vendrán
-    directamente de la API del PSP y este endpoint se actualizará.
-
-    Args:
-        limit: Número máximo de resultados (máx 100)
-        offset: Offset para paginación
-
-    Returns:
-        Lista de invoices ordenadas por fecha (más reciente primero)
+    NOTA: Provisional. Genera invoices a partir de pagos exitosos.
+    Cuando se integre Stripe, vendrán de la API del PSP.
     """
-    # Obtener pagos exitosos como "invoices"
+    account_id = _get_account_id(db, organization_id)
+    if not account_id:
+        return InvoicesListOut(invoices=[], total=0, has_more=False)
+
     query = db.query(Payment).filter(
-        Payment.client_id == organization_id,
+        Payment.account_id == account_id,
         Payment.status == PaymentStatus.SUCCESS.value,
     )
 
@@ -247,30 +224,26 @@ def list_invoices(
 
     payments = query.order_by(Payment.paid_at.desc()).limit(limit).offset(offset).all()
 
-    # Convertir payments a invoices
     invoices = []
     for i, payment in enumerate(payments):
-        # Generar número de invoice basado en fecha y secuencia
         invoice_date = payment.paid_at or payment.created_at
         year = invoice_date.year if invoice_date else datetime.utcnow().year
-
-        # Número secuencial (simplificado, en producción vendría del PSP)
         seq = total - offset - i
         invoice_number = f"INV-{year}-{seq:04d}"
 
         invoice = InvoiceOut(
             id=payment.id,
             invoice_number=invoice_number,
-            status=InvoiceStatus.PAID,  # Solo mostramos pagos exitosos
+            status=InvoiceStatus.PAID,
             amount=payment.amount,
             currency=payment.currency or "MXN",
-            description="Suscripción SISCOM",
+            description="Suscripción NEXUS",
             created_at=payment.created_at,
             paid_at=payment.paid_at,
-            due_date=None,  # No hay due_date en el modelo actual
+            due_date=None,
             invoice_url=payment.invoice_url,
             payment_id=payment.id,
-            subscription_id=None,  # No hay relación directa en el modelo actual
+            subscription_id=None,
         )
         invoices.append(invoice)
 

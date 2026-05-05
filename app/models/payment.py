@@ -1,22 +1,10 @@
-"""
-Modelo de Payment.
-
-Los pagos pertenecen a Account (no a Organization).
-Esto es parte del modelo dual:
-- Account = Raíz comercial (billing, facturación)
-- Organization = Raíz operativa (permisos, uso diario)
-
-Los pagos se registran a nivel de Account para permitir
-facturación consolidada de múltiples organizaciones.
-"""
-
 import enum
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, text
+from sqlalchemy import Column, DateTime, ForeignKey, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, Relationship, SQLModel
 
@@ -59,7 +47,7 @@ class Payment(SQLModel, table=True):
             nullable=False,
         ),
     )
-    amount: Decimal = Field(sa_column=Column(String, nullable=False))
+    amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
     currency: str = Field(max_length=10, default="MXN", nullable=False)
     method: Optional[str] = Field(default=None, max_length=50)
     paid_at: Optional[datetime] = Field(
@@ -73,6 +61,18 @@ class Payment(SQLModel, table=True):
 
     created_at: datetime = Field(
         sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
+    )
+
+    gateway: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    gateway_payment_id: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    idempotency_key: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    payment_method_id: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("payment_methods.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
     )
 
     # Relationships
