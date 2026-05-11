@@ -11,8 +11,6 @@ from sqlmodel import Field, Index, Relationship, SQLModel
 if TYPE_CHECKING:
     from app.models.order_item import OrderItem
     from app.models.organization import Organization
-    from app.models.payment import Payment
-
 
 class OrderStatus(str, enum.Enum):
     PENDING = "PENDING"
@@ -63,7 +61,6 @@ class Order(SQLModel, table=True):
 
     # Relationships
     organization: "Organization" = Relationship(back_populates="orders")
-    payment: Optional["Payment"] = Relationship(back_populates="orders")
     order_items: List["OrderItem"] = Relationship(back_populates="order")
 
     # Alias para compatibilidad (DEPRECATED)

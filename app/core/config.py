@@ -1,3 +1,4 @@
+# app/core/config.py
 from typing import Optional
 
 from pydantic import field_validator
@@ -80,9 +81,10 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
 
-    STRIPE_SECRET_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PUBLISHABLE_KEY: str = ""
+    # Stripe — None cuando no está configurado (initialize_gateways lo omite)
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
 
     @field_validator(
         "AWS_ACCESS_KEY_ID",

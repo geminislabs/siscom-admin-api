@@ -1,3 +1,4 @@
+# app/models/__init__.py
 """
 Modelos de la aplicación.
 
@@ -26,12 +27,7 @@ Los nombres pueden repetirse; la unicidad está en los UUIDs.
 from app.models.account import Account, AccountStatus
 
 # Account Events (auditoría)
-from app.models.account_event import (
-    AccountEvent,
-    ActorType,
-    EventType,
-    TargetType,
-)
+from app.models.account_event import AccountEvent, ActorType, EventType, TargetType
 
 # Account Users (roles a nivel account)
 from app.models.account_user import AccountRole, AccountUser
@@ -51,13 +47,13 @@ from app.models.command import Command
 from app.models.device import Device, DeviceEvent
 
 # Device Services (LEGACY - no usar en código nuevo)
-from app.models.device_service import (
-    DeviceService,
-    DeviceServiceStatus,
-    SubscriptionType,
-)
+from app.models.device_service import DeviceService, DeviceServiceStatus, SubscriptionType
 from app.models.geofence import Geofence, GeofenceCell
 from app.models.invitation import Invitation
+
+# Billing
+from app.models.invoice import Invoice, InvoiceStatus
+
 from app.models.order import Order, OrderStatus
 from app.models.order_item import OrderItem, OrderItemType
 
@@ -69,6 +65,9 @@ from app.models.organization_user import OrganizationRole, OrganizationUser
 
 # Payments & Orders
 from app.models.payment import Payment, PaymentStatus
+from app.models.payment_gateway_customer import PaymentGatewayCustomer
+from app.models.payment_gateway_event import PaymentGatewayEvent
+from app.models.payment_method import PaymentMethod
 
 # Subscriptions & Plans
 from app.models.plan import Plan
