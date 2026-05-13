@@ -1,9 +1,13 @@
+import uuid as _uuid_module
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, JSON, Text, TypeDecorator
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.sql.schema import ColumnDefault
 from sqlmodel import SQLModel
 
 from app.api.deps import (
@@ -26,9 +30,93 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
-    poolclass=None,
+    poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+class _SQLiteUUID(TypeDecorator):
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            return _uuid_module.UUID(str(value))
+        except (ValueError, AttributeError):
+            return value
+
+
+_PG_TYPE_REPLACEMENTS = {}
+try:
+    from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, ARRAY, INET, CIDR
+    _PG_TYPE_REPLACEMENTS = {
+        JSONB: JSON(),
+        PG_UUID: _SQLiteUUID(),
+        ARRAY: Text(),
+        INET: Text(),
+        CIDR: Text(),
+    }
+except ImportError:
+    pass
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _python_default_for(server_default_text: str):
+    text = server_default_text.lower()
+    if any(k in text for k in ("gen_random_uuid", "uuid_generate")):
+        return uuid4
+    if any(k in text for k in ("now()", "current_timestamp", "timezone(")):
+        return _utcnow
+    return None
+
+
+def _patch_metadata(metadata) -> dict:
+    """Elimina server_defaults PG y reemplaza tipos PG con equivalentes SQLite."""
+    saved = {}
+    for table in metadata.tables.values():
+        for column in table.columns:
+            col_save = {}
+
+            if column.server_default is not None:
+                sd_text = str(getattr(column.server_default, "arg", ""))
+                col_save["server_default"] = column.server_default
+                column.server_default = None
+                if column.default is None:
+                    callable_default = _python_default_for(sd_text)
+                    if callable_default:
+                        column.default = ColumnDefault(callable_default)
+
+            for pg_type, sqlite_type in _PG_TYPE_REPLACEMENTS.items():
+                if isinstance(column.type, pg_type):
+                    col_save["type"] = column.type
+                    column.type = sqlite_type
+                    break
+
+            if col_save:
+                saved[(table.name, column.name)] = col_save
+
+    return saved
+
+
+def _restore_metadata(metadata, saved: dict) -> None:
+    """Restaura server_defaults y tipos originales."""
+    for table in metadata.tables.values():
+        for column in table.columns:
+            key = (table.name, column.name)
+            if key in saved:
+                if "server_default" in saved[key]:
+                    column.server_default = saved[key]["server_default"]
+                if "type" in saved[key]:
+                    column.type = saved[key]["type"]
 
 
 @pytest.fixture(scope="function")
@@ -36,13 +124,20 @@ def db_session():
     """
     Crea una nueva sesión de base de datos para cada test.
     """
-    SQLModel.metadata.create_all(bind=engine)
+    saved = _patch_metadata(SQLModel.metadata)
+    try:
+        SQLModel.metadata.create_all(bind=engine)
+    except Exception:
+        _restore_metadata(SQLModel.metadata, saved)
+        raise
+
     session = TestingSessionLocal()
     try:
         yield session
     finally:
         session.close()
         SQLModel.metadata.drop_all(bind=engine)
+        _restore_metadata(SQLModel.metadata, saved)
 
 
 @pytest.fixture(scope="function")
