@@ -1,7 +1,6 @@
 """Unit tests for API key creation and revoke flow."""
 
 import hashlib
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -14,7 +13,6 @@ from app.api.v1.endpoints.api_platform.services.keys import (
     ApiKeyService,
     _generate_api_key,
 )
-
 
 # ---------------------------------------------------------------------------
 # Key generation helpers

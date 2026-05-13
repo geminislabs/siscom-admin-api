@@ -1,6 +1,6 @@
 """Tests para app.services.messaging.kafka_producer."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -41,7 +41,9 @@ def test_rules_build_client_config_includes_sasl_when_set(monkeypatch, kafka_set
     assert cfg["sasl_mechanism"] == "PLAIN"
 
 
-def test_rules_publish_returns_false_when_kafka_not_installed(monkeypatch, kafka_settings):
+def test_rules_publish_returns_false_when_kafka_not_installed(
+    monkeypatch, kafka_settings
+):
     monkeypatch.setattr(kp_mod, "KafkaProducer", None)
 
     prod = RulesKafkaProducer()
@@ -73,7 +75,9 @@ def test_rules_close_noops_when_never_created(monkeypatch, kafka_settings):
 
 
 def test_user_devices_publish_failure_returns_false(monkeypatch, kafka_settings):
-    monkeypatch.setattr(kp_mod, "KafkaProducer", MagicMock(side_effect=RuntimeError("boom")))
+    monkeypatch.setattr(
+        kp_mod, "KafkaProducer", MagicMock(side_effect=RuntimeError("boom"))
+    )
 
     prod = UserDevicesKafkaProducer()
     assert prod.publish_update({"type": "link"}) is False

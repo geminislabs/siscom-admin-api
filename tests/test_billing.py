@@ -10,7 +10,6 @@ from fastapi import HTTPException
 from app.models.device import Device
 from app.models.device_service import DeviceService
 from app.models.payment import Payment
-from app.services import billing as billing_mod
 from app.services.billing import (
     cancel_device_service,
     check_expired_services,
@@ -47,7 +46,9 @@ def test_confirm_payment_success_updates_payment_device_and_service():
             filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=ds)))
         ),
         lambda m: MagicMock(
-            filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=device)))
+            filter=MagicMock(
+                return_value=MagicMock(first=MagicMock(return_value=device))
+            )
         ),
     ]
 
@@ -120,7 +121,9 @@ def test_confirm_payment_raises_400_when_payment_mismatch():
 
     seq = [
         lambda m: MagicMock(
-            filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=payment)))
+            filter=MagicMock(
+                return_value=MagicMock(first=MagicMock(return_value=payment))
+            )
         ),
         lambda m: MagicMock(
             filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=ds)))

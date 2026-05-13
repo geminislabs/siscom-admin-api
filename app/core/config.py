@@ -112,6 +112,10 @@ class Settings(BaseSettings):
             )
         return v.strip()
 
-    model_config = SettingsConfigDict(env_file=".env",extra="ignore",)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
+
 
 settings = Settings()

@@ -1,6 +1,6 @@
 """Tests de comportamiento en modelos Capability / Subscription (sin BD)."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import uuid4
 
 from app.models.capability import OrganizationCapability, PlanCapability

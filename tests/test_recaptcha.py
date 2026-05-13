@@ -100,7 +100,9 @@ def test_verify_recaptcha_rejects_low_score(monkeypatch):
 
 def test_verify_recaptcha_handles_timeout(monkeypatch):
     monkeypatch.setattr(recaptcha.settings, "RECAPTCHA_SECRET_KEY", "secret-key")
-    fake_client = _FakeAsyncClient(post_error=httpx.TimeoutException("request timed out"))
+    fake_client = _FakeAsyncClient(
+        post_error=httpx.TimeoutException("request timed out")
+    )
     monkeypatch.setattr(recaptcha.httpx, "AsyncClient", lambda timeout: fake_client)
 
     with pytest.raises(HTTPException) as exc_info:

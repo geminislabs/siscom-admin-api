@@ -1,7 +1,5 @@
 """Tests para app.startup.print_startup_banner."""
 
-from pathlib import Path
-
 from app.startup import print_startup_banner
 
 
@@ -26,9 +24,7 @@ def test_print_startup_banner_uses_assets_logo(tmp_path, monkeypatch):
     print_startup_banner()
 
 
-def test_print_startup_banner_missing_file_logs_without_crashing(
-    monkeypatch, caplog
-):
+def test_print_startup_banner_missing_file_logs_without_crashing(monkeypatch, caplog):
     import app.startup as startup_mod
 
     monkeypatch.setattr(startup_mod, "__file__", "/no/such/path/startup.py")

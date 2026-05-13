@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+
 def _b64_key(raw: bytes) -> str:
     return base64.b64encode(raw).decode("ascii")
 
@@ -110,6 +111,7 @@ def test_two_generators_same_padded_secret_round_trip(monkeypatch):
     token, _ = g1.generate_share_token(uid, "d")
     assert g2.decode_share_token(token)["unit_id"] == str(uid)
 
+
 def test_generate_share_token_rejects_empty_device_id(paseto_generator):
     with pytest.raises(ValueError, match="no tiene asignado un dispositivo"):
         paseto_generator.generate_share_token(uuid4(), "")
@@ -144,7 +146,9 @@ def test_generate_share_token_payload_shape_and_expiry(paseto_generator):
 
 def test_decode_share_token_round_trip(paseto_generator):
     uid = uuid4()
-    token, exp = paseto_generator.generate_share_token(uid, "d-round", expires_in_minutes=5)
+    token, exp = paseto_generator.generate_share_token(
+        uid, "d-round", expires_in_minutes=5
+    )
     data = paseto_generator.decode_share_token(token)
     assert data is not None
     assert datetime.fromisoformat(data["exp"]) == exp
@@ -278,7 +282,9 @@ def test_decode_service_token_flexible_scope_for_gac_internal_prefix(paseto_gene
     import pyseto
 
     payload_bytes = json.dumps(raw_payload).encode("utf-8")
-    token = pyseto.encode(key=paseto_generator.key, payload=payload_bytes).decode("utf-8")
+    token = pyseto.encode(key=paseto_generator.key, payload=payload_bytes).decode(
+        "utf-8"
+    )
     assert paseto_generator.decode_service_token(token) is not None
 
 
@@ -322,7 +328,9 @@ def test_decode_service_token_rejects_bad_scope_for_non_gac_service(paseto_gener
 
 def test_decode_service_token_required_service_mismatch(paseto_generator):
     token, _ = paseto_generator.generate_service_token("gac", "GAC_ADMIN")
-    assert paseto_generator.decode_service_token(token, required_service="other") is None
+    assert (
+        paseto_generator.decode_service_token(token, required_service="other") is None
+    )
 
 
 def test_decode_service_token_required_role_mismatch(paseto_generator):
@@ -367,6 +375,7 @@ def test_decode_service_token_returns_none_on_decode_error(paseto_generator):
     with patch.object(pt.pyseto, "decode", side_effect=ValueError("bad")):
         assert paseto_generator.decode_service_token("t") is None
 
+
 def test_decode_any_token_accepts_share_and_service_tokens(paseto_generator):
     uid = uuid4()
     share_t, _ = paseto_generator.generate_share_token(uid, "d")
@@ -407,7 +416,9 @@ def test_module_helpers_round_trip_after_reload(paseto_module_reloaded):
 def test_generate_service_token_and_decode_helpers(paseto_module_reloaded):
     pt = paseto_module_reloaded
     token, _ = pt.generate_service_token("gac", "GAC_ADMIN", expires_in_hours=1)
-    data = pt.decode_service_token(token, required_service="gac", required_role="GAC_ADMIN")
+    data = pt.decode_service_token(
+        token, required_service="gac", required_role="GAC_ADMIN"
+    )
     assert data is not None
     assert data["service"] == "gac"
 

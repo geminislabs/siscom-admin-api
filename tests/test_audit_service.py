@@ -3,8 +3,6 @@
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 from app.models.account_event import EventType, TargetType
 from app.services.audit import AuditService
 
@@ -101,4 +99,3 @@ def test_log_org_capability_deleted_serializes_previous_value(monkeypatch):
     )
 
     assert captured["metadata"]["previous_value"] == "42"
-

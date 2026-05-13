@@ -1,6 +1,6 @@
 """Tests para app.services.health.check_kafka_accessibility."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import app.services.health as health_mod
 

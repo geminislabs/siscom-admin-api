@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, JSON, Text, TypeDecorator
+from sqlalchemy import JSON, Text, TypeDecorator, create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql.schema import ColumnDefault
@@ -34,6 +34,7 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 class _SQLiteUUID(TypeDecorator):
     impl = Text
     cache_ok = True
@@ -54,7 +55,9 @@ class _SQLiteUUID(TypeDecorator):
 
 _PG_TYPE_REPLACEMENTS = {}
 try:
-    from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, ARRAY, INET, CIDR
+    from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET, JSONB
+    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
     _PG_TYPE_REPLACEMENTS = {
         JSONB: JSON(),
         PG_UUID: _SQLiteUUID(),

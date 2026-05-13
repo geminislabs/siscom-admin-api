@@ -235,8 +235,12 @@ class TestTelemetryAccessControl:
     def _make_db_with_rows(self, rows):
         """Mock de db que devuelve rows en query().filter().distinct().all()"""
         mock_db = MagicMock()
-        mock_db.query.return_value.join.return_value.filter.return_value.distinct.return_value.all.return_value = rows
-        mock_db.query.return_value.filter.return_value.distinct.return_value.all.return_value = rows
+        mock_db.query.return_value.join.return_value.filter.return_value.distinct.return_value.all.return_value = (
+            rows
+        )
+        mock_db.query.return_value.filter.return_value.distinct.return_value.all.return_value = (
+            rows
+        )
         return mock_db
 
     def test_validate_device_access_passes_for_accessible_device(self):
@@ -381,7 +385,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         buckets = [s["bucket"] for s in resp.json()["series"]]
@@ -400,7 +408,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         point = resp.json()["series"][0]
@@ -461,7 +473,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         assert resp.status_code == status.HTTP_200_OK
@@ -503,7 +519,11 @@ class TestGetDeviceTelemetryEndpoint:
         # FastAPI valida el Literal antes de llamar al handler → 422
         resp = api_client.get(
             "/api/v1/devices/DEV-001/telemetry",
-            params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "temperatura")],
+            params=[
+                ("from", iso(FROM_TS)),
+                ("to", iso(TO_TS)),
+                ("metrics", "temperatura"),
+            ],
         )
         assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -527,7 +547,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-FORBIDDEN/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         assert resp.status_code == status.HTTP_404_NOT_FOUND
@@ -539,7 +563,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         data = resp.json()

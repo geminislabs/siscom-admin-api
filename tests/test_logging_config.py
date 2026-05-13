@@ -39,7 +39,7 @@ def test_json_formatter_includes_extra_data():
 def test_json_formatter_with_exception():
     fmt = lc.JSONFormatter()
     try:
-        1 / 0
+        raise ZeroDivisionError()
     except ZeroDivisionError:
         import sys
 

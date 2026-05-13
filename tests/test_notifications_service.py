@@ -1,6 +1,6 @@
 """Tests para app.services.notifications (SES y stubs SMS/push)."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from botocore.exceptions import ClientError

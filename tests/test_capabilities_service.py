@@ -5,8 +5,8 @@ from uuid import uuid4
 
 from app.models.capability import Capability, OrganizationCapability
 from app.services.capabilities import (
-    CapabilityService,
     DEFAULT_CAPABILITIES,
+    CapabilityService,
     ResolvedCapability,
     get_capability_for_client,
     has_capability_for_client,
@@ -84,9 +84,7 @@ def test_get_capabilities_summary_splits_limits_and_features():
     db = MagicMock()
 
     caps = {
-        "max_devices": ResolvedCapability(
-            code="max_devices", value=10, source="plan"
-        ),
+        "max_devices": ResolvedCapability(code="max_devices", value=10, source="plan"),
         "ai_features": ResolvedCapability(
             code="ai_features", value=True, source="organization"
         ),
