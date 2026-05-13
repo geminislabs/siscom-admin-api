@@ -1,7 +1,7 @@
 from typing import Optional
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -63,6 +63,21 @@ class Settings(BaseSettings):
     KAFKA_SASL_MECHANISM: str = "SCRAM-SHA-256"
     KAFKA_SECURITY_PROTOCOL: str = "SASL_PLAINTEXT"
 
+    ALLOWED_ORIGINS: list[str] = [
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5160",
+        "http://127.0.0.1:5160",
+        "http://127.0.0.1:8100",
+        "http://10.8.0.1:5160",
+        "http://10.8.0.1:8100",
+    ]
+
+    LOG_LEVEL: str = "INFO"
+
     @field_validator(
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
@@ -97,8 +112,6 @@ class Settings(BaseSettings):
             )
         return v.strip()
 
-    class Config:
-        env_file = ".env"
-
+    model_config = SettingsConfigDict(env_file=".env",extra="ignore",)
 
 settings = Settings()

@@ -55,5 +55,5 @@ ignore = [
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov=app --cov-report=html"
 
