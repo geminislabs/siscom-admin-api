@@ -1,4 +1,5 @@
-from typing import Optional
+import json
+from typing import Any, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -74,6 +75,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8100",
         "http://10.8.0.1:5160",
         "http://10.8.0.1:8100",
+        "https://geminislabs.com",
+        "https://admin.geminislabs.com",
     ]
 
     LOG_LEVEL: str = "INFO"
@@ -111,6 +114,42 @@ class Settings(BaseSettings):
                 "Example: us-east-1, us-west-2, etc."
             )
         return v.strip()
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: Any) -> list[str]:
+        """Accept JSON array or comma-separated origins from env vars."""
+        if v is None:
+            return []
+
+        if isinstance(v, list):
+            origins = v
+        elif isinstance(v, str):
+            raw = v.strip()
+            if not raw:
+                return []
+
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    parsed = []
+                origins = parsed if isinstance(parsed, list) else []
+            else:
+                origins = [origin.strip() for origin in raw.split(",")]
+        else:
+            return []
+
+        normalized: list[str] = []
+        for origin in origins:
+            if not isinstance(origin, str):
+                continue
+            clean_origin = origin.strip().rstrip("/")
+            if clean_origin:
+                normalized.append(clean_origin)
+
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(normalized))
 
     model_config = SettingsConfigDict(
         env_file=".env",
