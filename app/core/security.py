@@ -4,7 +4,13 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 
-JWKS_URL = f"https://cognito-idp.{settings.COGNITO_REGION}.amazonaws.com/{settings.COGNITO_USER_POOL_ID}/.well-known/jwks.json"
+if getattr(settings, "COGNITO_ENDPOINT", None):
+    JWKS_URL = (
+        f"{settings.COGNITO_ENDPOINT}"
+        f"/{settings.COGNITO_USER_POOL_ID}/.well-known/jwks.json"
+    )
+else:
+    JWKS_URL = f"https://cognito-idp.{settings.COGNITO_REGION}.amazonaws.com/{settings.COGNITO_USER_POOL_ID}/.well-known/jwks.json"
 
 
 def verify_cognito_token(token: str):

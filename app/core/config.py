@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     SNS_PLATFORM_APPLICATION_ARN_ANDROID: Optional[str] = None
 
     # AWS Cognito - Requeridos
+    COGNITO_ENDPOINT: Optional[str] = None
     COGNITO_REGION: str
     COGNITO_USER_POOL_ID: str
     COGNITO_CLIENT_ID: str
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
     # AWS SES - Email configuration
     SES_FROM_EMAIL: str
     SES_REGION: Optional[str] = None  # Si es None, usa COGNITO_REGION
+    SES_ENDPOINT: Optional[str] = None
 
     # Frontend URL - Para construir las URLs de acción en emails
     FRONTEND_URL: str
