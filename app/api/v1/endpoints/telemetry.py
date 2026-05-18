@@ -21,9 +21,9 @@ from app.models.user import User
 from app.schemas.telemetry import (
     MAX_RANGE_DAYS,
     MAX_RANGE_HOURS,
-    VALID_METRICS,
+    VALID_BATCH_METRICS,
+    BatchMetricName,
     Granularity,
-    MetricName,
     TelemetryMultiDeviceResponse,
     TelemetryQueryRequest,
     TelemetrySingleDeviceResponse,
@@ -67,10 +67,10 @@ def get_device_telemetry(
         "hour",
         description="Granularidad de agrupación: 'hour' o 'day'",
     ),
-    metrics: List[MetricName] = Query(
+    metrics: List[BatchMetricName] = Query(
         default=[],
         description=(
-            f"Métricas a incluir. Opciones: {sorted(VALID_METRICS)}. "
+            f"Métricas a incluir. Opciones: {sorted(VALID_BATCH_METRICS)}. "
             "Se puede repetir el parámetro: ?metrics=speed&metrics=alerts. "
             "Si no se especifica ninguna, retorna 400."
         ),
@@ -186,11 +186,11 @@ def _validate_single_request(
             detail="Se debe especificar al menos una métrica",
         )
 
-    invalid = set(metrics) - VALID_METRICS
+    invalid = set(metrics) - VALID_BATCH_METRICS
     if invalid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Métricas no válidas: {sorted(invalid)}. Opciones: {sorted(VALID_METRICS)}",
+            detail=f"Métricas no válidas: {sorted(invalid)}. Opciones: {sorted(VALID_BATCH_METRICS)}",
         )
 
 

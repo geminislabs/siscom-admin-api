@@ -530,6 +530,41 @@ class TestGetDeviceTelemetryEndpoint:
         )
         assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
+    def test_get_accepts_new_intelligence_metrics(self, api_client):
+        point = TelemetryPointOut(
+            bucket=FROM_TS,
+            fuel_consumed_liters=1.2,
+            moving_minutes=44.0,
+            idle_minutes=16.0,
+        )
+
+        with patch(
+            "app.api.v1.endpoints.telemetry.get_telemetry_single",
+            return_value=[point],
+        ):
+            resp = api_client.get(
+                "/api/v1/devices/DEV-001/telemetry",
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "fuel_consumed_liters"),
+                    ("metrics", "moving_minutes"),
+                    ("metrics", "idle_minutes"),
+                ],
+            )
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert data["metrics"] == [
+            "fuel_consumed_liters",
+            "moving_minutes",
+            "idle_minutes",
+        ]
+        series_point = data["series"][0]
+        assert series_point["fuel_consumed_liters"] == 1.2
+        assert series_point["moving_minutes"] == 44.0
+        assert series_point["idle_minutes"] == 16.0
+
     def test_no_metrics_param_returns_400(self, api_client):
         # FastAPI trata List[X]=Query(...) sin valor como lista vacía [];
         # _validate_single_request detecta métricas vacías y lanza 400.

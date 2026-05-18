@@ -276,6 +276,74 @@ def _query_single_day(
     return [_map_row_to_point(row, metrics) for row in rows]
 
 
+def _query_single_hour_intelligence(
+    db: Session,
+    device_id: str,
+    from_ts: datetime,
+    to_ts: datetime,
+    metrics: Sequence[BatchMetricName],
+) -> List[TelemetryPointOut]:
+    """Query para granularity=hour sobre un único dispositivo en tabla intelligence."""
+    metric_cols = _build_intelligence_select_columns(metrics)
+    if not metric_cols:
+        return []
+
+    sql = text(
+        f"""
+        SELECT
+            bucket,
+            {metric_cols}
+        FROM telemetry_intelligence_hourly_stats
+        WHERE device_id = :device_id
+          AND bucket >= :from_ts
+          AND bucket < :to_ts
+        GROUP BY bucket
+        ORDER BY bucket ASC
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {"device_id": device_id, "from_ts": from_ts, "to_ts": to_ts},
+    ).fetchall()
+
+    return [_map_row_to_point(row, metrics) for row in rows]
+
+
+def _query_single_day_intelligence(
+    db: Session,
+    device_id: str,
+    from_ts: datetime,
+    to_ts: datetime,
+    metrics: Sequence[BatchMetricName],
+) -> List[TelemetryPointOut]:
+    """Query para granularity=day sobre un único dispositivo en tabla intelligence."""
+    metric_cols = _build_intelligence_select_columns(metrics)
+    if not metric_cols:
+        return []
+
+    sql = text(
+        f"""
+        SELECT
+            date_trunc('day', bucket) AS bucket,
+            {metric_cols}
+        FROM telemetry_intelligence_hourly_stats
+        WHERE device_id = :device_id
+          AND bucket >= :from_ts
+          AND bucket < :to_ts
+        GROUP BY date_trunc('day', bucket)
+        ORDER BY bucket ASC
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {"device_id": device_id, "from_ts": from_ts, "to_ts": to_ts},
+    ).fetchall()
+
+    return [_map_row_to_point(row, metrics) for row in rows]
+
+
 # ---------------------------------------------------------------------------
 # Queries multi-dispositivo
 # ---------------------------------------------------------------------------
@@ -594,7 +662,7 @@ def get_telemetry_single(
     from_ts: datetime,
     to_ts: datetime,
     granularity: Granularity,
-    metrics: List[MetricName],
+    metrics: List[BatchMetricName],
 ) -> List[TelemetryPointOut]:
     """
     Retorna la serie temporal de telemetría para un dispositivo.
@@ -602,10 +670,45 @@ def get_telemetry_single(
     """
     validate_device_access(db, user, device_id)
 
+    base_metrics = [m for m in metrics if m in BASE_METRICS]
+    intelligence_metrics = [m for m in metrics if m in INTELLIGENCE_METRICS]
+
     if granularity == "hour":
-        return _query_single_hour(db, device_id, from_ts, to_ts, metrics)
+        base_series = (
+            _query_single_hour(db, device_id, from_ts, to_ts, base_metrics)
+            if base_metrics
+            else []
+        )
+        intelligence_series = (
+            _query_single_hour_intelligence(
+                db,
+                device_id,
+                from_ts,
+                to_ts,
+                intelligence_metrics,
+            )
+            if intelligence_metrics
+            else []
+        )
     else:
-        return _query_single_day(db, device_id, from_ts, to_ts, metrics)
+        base_series = (
+            _query_single_day(db, device_id, from_ts, to_ts, base_metrics)
+            if base_metrics
+            else []
+        )
+        intelligence_series = (
+            _query_single_day_intelligence(
+                db,
+                device_id,
+                from_ts,
+                to_ts,
+                intelligence_metrics,
+            )
+            if intelligence_metrics
+            else []
+        )
+
+    return _merge_series_by_bucket(base_series, intelligence_series)
 
 
 def get_telemetry_batch(

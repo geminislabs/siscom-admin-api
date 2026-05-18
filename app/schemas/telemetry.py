@@ -174,7 +174,7 @@ class TelemetrySingleDeviceResponse(BaseModel):
         ..., alias="from", description="Inicio del rango (inclusivo)"
     )
     to_ts: datetime = Field(..., alias="to", description="Fin del rango (exclusivo)")
-    metrics: List[MetricName] = Field(
+    metrics: List[BatchMetricName] = Field(
         ..., description="Métricas incluidas en la respuesta"
     )
     series: List[TelemetryPointOut] = Field(
