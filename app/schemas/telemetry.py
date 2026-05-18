@@ -46,6 +46,15 @@ VALID_METRICS = frozenset(
     ]
 )
 
+VALID_BATCH_METRICS = frozenset(
+    [
+        *VALID_METRICS,
+        "fuel_consumed_liters",
+        "moving_minutes",
+        "idle_minutes",
+    ]
+)
+
 MAX_RANGE_HOURS = timedelta(days=7)
 MAX_RANGE_DAYS = timedelta(days=180)
 MAX_BATCH_DEVICES = 50
@@ -61,6 +70,21 @@ MetricName = Literal[
     "signal",
     "satellites",
     "odometer",
+]
+
+BatchMetricName = Literal[
+    "speed",
+    "main_battery",
+    "backup_battery",
+    "alerts",
+    "comm_quality",
+    "samples",
+    "signal",
+    "satellites",
+    "odometer",
+    "fuel_consumed_liters",
+    "moving_minutes",
+    "idle_minutes",
 ]
 
 
@@ -131,6 +155,9 @@ class TelemetryPointOut(BaseModel):
     signal: Optional[AvgMinMaxOut] = None
     satellites: Optional[AvgMinMaxOut] = None
     odometer: Optional[OdometerOut] = None
+    fuel_consumed_liters: Optional[float] = None
+    moving_minutes: Optional[float] = None
+    idle_minutes: Optional[float] = None
 
     model_config = {"populate_by_name": True}
 
@@ -175,7 +202,7 @@ class TelemetryQueryRequest(BaseModel):
         ..., alias="to", description="Fin del rango (exclusivo, timezone-aware)"
     )
     granularity: Granularity = Field("hour", description="Granularidad de agrupación")
-    metrics: List[MetricName] = Field(
+    metrics: List[BatchMetricName] = Field(
         ..., min_length=1, description="Métricas a incluir en la respuesta"
     )
 
@@ -198,11 +225,11 @@ class TelemetryQueryRequest(BaseModel):
     @field_validator("metrics")
     @classmethod
     def validate_metrics(cls, v: List[str]) -> List[str]:
-        invalid = set(v) - VALID_METRICS
+        invalid = set(v) - VALID_BATCH_METRICS
         if invalid:
             raise ValueError(
                 f"Métricas no válidas: {sorted(invalid)}. "
-                f"Opciones: {sorted(VALID_METRICS)}"
+                f"Opciones: {sorted(VALID_BATCH_METRICS)}"
             )
         # Deduplicar manteniendo orden
         seen = []
@@ -268,7 +295,7 @@ class TelemetryMultiDeviceResponse(BaseModel):
         ..., alias="from", description="Inicio del rango (inclusivo)"
     )
     to_ts: datetime = Field(..., alias="to", description="Fin del rango (exclusivo)")
-    metrics: List[MetricName] = Field(..., description="Métricas incluidas")
+    metrics: List[BatchMetricName] = Field(..., description="Métricas incluidas")
     devices: List[TelemetryDeviceItemOut] = Field(
         ..., description="Resultados por dispositivo"
     )

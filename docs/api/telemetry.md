@@ -76,6 +76,9 @@ Authorization: Bearer <access_token>
 | `signal` | `avg`, `min`, `max` | dBm (rx level) | Nivel de señal celular promedio, mínimo y máximo |
 | `satellites` | `avg`, `min`, `max` | # | Cantidad de satélites promedio, mínima y máxima |
 | `odometer` | `total_distance_mt` | m | Distancia total recorrida en el período |
+| `fuel_consumed_liters` | `fuel_consumed_liters` | L | Litros consumidos en el período |
+| `moving_minutes` | `moving_minutes` | min | Minutos en movimiento durante el período |
+| `idle_minutes` | `idle_minutes` | min | Minutos en ralentí/detenido durante el período |
 
 #### Límites de rango
 
