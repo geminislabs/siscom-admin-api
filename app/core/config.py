@@ -79,6 +79,7 @@ class Settings(BaseSettings):
         "http://10.8.0.1:8100",
         "https://geminislabs.com",
         "https://admin.geminislabs.com",
+        "https://nexus.geminislabs.com",
     ]
 
     LOG_LEVEL: str = "INFO"
