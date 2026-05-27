@@ -172,6 +172,12 @@ Envío de comandos a dispositivos GPS.
 - `GET /api/v1/commands/{command_id}` - Detalle de comando
 - `POST /api/v1/commands/{command_id}/sync` - Sincronizar estado
 
+### [user-commands.md](./user-commands.md)
+Comandos críticos iniciados por usuario master con validación de confirmation y password.
+
+**Endpoint:**
+- `POST /api/v1/user-commands` - Crear y enviar comando crítico a unidad
+
 ---
 
 ## 🚗 Unidades y Vehículos

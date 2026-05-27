@@ -64,6 +64,7 @@ Comienza aquí si eres nuevo en el proyecto:
 | **[Asignación Unidad-Dispositivo](api/unit-devices.md)** | Instalación de GPS en unidades |
 | **[Asignación Usuario-Unidad](api/user-units.md)** | Permisos de usuarios sobre unidades |
 | **[Comandos](api/commands.md)** | Envío de comandos a dispositivos |
+| **[User Commands](api/user-commands.md)** | Comandos críticos por usuario master |
 | **[Viajes](api/trips.md)** | Gestión de viajes y rutas |
 | **[Geocercas](api/geofences.md)** | CRUD de geocercas con índices H3 |
 
@@ -239,6 +240,12 @@ Comienza aquí si eres nuevo en el proyecto:
 | `GET` | `/` | Listar comandos enviados | 🔐 Cognito / 🔑 PASETO |
 | `GET` | `/{command_id}` | Detalle de comando | 🔐 Cognito / 🔑 PASETO |
 | `GET` | `/{command_id}/sync` | Sincronizar estado de comando | 🔐 Cognito / 🔑 PASETO |
+
+### User Commands (`/api/v1/user-commands`)
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/` | Crear comando crítico sobre unidad | 🔐 Cognito (Master) |
 
 ### Viajes (`/api/v1/trips`)
 

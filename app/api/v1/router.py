@@ -56,6 +56,7 @@ from app.api.v1.endpoints import (
     trips,
     unit_devices,
     units,
+    user_commands,
     user_devices,
     user_units,
     users,
@@ -154,6 +155,11 @@ api_router.include_router(geofences.router, prefix="/geofences", tags=["geofence
 
 # Comandos
 api_router.include_router(commands.router, prefix="/commands", tags=["commands"])
+api_router.include_router(
+    user_commands.router,
+    prefix="/user-commands",
+    tags=["user-commands"],
+)
 
 # Contacto
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])

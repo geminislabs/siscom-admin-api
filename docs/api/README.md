@@ -39,6 +39,7 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 - [user-devices.md](./user-devices.md) - Registro y desactivación de dispositivos push de usuario
 - [device-events.md](./device-events.md) - Historial de eventos
 - [commands.md](./commands.md) - Comandos a dispositivos
+- [user-commands.md](./user-commands.md) - Comandos críticos iniciados por usuario master
 
 ### 🚗 Unidades
 - [units.md](./units.md) - Gestión de unidades/vehículos
