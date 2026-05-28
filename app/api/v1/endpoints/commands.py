@@ -137,12 +137,10 @@ async def create_command(
                     # Actualizar estado del comando a 'sent'
                     command.status = "sent"
                     # Guardar metadata de la respuesta de KORE
-                    if command.command_metadata is None:
-                        command.command_metadata = {}
-                    command.command_metadata["kore_response"] = (
-                        sms_response.response_data
-                    )
-                    command.command_metadata["kore_sim_id"] = sim_profile.kore_sim_id
+                    updated_metadata = dict(command.command_metadata or {})
+                    updated_metadata["kore_response"] = sms_response.response_data
+                    updated_metadata["kore_sim_id"] = sim_profile.kore_sim_id
+                    command.command_metadata = updated_metadata
                     logger.info(
                         f"[COMMANDS] Comando enviado exitosamente vía KORE: "
                         f"command_id={command.command_id}"
@@ -168,9 +166,9 @@ async def create_command(
 
             # Guardar error en metadata si hubo
             if kore_error:
-                if command.command_metadata is None:
-                    command.command_metadata = {}
-                command.command_metadata["kore_error"] = kore_error
+                updated_metadata = dict(command.command_metadata or {})
+                updated_metadata["kore_error"] = kore_error
+                command.command_metadata = updated_metadata
 
             db.commit()
             db.refresh(command)

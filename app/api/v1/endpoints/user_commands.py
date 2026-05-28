@@ -241,10 +241,10 @@ async def create_user_command(
 
             if sms_response.success:
                 command.status = "sent"
-                if command.command_metadata is None:
-                    command.command_metadata = {}
-                command.command_metadata["kore_response"] = sms_response.response_data
-                command.command_metadata["kore_sim_id"] = sim_profile.kore_sim_id
+                updated_metadata = dict(command.command_metadata or {})
+                updated_metadata["kore_response"] = sms_response.response_data
+                updated_metadata["kore_sim_id"] = sim_profile.kore_sim_id
+                command.command_metadata = updated_metadata
             else:
                 kore_error = sms_response.message
 
@@ -259,9 +259,9 @@ async def create_user_command(
             logger.exception(f"[USER COMMANDS] {kore_error}")
 
         if kore_error:
-            if command.command_metadata is None:
-                command.command_metadata = {}
-            command.command_metadata["kore_error"] = kore_error
+            updated_metadata = dict(command.command_metadata or {})
+            updated_metadata["kore_error"] = kore_error
+            command.command_metadata = updated_metadata
 
         db.commit()
         db.refresh(command)

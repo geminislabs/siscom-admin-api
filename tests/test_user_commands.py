@@ -154,6 +154,7 @@ def test_engine_stop_creates_and_sends_command_via_kore(
     assert response.status_code == status.HTTP_201_CREATED
     assert response.json()["status"] == "sent"
 
+    db_session.expire_all()
     command = db_session.query(Command).order_by(Command.requested_at.desc()).first()
     assert command is not None
     assert command.command == "AT^CMD;353451234567891;04;01"
@@ -161,6 +162,7 @@ def test_engine_stop_creates_and_sends_command_via_kore(
     assert command.status == "sent"
     assert command.command_metadata["command_type"] == "ENGINE_STOP"
     assert command.command_metadata["kore_sim_id"] == "HS123456789"
+    assert command.command_metadata["kore_response"]["sid"] == "SM123"
 
 
 def test_engine_resume_accepts_suntech_st4330(

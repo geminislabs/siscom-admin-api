@@ -41,7 +41,7 @@ class SimCard(SQLModel, table=True):
             ForeignKey("devices.device_id", ondelete="CASCADE"),
             nullable=True,
             unique=True,  # Constraint: unique_active_sim_per_device
-        )
+        ),
     )
 
     carrier: str = Field(

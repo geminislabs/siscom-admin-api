@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     KORE_CLIENT_ID: Optional[str] = None
     KORE_CLIENT_SECRET: Optional[str] = None
     KORE_API: Optional[str] = (
-        "https://supersim.api.korewireless.com/v1/"
-    )  # Base URL de SuperSIM API
+        "https://supersim.api.korewireless.com/v1/"  # Base URL de SuperSIM API
+    )
     KORE_API_AUTH: Optional[str] = None  # URL del endpoint de autenticación
     KORE_API_SMS: Optional[str] = None  # URL del endpoint de SMS
 
