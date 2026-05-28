@@ -177,6 +177,8 @@ Comandos críticos iniciados por usuario master con validación de confirmation 
 
 **Endpoint:**
 - `POST /api/v1/user-commands` - Crear y enviar comando crítico a unidad
+- `GET /api/v1/user-commands/unit/{unit_id}` - Listar comandos críticos por unidad
+- `POST /api/v1/user-commands/{command_id}/sync` - Sincronizar comando crítico con KORE
 
 ---
 

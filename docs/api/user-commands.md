@@ -19,6 +19,14 @@ El sistema resuelve automáticamente el dispositivo activo de la unidad, forma e
 
 POST /api/v1/user-commands
 
+### Listar User Commands por Unidad
+
+GET /api/v1/user-commands/unit/{unit_id}
+
+### Sincronizar User Command con KORE
+
+POST /api/v1/user-commands/{command_id}/sync
+
 ---
 
 ## Autenticación y permisos
@@ -27,6 +35,22 @@ POST /api/v1/user-commands
 - Solo usuario master puede ejecutar este endpoint.
 
 Si el usuario no es master, responde 403.
+
+---
+
+## Por qué existen estos endpoints
+
+Estos endpoints existen para separar comandos críticos de usuario (alto riesgo) del flujo genérico de commands.
+
+Diferencias clave frente a /api/v1/commands:
+
+- /api/v1/user-commands exige reglas de negocio para seguridad humana:
+  - Validación de confirmation para ENGINE_STOP
+  - Validación de contraseña del usuario master
+  - Formación automática del comando AT según modelo
+- /api/v1/user-commands/unit/{unit_id} permite consultar por unidad de negocio directamente.
+- /api/v1/user-commands/{command_id}/sync asegura que solo se sincronicen comandos creados por user-commands (metadata.source_id = user_commands).
+- /api/v1/commands mantiene el flujo genérico por device_id y no aplica estas reglas de alto riesgo.
 
 ---
 
@@ -141,6 +165,89 @@ El status puede ser:
 
 ---
 
+## Endpoint: Listar User Commands por Unidad
+
+GET /api/v1/user-commands/unit/{unit_id}
+
+Retorna comandos creados desde user-commands para una unidad específica.
+
+Filtros disponibles:
+
+- status_filter: pending, sent, delivered, failed
+- limit: 1..500 (default 50)
+- offset: default 0
+
+### Response 200 OK
+
+Misma estructura base de listado de commands:
+
+```json
+{
+  "commands": [
+    {
+      "command_id": "42bfcefb-4aa3-4866-b12b-7fa34b87f923",
+      "command": "AT^CMD;353451234567890;04;01",
+      "media": "KORE_SMS_API",
+      "request_user_id": "def45678-e89b-12d3-a456-426614174000",
+      "request_user_email": "usuario@ejemplo.com",
+      "device_id": "353451234567890",
+      "requested_at": "2026-05-27T10:30:00Z",
+      "updated_at": "2026-05-27T10:31:00Z",
+      "status": "sent",
+      "command_metadata": {
+        "source_id": "user_commands",
+        "command_type": "ENGINE_STOP",
+        "unit_id": "f9d3f26f-5f4a-4a87-9873-8a7b1846f15f"
+      }
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## Endpoint: Sincronizar User Command con KORE
+
+POST /api/v1/user-commands/{command_id}/sync
+
+Sincroniza el estado del comando en KORE solo si fue creado por user-commands.
+
+Reglas:
+
+- Debe existir metadata.source_id = user_commands
+- Debe ser media KORE_SMS_API
+- Debe existir metadata.kore_response con sid/url
+
+### Response 200 OK
+
+Misma estructura de sync que commands:
+
+```json
+{
+  "command_id": "42bfcefb-4aa3-4866-b12b-7fa34b87f923",
+  "command": "AT^CMD;353451234567890;04;01",
+  "media": "KORE_SMS_API",
+  "request_user_id": "def45678-e89b-12d3-a456-426614174000",
+  "request_user_email": "usuario@ejemplo.com",
+  "device_id": "353451234567890",
+  "requested_at": "2026-05-27T10:30:00Z",
+  "updated_at": "2026-05-27T10:35:00Z",
+  "status": "delivered",
+  "command_metadata": {
+    "source_id": "user_commands",
+    "sync_response": {
+      "status": "delivered"
+    }
+  },
+  "sync_response": {
+    "status": "delivered"
+  }
+}
+```
+
+---
+
 ## Errores
 
 | Código | Caso |
@@ -151,6 +258,7 @@ El status puede ser:
 | 401 | Contraseña inválida |
 | 403 | Usuario no master |
 | 404 | Unidad no encontrada |
+| 404 | Comando user-command no encontrado |
 | 404 | Unidad sin dispositivo asignado activo |
 | 404 | Dispositivo no encontrado para la unidad |
 | 422 | No se pudo formar comando para el modelo del equipo |
@@ -186,4 +294,18 @@ curl -X POST "http://localhost:8000/api/v1/user-commands" \
     "command_type": "ENGINE_RESUME",
     "unit_id": "f9d3f26f-5f4a-4a87-9873-8a7b1846f15f"
   }'
+```
+
+### Listar comandos user-commands por unidad
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/user-commands/unit/f9d3f26f-5f4a-4a87-9873-8a7b1846f15f?status_filter=sent&limit=20&offset=0" \
+  -H "Authorization: Bearer <access_token>"
+```
+
+### Sincronizar user-command con KORE
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/user-commands/42bfcefb-4aa3-4866-b12b-7fa34b87f923/sync" \
+  -H "Authorization: Bearer <access_token>"
 ```

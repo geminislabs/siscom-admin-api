@@ -274,3 +274,101 @@ def test_engine_resume_rejects_suntech_st449(
     response = authenticated_client.post("/api/v1/user-commands", json=payload)
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert "No se pudo formar el comando" in response.json()["detail"]
+
+
+def test_list_user_commands_by_unit_only_returns_user_commands_source(
+    authenticated_client, db_session, test_organization_data, test_user_data
+):
+    unit = Unit(
+        id=uuid4(),
+        organization_id=test_organization_data.id,
+        name="Unidad list test",
+        description="Unidad de prueba",
+    )
+    device = Device(
+        device_id="353451234567894",
+        brand="Suntech",
+        model="ST4315",
+        status="asignado",
+        organization_id=test_organization_data.id,
+    )
+    assignment = UnitDevice(unit_id=unit.id, device_id=device.device_id)
+
+    command_user = Command(
+        command="AT^CMD;353451234567894;04;02",
+        media="KORE_SMS_API",
+        request_user_id=test_user_data.id,
+        request_user_email=test_user_data.email,
+        device_id=device.device_id,
+        status="sent",
+        command_metadata={
+            "source_id": "user_commands",
+            "command_type": "ENGINE_RESUME",
+            "unit_id": str(unit.id),
+        },
+    )
+    command_other = Command(
+        command="AT+LOCATION",
+        media="sms",
+        request_user_id=test_user_data.id,
+        request_user_email=test_user_data.email,
+        device_id=device.device_id,
+        status="pending",
+        command_metadata={
+            "source_id": "mobile_app",
+            "unit_id": str(unit.id),
+        },
+    )
+
+    db_session.add(unit)
+    db_session.add(device)
+    db_session.add(assignment)
+    db_session.add(command_user)
+    db_session.add(command_other)
+    db_session.commit()
+
+    response = authenticated_client.get(f"/api/v1/user-commands/unit/{unit.id}")
+    assert response.status_code == status.HTTP_200_OK
+
+    body = response.json()
+    assert body["total"] == 1
+    assert len(body["commands"]) == 1
+    assert body["commands"][0]["command_metadata"]["source_id"] == "user_commands"
+
+
+def test_sync_user_command_rejects_non_user_command_source(
+    authenticated_client, db_session, test_organization_data, test_user_data
+):
+    device = Device(
+        device_id="353451234567895",
+        brand="Suntech",
+        model="ST4315",
+        status="asignado",
+        organization_id=test_organization_data.id,
+    )
+    command_other = Command(
+        command="AT+LOCATION",
+        media="KORE_SMS_API",
+        request_user_id=test_user_data.id,
+        request_user_email=test_user_data.email,
+        device_id=device.device_id,
+        status="sent",
+        command_metadata={
+            "source_id": "mobile_app",
+            "kore_response": {
+                "sid": "SMX",
+                "url": "https://example.com/kore/sms/SMX",
+            },
+        },
+    )
+
+    db_session.add(device)
+    db_session.add(command_other)
+    db_session.commit()
+    db_session.refresh(command_other)
+
+    response = authenticated_client.post(
+        f"/api/v1/user-commands/{command_other.command_id}/sync"
+    )
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "user-command" in response.json()["detail"].lower()

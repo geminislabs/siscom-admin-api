@@ -246,6 +246,8 @@ Comienza aquí si eres nuevo en el proyecto:
 | Método | Endpoint | Descripción | Auth |
 |--------|----------|-------------|------|
 | `POST` | `/` | Crear comando crítico sobre unidad | 🔐 Cognito (Master) |
+| `GET` | `/unit/{unit_id}` | Listar comandos críticos por unidad | 🔐 Cognito (Master) |
+| `POST` | `/{command_id}/sync` | Sincronizar comando crítico con KORE | 🔐 Cognito (Master) |
 
 ### Viajes (`/api/v1/trips`)
 
