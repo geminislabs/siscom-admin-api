@@ -130,3 +130,81 @@ def test_send_sms_command_raises_when_not_configured():
 
 def test_singleton_instance_exists():
     assert isinstance(kore_service, KoreService)
+
+
+def test_list_sims_single_page(monkeypatch):
+    svc = KoreService()
+    monkeypatch.setattr(svc, "client_id", "id")
+    monkeypatch.setattr(svc, "client_secret", "sec")
+    monkeypatch.setattr(svc, "auth_url", "https://auth.example/oauth")
+    monkeypatch.setattr(svc, "sims_url", "https://supersim.api.korewireless.com/v1/Sims")
+    monkeypatch.setattr(svc, "sms_url", "https://sms.example/send")
+    svc._cached_token = "cached"
+
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "meta": {
+            "key": "sims",
+            "next_page_url": None,
+        },
+        "sims": [
+            {"sid": "HS123", "iccid": "89883070000078034798", "status": "new"}
+        ],
+    }
+
+    inner = MagicMock()
+    inner.get = AsyncMock(return_value=resp)
+
+    async def run():
+        with patch(
+            "app.services.kore.httpx.AsyncClient",
+            return_value=_async_cm_mock(inner),
+        ):
+            return await svc.list_sims()
+
+    out = asyncio.run(run())
+    assert len(out) == 1
+    assert out[0]["sid"] == "HS123"
+
+
+def test_list_sims_paginated(monkeypatch):
+    svc = KoreService()
+    monkeypatch.setattr(svc, "client_id", "id")
+    monkeypatch.setattr(svc, "client_secret", "sec")
+    monkeypatch.setattr(svc, "auth_url", "https://auth.example/oauth")
+    monkeypatch.setattr(svc, "sims_url", "https://supersim.api.korewireless.com/v1/Sims")
+    monkeypatch.setattr(svc, "sms_url", "https://sms.example/send")
+    svc._cached_token = "cached"
+
+    resp_page_1 = MagicMock()
+    resp_page_1.status_code = 200
+    resp_page_1.json.return_value = {
+        "meta": {
+            "key": "sims",
+            "next_page_url": "https://supersim.api.korewireless.com/v1/Sims?Page=1&PageSize=50",
+        },
+        "sims": [{"sid": "HS1", "iccid": "89883070000078030001"}],
+    }
+
+    resp_page_2 = MagicMock()
+    resp_page_2.status_code = 200
+    resp_page_2.json.return_value = {
+        "meta": {"key": "sims", "next_page_url": None},
+        "sims": [{"sid": "HS2", "iccid": "89883070000078030002"}],
+    }
+
+    inner = MagicMock()
+    inner.get = AsyncMock(side_effect=[resp_page_1, resp_page_2])
+
+    async def run():
+        with patch(
+            "app.services.kore.httpx.AsyncClient",
+            return_value=_async_cm_mock(inner),
+        ):
+            return await svc.list_sims()
+
+    out = asyncio.run(run())
+    assert len(out) == 2
+    assert out[0]["sid"] == "HS1"
+    assert out[1]["sid"] == "HS2"

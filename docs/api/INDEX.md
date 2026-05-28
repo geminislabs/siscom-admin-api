@@ -150,6 +150,12 @@ Gestión completa del inventario de dispositivos GPS.
 - `PATCH /api/v1/devices/{device_id}/status` - Cambiar estado
 - `POST /api/v1/devices/{device_id}/notes` - Agregar nota
 
+### [sims.md](./sims.md)
+Sincronizacion de SIMs con KORE para poblar y actualizar `sim_cards` y `sim_kore_profiles`.
+
+**Endpoint:**
+- `POST /api/v1/sims/sync/kore` - Sincronizar SIMs desde KORE
+
 ### [user-devices.md](./user-devices.md)
 Gestión de dispositivos móviles de usuario para notificaciones push (SNS).
 

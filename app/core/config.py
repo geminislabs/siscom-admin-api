@@ -49,9 +49,12 @@ class Settings(BaseSettings):
     # PASETO - Token para compartir ubicación
     PASETO_SECRET_KEY: str
 
-    # KORE Wireless - API para envío de comandos SMS
+    # KORE Wireless
     KORE_CLIENT_ID: Optional[str] = None
     KORE_CLIENT_SECRET: Optional[str] = None
+    KORE_API: Optional[str] = (
+        "https://supersim.api.korewireless.com/v1/"
+    )  # Base URL de SuperSIM API
     KORE_API_AUTH: Optional[str] = None  # URL del endpoint de autenticación
     KORE_API_SMS: Optional[str] = None  # URL del endpoint de SMS
 

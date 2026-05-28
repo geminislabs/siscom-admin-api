@@ -51,6 +51,7 @@ from app.api.v1.endpoints import (
     payments,
     plans,
     services,
+    sims,
     subscriptions,
     telemetry,
     trips,
@@ -116,6 +117,7 @@ api_router.include_router(plans.router, prefix="/plans", tags=["plans"])
 
 # Dispositivos y Unidades
 api_router.include_router(devices.router, prefix="/devices", tags=["devices"])
+api_router.include_router(sims.router, prefix="/sims", tags=["sims"])
 
 # Telemetría agregada (GET /devices/{device_id}/telemetry y POST /telemetry/query)
 api_router.include_router(telemetry.router, tags=["telemetry"])

@@ -59,6 +59,7 @@ Comienza aquí si eres nuevo en el proyecto:
 | Documento | Descripción |
 |-----------|-------------|
 | **[Dispositivos](api/devices.md)** | Registro y consulta de dispositivos GPS |
+| **[SIMs](api/sims.md)** | Sincronización de SIMs con KORE |
 | **[Unidades](api/units.md)** | Administración de vehículos y activos |
 | **[Perfiles de Unidades](api/unit-profiles.md)** | Perfiles de configuración de unidades |
 | **[Asignación Unidad-Dispositivo](api/unit-devices.md)** | Instalación de GPS en unidades |
@@ -189,6 +190,12 @@ Comienza aquí si eres nuevo en el proyecto:
 | `PATCH` | `/{device_id}/status` | Cambiar estado del dispositivo | 🔐 Cognito / 🔑 PASETO |
 | `POST` | `/{device_id}/notes` | Agregar nota al dispositivo | 🔐 Cognito / 🔑 PASETO |
 | `GET` | `/{device_id}/trips` | Viajes del dispositivo | 🔐 Cognito / 🔑 PASETO |
+
+### SIMs (`/api/v1/sims`)
+
+| Método | Endpoint | Descripción | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/sync/kore` | Sincronizar SIMs de KORE hacia `sim_cards` y `sim_kore_profiles` | 🔐 Cognito / 🔑 PASETO |
 
 ### Eventos de Dispositivos (`/api/v1/device-events`)
 

@@ -49,6 +49,7 @@ Payload={command}
 **Configuración requerida:**
 - `KORE_CLIENT_ID`
 - `KORE_CLIENT_SECRET`
+- `KORE_API` (base para recursos SuperSIM, por ejemplo `{KORE_API}Sims`)
 - `KORE_API_AUTH`
 - `KORE_API_SMS`
 

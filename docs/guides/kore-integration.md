@@ -16,6 +16,7 @@ Agregar las siguientes variables al archivo `.env`:
 # KORE Wireless Configuration
 KORE_CLIENT_ID=apiclient_xxxxxxxxxxxxxxxxxxxx
 KORE_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+KORE_API=https://supersim.api.korewireless.com/v1/
 KORE_API_AUTH=https://api.korewireless.com/api-services/v1/auth/token
 KORE_API_SMS=https://supersim.api.korewireless.com/v1/SmsCommands
 ```
@@ -24,8 +25,18 @@ KORE_API_SMS=https://supersim.api.korewireless.com/v1/SmsCommands
 |----------|-------------|
 | `KORE_CLIENT_ID` | ID del cliente API proporcionado por KORE |
 | `KORE_CLIENT_SECRET` | Secret del cliente API proporcionado por KORE |
+| `KORE_API` | URL base de SuperSIM API (se usa para construir rutas como `/Sims`) |
 | `KORE_API_AUTH` | URL del endpoint de autenticación OAuth2 |
 | `KORE_API_SMS` | URL del endpoint para envío de comandos SMS |
+
+### Construcción de endpoints desde `KORE_API`
+
+La integración usa `KORE_API` como base común para futuros recursos de KORE.
+
+- Base: `https://supersim.api.korewireless.com/v1/`
+- Recurso SIMs: `{KORE_API}Sims`
+
+Esto evita agregar una variable nueva por cada recurso y facilita escalar la integración.
 
 ### Vista de Base de Datos
 
@@ -127,6 +138,20 @@ if sim_profile and sim_profile.kore_sim_id:
     # El dispositivo tiene SIM KORE configurada
     print(f"KORE SIM ID: {sim_profile.kore_sim_id}")
 ```
+
+## Sincronización de SIMs desde KORE
+
+Existe un endpoint dedicado para sincronizar SIMs de KORE con las tablas locales:
+
+- `POST /api/v1/sims/sync/kore`
+
+Comportamiento:
+
+1. Autentica contra KORE.
+2. Consulta SIMs en `{KORE_API}Sims` con paginación.
+3. Usa `sid` de KORE como `kore_sim_id` en `sim_kore_profiles`.
+4. Inserta o actualiza `sim_cards` por `iccid`.
+5. Inserta o actualiza `sim_kore_profiles` por `sim_id`.
 
 ## Flujo de Envío de Comandos
 

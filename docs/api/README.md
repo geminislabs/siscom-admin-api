@@ -36,6 +36,7 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 
 ### 📱 Dispositivos
 - [devices.md](./devices.md) - Gestión de dispositivos GPS
+- [sims.md](./sims.md) - Sincronización de SIMs con KORE
 - [user-devices.md](./user-devices.md) - Registro y desactivación de dispositivos push de usuario
 - [device-events.md](./device-events.md) - Historial de eventos
 - [commands.md](./commands.md) - Comandos a dispositivos
