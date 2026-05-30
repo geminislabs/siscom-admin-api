@@ -1,4 +1,47 @@
+from datetime import datetime
+from typing import Optional
+from uuid import UUID
+
 from pydantic import BaseModel, Field
+
+
+class SimKoreProfileOut(BaseModel):
+    """Perfil KORE asociado a una SIM."""
+
+    kore_sim_id: str
+    kore_account_id: Optional[str] = None
+
+
+class SimOut(BaseModel):
+    """Representación de una SIM card."""
+
+    sim_id: UUID
+    device_id: Optional[str] = None
+    carrier: str
+    iccid: str
+    imsi: Optional[str] = None
+    msisdn: Optional[str] = None
+    status: str
+    kore_profile: Optional[SimKoreProfileOut] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SimAssignRequest(BaseModel):
+    """Request para asignar una SIM a un dispositivo."""
+
+    device_id: str = Field(..., description="ID del dispositivo al que asignar la SIM")
+
+
+class SimAssignResponse(BaseModel):
+    """Response de asignación de SIM."""
+
+    sim_id: UUID
+    device_id: str
+    message: str
 
 
 class SimKoreSyncResult(BaseModel):
