@@ -1,16 +1,220 @@
 from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthResult, get_auth_for_gac_admin
 from app.db.session import get_db
+from app.models.device import Device
 from app.models.sim_card import SimCard
 from app.models.sim_kore_profile import SimKoreProfile
-from app.schemas.sim_sync import SimKoreSyncResult
+from app.schemas.sim_sync import (
+    SimAssignRequest,
+    SimAssignResponse,
+    SimKoreProfileOut,
+    SimKoreSyncResult,
+    SimOut,
+)
 from app.services.kore import KoreAuthError, KoreServiceError, kore_service
 
 router = APIRouter()
+
+
+def _build_sim_out(sim_card: SimCard, kore_profile: Optional[SimKoreProfile]) -> SimOut:
+    """Construye un SimOut a partir de un SimCard y su perfil KORE opcional."""
+    kore_profile_out = None
+    if kore_profile:
+        kore_profile_out = SimKoreProfileOut(
+            kore_sim_id=kore_profile.kore_sim_id,
+            kore_account_id=kore_profile.kore_account_id,
+        )
+
+    return SimOut(
+        sim_id=sim_card.sim_id,
+        device_id=sim_card.device_id,
+        carrier=sim_card.carrier,
+        iccid=sim_card.iccid,
+        imsi=sim_card.imsi,
+        msisdn=sim_card.msisdn,
+        status=sim_card.status,
+        kore_profile=kore_profile_out,
+        created_at=sim_card.created_at,
+        updated_at=sim_card.updated_at,
+    )
+
+
+@router.get("", response_model=List[SimOut])
+def list_sims(
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_gac_admin),
+    unassigned: Optional[bool] = Query(
+        None, description="Filtrar SIMs sin dispositivo asignado"
+    ),
+    carrier: Optional[str] = Query(None, description="Filtrar por carrier (KORE, etc)"),
+    status_filter: Optional[str] = Query(
+        None, alias="status", description="Filtrar por status"
+    ),
+):
+    """
+    Lista todas las SIM cards.
+
+    Filtros disponibles:
+    - `unassigned=true`: Solo SIMs sin dispositivo asignado (device_id IS NULL)
+    - `carrier`: Filtrar por proveedor (KORE, other)
+    - `status`: Filtrar por estado (active, inactive, etc)
+    """
+    query = db.query(SimCard)
+
+    if unassigned is True:
+        query = query.filter(SimCard.device_id.is_(None))
+    elif unassigned is False:
+        query = query.filter(SimCard.device_id.isnot(None))
+
+    if carrier:
+        query = query.filter(SimCard.carrier == carrier)
+
+    if status_filter:
+        query = query.filter(SimCard.status == status_filter)
+
+    sim_cards = query.order_by(SimCard.created_at.desc()).all()
+
+    # Obtener perfiles KORE para las SIMs
+    sim_ids = [sc.sim_id for sc in sim_cards]
+    kore_profiles = (
+        db.query(SimKoreProfile).filter(SimKoreProfile.sim_id.in_(sim_ids)).all()
+        if sim_ids
+        else []
+    )
+    profile_by_sim_id = {p.sim_id: p for p in kore_profiles}
+
+    return [
+        _build_sim_out(sim_card, profile_by_sim_id.get(sim_card.sim_id))
+        for sim_card in sim_cards
+    ]
+
+
+@router.get("/{sim_id}", response_model=SimOut)
+def get_sim(
+    sim_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_gac_admin),
+):
+    """Obtiene el detalle de una SIM específica."""
+    sim_card = db.query(SimCard).filter(SimCard.sim_id == sim_id).first()
+
+    if not sim_card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="SIM no encontrada",
+        )
+
+    kore_profile = (
+        db.query(SimKoreProfile).filter(SimKoreProfile.sim_id == sim_id).first()
+    )
+
+    return _build_sim_out(sim_card, kore_profile)
+
+
+@router.post("/{sim_id}/assign", response_model=SimAssignResponse)
+def assign_sim_to_device(
+    sim_id: UUID,
+    request: SimAssignRequest,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_gac_admin),
+):
+    """
+    Asigna una SIM existente a un dispositivo.
+
+    Reglas:
+    - La SIM debe existir y no tener dispositivo asignado actualmente.
+    - El dispositivo debe existir y no tener otra SIM asignada.
+    - Si el dispositivo ya tiene una SIM, se debe desasignar primero.
+    """
+    # Verificar que la SIM existe
+    sim_card = db.query(SimCard).filter(SimCard.sim_id == sim_id).first()
+    if not sim_card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="SIM no encontrada",
+        )
+
+    # Verificar que la SIM no está asignada a otro dispositivo
+    if sim_card.device_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"La SIM ya está asignada al dispositivo {sim_card.device_id}",
+        )
+
+    # Verificar que el dispositivo existe
+    device = db.query(Device).filter(Device.device_id == request.device_id).first()
+    if not device:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dispositivo no encontrado",
+        )
+
+    # Verificar que el dispositivo no tiene otra SIM asignada
+    existing_sim = (
+        db.query(SimCard).filter(SimCard.device_id == request.device_id).first()
+    )
+    if existing_sim:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El dispositivo ya tiene una SIM asignada (ICCID: {existing_sim.iccid})",
+        )
+
+    # Asignar la SIM al dispositivo
+    sim_card.device_id = request.device_id
+    sim_card.updated_at = datetime.utcnow()
+
+    db.commit()
+
+    return SimAssignResponse(
+        sim_id=sim_card.sim_id,
+        device_id=request.device_id,
+        message=f"SIM {sim_card.iccid} asignada exitosamente al dispositivo {request.device_id}",
+    )
+
+
+@router.post("/{sim_id}/unassign", response_model=SimAssignResponse)
+def unassign_sim_from_device(
+    sim_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_gac_admin),
+):
+    """
+    Desasigna una SIM de su dispositivo actual.
+
+    La SIM quedará disponible para ser asignada a otro dispositivo.
+    """
+    # Verificar que la SIM existe
+    sim_card = db.query(SimCard).filter(SimCard.sim_id == sim_id).first()
+    if not sim_card:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="SIM no encontrada",
+        )
+
+    # Verificar que la SIM está asignada
+    if sim_card.device_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La SIM no está asignada a ningún dispositivo",
+        )
+
+    previous_device_id = sim_card.device_id
+    sim_card.device_id = None
+    sim_card.updated_at = datetime.utcnow()
+
+    db.commit()
+
+    return SimAssignResponse(
+        sim_id=sim_card.sim_id,
+        device_id=previous_device_id,
+        message=f"SIM {sim_card.iccid} desasignada del dispositivo {previous_device_id}",
+    )
 
 
 @router.post("/sync/kore", response_model=SimKoreSyncResult)
