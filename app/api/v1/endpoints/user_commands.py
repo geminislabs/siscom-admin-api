@@ -351,6 +351,36 @@ async def sync_user_command(
 
     command = _find_user_command_for_org(db, command_id, current_user.organization_id)
     if not command:
+        diagnostic_command = (
+            db.query(Command).filter(Command.command_id == command_id).first()
+        )
+        if not diagnostic_command:
+            logger.warning(
+                "[USER COMMANDS SYNC] command_id=%s no existe en commands",
+                command_id,
+            )
+        else:
+            diagnostic_device = (
+                db.query(Device)
+                .filter(Device.device_id == diagnostic_command.device_id)
+                .first()
+            )
+            diagnostic_org_id = (
+                str(diagnostic_device.organization_id) if diagnostic_device else None
+            )
+            source_id = None
+            if isinstance(diagnostic_command.command_metadata, dict):
+                source_id = diagnostic_command.command_metadata.get("source_id")
+
+            logger.warning(
+                "[USER COMMANDS SYNC] command_id=%s no accesible por filtros. "
+                "request_org_id=%s command_org_id=%s source_id=%s",
+                command_id,
+                current_user.organization_id,
+                diagnostic_org_id,
+                source_id,
+            )
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Comando user-command no encontrado",
