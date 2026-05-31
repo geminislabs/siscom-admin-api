@@ -32,6 +32,7 @@ from app.core.security import verify_cognito_token
 from app.db.session import get_db
 from app.services.messaging.kafka_producer import (
     GeofencesKafkaProducer,
+    MobilityKafkaProducer,
     RulesKafkaProducer,
     UserDevicesKafkaProducer,
 )
@@ -42,6 +43,7 @@ security = HTTPBearer()
 _rules_kafka_producer: Optional[RulesKafkaProducer] = None
 _geofences_kafka_producer: Optional[GeofencesKafkaProducer] = None
 _user_devices_kafka_producer: Optional[UserDevicesKafkaProducer] = None
+_mobility_kafka_producer: Optional[MobilityKafkaProducer] = None
 
 
 def get_rules_kafka_producer() -> RulesKafkaProducer:
@@ -68,6 +70,14 @@ def get_geofences_kafka_producer() -> GeofencesKafkaProducer:
     return _geofences_kafka_producer
 
 
+def get_mobility_kafka_producer() -> MobilityKafkaProducer:
+    """Retorna una instancia singleton del producer de mobility."""
+    global _mobility_kafka_producer
+    if _mobility_kafka_producer is None:
+        _mobility_kafka_producer = MobilityKafkaProducer()
+    return _mobility_kafka_producer
+
+
 def close_rules_kafka_producer() -> None:
     global _rules_kafka_producer
     if _rules_kafka_producer is not None:
@@ -87,6 +97,13 @@ def close_geofences_kafka_producer() -> None:
     if _geofences_kafka_producer is not None:
         _geofences_kafka_producer.close()
         _geofences_kafka_producer = None
+
+
+def close_mobility_kafka_producer() -> None:
+    global _mobility_kafka_producer
+    if _mobility_kafka_producer is not None:
+        _mobility_kafka_producer.close()
+        _mobility_kafka_producer = None
 
 
 @dataclass

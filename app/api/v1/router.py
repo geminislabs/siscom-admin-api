@@ -44,6 +44,8 @@ from app.api.v1.endpoints import (
     device_events,
     devices,
     geofences,
+    mobility_devices,
+    mobility_locations,
     orders,
     organization_capabilities,
     organization_users,
@@ -127,6 +129,16 @@ api_router.include_router(
 )
 api_router.include_router(
     user_devices.router, prefix="/user-devices", tags=["user-devices"]
+)
+api_router.include_router(
+    mobility_devices.router,
+    prefix="/mobility/devices",
+    tags=["mobility-devices"],
+)
+api_router.include_router(
+    mobility_locations.router,
+    prefix="/mobility/locations",
+    tags=["mobility-locations"],
 )
 api_router.include_router(user_units.router, prefix="/user-units", tags=["user-units"])
 api_router.include_router(

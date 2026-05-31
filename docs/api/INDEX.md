@@ -163,6 +163,19 @@ Gestión de dispositivos móviles de usuario para notificaciones push (SNS).
 - `POST /api/v1/user-devices/register` - Registrar/actualizar dispositivo push
 - `POST /api/v1/user-devices/deactivate` - Desactivar dispositivo push
 
+### [mobility-devices.md](./mobility-devices.md)
+Registro de dispositivos de movilidad asociados al usuario autenticado.
+
+**Endpoints:**
+- `GET /api/v1/mobility/devices` - Listar dispositivos de movilidad
+- `POST /api/v1/mobility/devices` - Registrar dispositivo de movilidad
+
+### [mobility-locations.md](./mobility-locations.md)
+Ingesta de ubicaciones de movilidad y publicación al tópico Kafka de movilidad.
+
+**Endpoints:**
+- `POST /api/v1/mobility/locations` - Publicar ubicación enriquecida con `received_at`
+
 ### [device-events.md](./device-events.md)
 Historial de eventos y auditoría de dispositivos.
 

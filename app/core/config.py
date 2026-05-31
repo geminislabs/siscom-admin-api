@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     KAFKA_RULES_UPDATES_TOPIC: str = "alert-rules-updates"
     KAFKA_GEOFENCES_UPDATES_TOPIC: str = "geofences-updates"
     KAFKA_USER_DEVICES_UPDATES_TOPIC: str = "user-devices-updates"
+    KAFKA_MOBILITY_TOPIC: str = "mobility-locations-raw"
     KAFKA_RULES_UPDATES_GROUP_ID: str = "alert-rules-updates-group"
     KAFKA_SASL_USERNAME: Optional[str] = "events-alert-consumer"
     KAFKA_SASL_PASSWORD: Optional[str] = "eventsalertconsumerpassword"

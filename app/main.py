@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware  # type: ignore[attr-defined]
 
 from app.api.deps import (
     close_geofences_kafka_producer,
+    close_mobility_kafka_producer,
     close_rules_kafka_producer,
     close_user_devices_kafka_producer,
 )
@@ -29,6 +30,7 @@ async def lifespan(_: FastAPI):
     close_rules_kafka_producer()
     close_geofences_kafka_producer()
     close_user_devices_kafka_producer()
+    close_mobility_kafka_producer()
 
 
 app = FastAPI(
