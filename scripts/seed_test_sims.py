@@ -11,8 +11,8 @@ Uso:
     python scripts/seed_test_sims.py
 """
 
-import sys
 import os
+import sys
 import uuid
 from datetime import datetime
 
@@ -66,22 +66,22 @@ TEST_SIMS = [
 def seed_test_sims():
     """Crea SIMs de prueba si no existen."""
     db = SessionLocal()
-    
+
     try:
         created_count = 0
         skipped_count = 0
-        
+
         for sim_data in TEST_SIMS:
             # Verificar si ya existe por ICCID
-            existing = db.query(SimCard).filter(
-                SimCard.iccid == sim_data["iccid"]
-            ).first()
-            
+            existing = (
+                db.query(SimCard).filter(SimCard.iccid == sim_data["iccid"]).first()
+            )
+
             if existing:
                 print(f"  [SKIP] SIM {sim_data['iccid']} ya existe")
                 skipped_count += 1
                 continue
-            
+
             # Crear SimCard (sin device_id = disponible para asignación)
             sim_card = SimCard(
                 sim_id=uuid.uuid4(),
@@ -103,7 +103,7 @@ def seed_test_sims():
             )
             db.add(sim_card)
             db.flush()  # Para obtener el sim_id
-            
+
             # Crear SimKoreProfile
             kore_profile = SimKoreProfile(
                 sim_id=sim_card.sim_id,
@@ -113,20 +113,22 @@ def seed_test_sims():
                 updated_at=datetime.utcnow(),
             )
             db.add(kore_profile)
-            
-            print(f"  [OK] SIM {sim_data['iccid']} creada (KORE ID: {sim_data['kore_sim_id'][:20]}...)")
+
+            print(
+                f"  [OK] SIM {sim_data['iccid']} creada (KORE ID: {sim_data['kore_sim_id'][:20]}...)"
+            )
             created_count += 1
-        
+
         db.commit()
-        
+
         print("\n" + "=" * 50)
         print(f"Resultado: {created_count} SIMs creadas, {skipped_count} omitidas")
         print("=" * 50)
-        
+
         # Mostrar SIMs disponibles
         available = db.query(SimCard).filter(SimCard.device_id.is_(None)).count()
         print(f"\nSIMs disponibles para asignación: {available}")
-        
+
     except Exception as e:
         db.rollback()
         print(f"\n[ERROR] {e}")

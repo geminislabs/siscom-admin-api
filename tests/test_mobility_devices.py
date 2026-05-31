@@ -69,7 +69,7 @@ def test_register_mobility_device_rejects_notification_device_from_other_user(
     assert "notification_device_id" in response.json()["detail"]
 
 
-def test_register_mobility_device_rejects_duplicate_notification_device_id(
+def test_register_mobility_device_upsert_by_notification_device_id(
     authenticated_client, db_session, test_user_data
 ):
     notification_device = UserDevice(
@@ -96,12 +96,91 @@ def test_register_mobility_device_rejects_duplicate_notification_device_id(
     payload = {
         "device_type": "WEARABLE",
         "platform": "android",
+        "device_name": "Wearable Update",
+        "notification_device_id": str(notification_device.id),
+    }
+
+    response = authenticated_client.post("/api/v1/mobility/devices", json=payload)
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["id"] == str(first.id)
+    assert data["device_type"] == "WEARABLE"
+    assert data["device_name"] == "Wearable Update"
+
+
+def test_register_mobility_device_upsert_by_external_device_id(
+    authenticated_client, db_session, test_user_data
+):
+    original = MobilityDevice(
+        user_id=test_user_data.id,
+        device_type="PHONE",
+        platform="android",
+        external_device_id="android-id-upsert",
+        app_version="1.0.0",
+        mobility_metadata={"manufacturer": "Google"},
+    )
+    db_session.add(original)
+    db_session.commit()
+    db_session.refresh(original)
+
+    payload = {
+        "device_type": "PHONE",
+        "platform": "android",
+        "external_device_id": "android-id-upsert",
+        "app_version": "2.0.0",
+        "metadata": {"manufacturer": "Google", "updated": True},
+    }
+
+    response = authenticated_client.post("/api/v1/mobility/devices", json=payload)
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["id"] == str(original.id)
+    assert data["app_version"] == "2.0.0"
+    assert data["metadata"]["updated"] is True
+
+
+def test_register_mobility_device_upsert_conflict_on_notification_device_id(
+    authenticated_client, db_session, test_user_data
+):
+    notification_device = UserDevice(
+        id=uuid4(),
+        user_id=test_user_data.id,
+        device_token="token-conflict",
+        platform="android",
+        endpoint_arn="arn:aws:sns:us-east-1:123456789012:endpoint/GCM/app/xyz2",
+        is_active=True,
+    )
+    db_session.add(notification_device)
+    db_session.flush()
+
+    first = MobilityDevice(
+        user_id=test_user_data.id,
+        device_type="PHONE",
+        platform="android",
+        notification_device_id=notification_device.id,
+        mobility_metadata={},
+    )
+    second = MobilityDevice(
+        user_id=test_user_data.id,
+        device_type="WATCH",
+        platform="android",
+        external_device_id="external-conflict",
+        mobility_metadata={},
+    )
+    db_session.add(first)
+    db_session.add(second)
+    db_session.commit()
+
+    payload = {
+        "device_type": "WATCH",
+        "platform": "android",
+        "external_device_id": "external-conflict",
         "notification_device_id": str(notification_device.id),
     }
 
     response = authenticated_client.post("/api/v1/mobility/devices", json=payload)
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert "No fue posible registrar" in response.json()["detail"]
+    assert "registrar/actualizar" in response.json()["detail"]
 
 
 def test_register_mobility_device_invalid_device_type(authenticated_client):

@@ -62,7 +62,11 @@ Authorization: Bearer <access_token>
 
 **POST** `/api/v1/mobility/devices`
 
-Crea un registro de dispositivo para el usuario autenticado.
+Registra o actualiza (upsert) un dispositivo para el usuario autenticado.
+
+- Si no existe coincidencia, crea registro nuevo (`201 Created`).
+- Si existe por `external_device_id` del mismo usuario, actualiza y retorna `200 OK`.
+- Si no hay `external_device_id`, intenta coincidencia por `notification_device_id` del mismo usuario.
 
 #### Headers
 
@@ -100,7 +104,7 @@ Authorization: Bearer <access_token>
 - `metadata` (objeto, opcional, default `{}`): información adicional libre en JSON.
 - `notification_device_id` (uuid, opcional): ID de `user_devices` del mismo usuario.
 
-#### Response 201 Created
+#### Response 201 Created (creación)
 
 ```json
 {
@@ -123,6 +127,30 @@ Authorization: Bearer <access_token>
 }
 ```
 
+#### Response 200 OK (actualización/upsert)
+
+```json
+{
+  "id": "57479658-86f4-49b4-95eb-37f9d2d994d2",
+  "user_id": "9a4a3dbf-5ba7-4550-8f14-89db1d58a8e8",
+  "device_type": "PHONE",
+  "platform": "android",
+  "device_name": "Pixel 8",
+  "external_device_id": "android-id-123",
+  "app_version": "2.0.0",
+  "os_version": "Android 15",
+  "last_seen_at": "2026-05-30T17:20:00.000Z",
+  "is_active": true,
+  "metadata": {
+    "manufacturer": "Google",
+    "updated": true
+  },
+  "created_at": "2026-05-30T17:10:44.215Z",
+  "updated_at": "2026-05-30T17:20:00.000Z",
+  "notification_device_id": "8f949f43-23dd-4a7b-9d7f-6e85017a7f80"
+}
+```
+
 #### Errores Comunes
 
 - **401 Unauthorized**: token inválido o ausente.
@@ -136,4 +164,5 @@ Authorization: Bearer <access_token>
 
 - `user_id` siempre se resuelve desde el usuario autenticado; no se acepta en el request.
 - Si se envía `notification_device_id`, se valida pertenencia al mismo usuario para evitar vinculaciones cruzadas.
+- Upsert prioritiza coincidencia por `external_device_id`; sin este campo, intenta por `notification_device_id`.
 - La unicidad de `notification_device_id` sigue la regla de BD (`UNIQUE WHERE notification_device_id IS NOT NULL`).

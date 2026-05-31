@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -56,10 +56,11 @@ def list_mobility_devices(
 @router.post("", response_model=MobilityDeviceOut, status_code=status.HTTP_201_CREATED)
 def register_mobility_device(
     payload: MobilityDeviceCreateIn,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
 ):
-    """Registra un dispositivo de movilidad para el usuario autenticado."""
+    """Registra o actualiza (upsert) un dispositivo de movilidad del usuario."""
     if payload.notification_device_id:
         notification_device = (
             db.query(UserDevice)
@@ -76,21 +77,60 @@ def register_mobility_device(
             )
 
     now = datetime.now(timezone.utc)
-    device = MobilityDevice(
-        user_id=current_user.id,
-        device_type=payload.device_type,
-        platform=payload.platform,
-        device_name=payload.device_name,
-        external_device_id=payload.external_device_id,
-        app_version=payload.app_version,
-        os_version=payload.os_version,
-        last_seen_at=payload.last_seen_at or now,
-        is_active=payload.is_active,
-        mobility_metadata=payload.metadata,
-        updated_at=now,
-        notification_device_id=payload.notification_device_id,
-    )
-    db.add(device)
+
+    device: MobilityDevice | None = None
+    if payload.external_device_id:
+        device = (
+            db.query(MobilityDevice)
+            .filter(
+                MobilityDevice.user_id == current_user.id,
+                MobilityDevice.external_device_id == payload.external_device_id,
+            )
+            .first()
+        )
+
+    if device is None and payload.notification_device_id:
+        device = (
+            db.query(MobilityDevice)
+            .filter(
+                MobilityDevice.user_id == current_user.id,
+                MobilityDevice.notification_device_id == payload.notification_device_id,
+            )
+            .first()
+        )
+
+    created_new = device is None
+    if created_new:
+        device = MobilityDevice(
+            user_id=current_user.id,
+            device_type=payload.device_type,
+            platform=payload.platform,
+            device_name=payload.device_name,
+            external_device_id=payload.external_device_id,
+            app_version=payload.app_version,
+            os_version=payload.os_version,
+            last_seen_at=payload.last_seen_at or now,
+            is_active=payload.is_active,
+            mobility_metadata=payload.metadata,
+            updated_at=now,
+            notification_device_id=payload.notification_device_id,
+        )
+        db.add(device)
+    else:
+        device.device_type = payload.device_type
+        device.platform = payload.platform
+        device.device_name = payload.device_name
+        device.external_device_id = payload.external_device_id
+        device.app_version = payload.app_version
+        device.os_version = payload.os_version
+        device.last_seen_at = payload.last_seen_at or now
+        device.is_active = payload.is_active
+        device.mobility_metadata = payload.metadata
+        device.updated_at = now
+        if payload.notification_device_id is not None:
+            device.notification_device_id = payload.notification_device_id
+
+        db.add(device)
 
     try:
         db.commit()
@@ -99,10 +139,13 @@ def register_mobility_device(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "No fue posible registrar el dispositivo de movilidad. "
+                "No fue posible registrar/actualizar el dispositivo de movilidad. "
                 "Valida duplicados de notification_device_id y llaves foráneas."
             ),
         ) from exc
 
     db.refresh(device)
+    response.status_code = (
+        status.HTTP_201_CREATED if created_new else status.HTTP_200_OK
+    )
     return _build_mobility_device_out(device)

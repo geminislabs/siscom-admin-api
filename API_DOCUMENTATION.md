@@ -1009,12 +1009,14 @@ Lista los dispositivos de movilidad del usuario autenticado.
 
 #### `POST /api/v1/mobility/devices`
 
-**Registrar dispositivo de movilidad**
+**Registrar/actualizar dispositivo de movilidad (upsert)**
 
-Registra un dispositivo de movilidad asociado al usuario autenticado.
+Registra o actualiza un dispositivo de movilidad asociado al usuario autenticado.
 
 - Persiste en `mobility.devices`.
 - Puede vincularse opcionalmente con un `user_devices.id` vía `notification_device_id`.
+- Si coincide por `external_device_id` del usuario, actualiza y retorna `200 OK`.
+- Si no existe coincidencia, crea y retorna `201 Created`.
 
 **Headers:** `Authorization: Bearer {access_token}`
 
@@ -1035,7 +1037,7 @@ Registra un dispositivo de movilidad asociado al usuario autenticado.
 }
 ```
 
-**Response:** `201 Created`
+**Response:** `201 Created` (creación) o `200 OK` (actualización)
 
 ```json
 {

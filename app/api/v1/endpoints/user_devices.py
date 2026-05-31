@@ -179,6 +179,7 @@ def register_user_device(
                 )
 
                 return DeviceRegisterOut(
+                    id=device.id,
                     device_token=device.device_token,
                     platform=device.platform,
                     endpoint_arn=device.endpoint_arn,
@@ -243,6 +244,7 @@ def register_user_device(
         )
 
         return DeviceRegisterOut(
+            id=device.id,
             device_token=device.device_token,
             platform=device.platform,
             endpoint_arn=device.endpoint_arn,

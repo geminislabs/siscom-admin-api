@@ -155,7 +155,9 @@ def test_list_sims_returns_all(client, db_session):
     db_session.add(device)
     db_session.flush()
 
-    sim1 = SimCard(device_id="DEV001", iccid="89340001", carrier="KORE", status="active")
+    sim1 = SimCard(
+        device_id="DEV001", iccid="89340001", carrier="KORE", status="active"
+    )
     sim2 = SimCard(device_id=None, iccid="89340002", carrier="KORE", status="active")
     db_session.add_all([sim1, sim2])
     db_session.commit()

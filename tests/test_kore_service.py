@@ -137,7 +137,9 @@ def test_list_sims_single_page(monkeypatch):
     monkeypatch.setattr(svc, "client_id", "id")
     monkeypatch.setattr(svc, "client_secret", "sec")
     monkeypatch.setattr(svc, "auth_url", "https://auth.example/oauth")
-    monkeypatch.setattr(svc, "sims_url", "https://supersim.api.korewireless.com/v1/Sims")
+    monkeypatch.setattr(
+        svc, "sims_url", "https://supersim.api.korewireless.com/v1/Sims"
+    )
     monkeypatch.setattr(svc, "sms_url", "https://sms.example/send")
     svc._cached_token = "cached"
 
@@ -148,9 +150,7 @@ def test_list_sims_single_page(monkeypatch):
             "key": "sims",
             "next_page_url": None,
         },
-        "sims": [
-            {"sid": "HS123", "iccid": "89883070000078034798", "status": "new"}
-        ],
+        "sims": [{"sid": "HS123", "iccid": "89883070000078034798", "status": "new"}],
     }
 
     inner = MagicMock()
@@ -173,7 +173,9 @@ def test_list_sims_paginated(monkeypatch):
     monkeypatch.setattr(svc, "client_id", "id")
     monkeypatch.setattr(svc, "client_secret", "sec")
     monkeypatch.setattr(svc, "auth_url", "https://auth.example/oauth")
-    monkeypatch.setattr(svc, "sims_url", "https://supersim.api.korewireless.com/v1/Sims")
+    monkeypatch.setattr(
+        svc, "sims_url", "https://supersim.api.korewireless.com/v1/Sims"
+    )
     monkeypatch.setattr(svc, "sms_url", "https://sms.example/send")
     svc._cached_token = "cached"
 
