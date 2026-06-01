@@ -7,7 +7,6 @@ from typing import Optional
 from sqlalchemy import Column, DateTime, Integer, Text
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, SQLModel
 
 from app.core.pg_enums import gateway_event_status_pg, payment_gateway_pg

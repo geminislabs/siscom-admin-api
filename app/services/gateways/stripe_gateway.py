@@ -68,7 +68,7 @@ class StripeGateway:
                 PaymentMethod.gateway == GATEWAY,
                 PaymentMethod.external_token == external_token,
                 PaymentMethod.account_id == account_id,
-                PaymentMethod.is_active == True,
+                PaymentMethod.is_active,
             )
             .first()
         )
@@ -168,7 +168,7 @@ class StripeGateway:
             db, account.id, account.billing_email or "", account.name
         )
 
-        plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active == True).first()
+        plan = db.query(Plan).filter(Plan.id == plan_id, Plan.is_active).first()
         if not plan:
             raise HTTPException(404, "Plan no encontrado o inactivo")
 
@@ -250,8 +250,8 @@ class StripeGateway:
             .filter(
                 PaymentMethod.account_id == account.id,
                 PaymentMethod.gateway == GATEWAY,
-                PaymentMethod.is_default == True,
-                PaymentMethod.is_active == True,
+                PaymentMethod.is_default,
+                PaymentMethod.is_active,
             )
             .first()
         )
@@ -421,7 +421,7 @@ class StripeGateway:
             .filter(
                 PaymentMethod.account_id == account.id,
                 PaymentMethod.gateway == GATEWAY,
-                PaymentMethod.is_active == True,
+                PaymentMethod.is_active,
             )
             .order_by(PaymentMethod.is_default.desc(), PaymentMethod.created_at.desc())
             .all()
@@ -438,7 +438,7 @@ class StripeGateway:
                 .filter(
                     PaymentMethod.account_id == account.id,
                     PaymentMethod.gateway == GATEWAY,
-                    PaymentMethod.is_active == True,
+                    PaymentMethod.is_active,
                 )
                 .count()
             )
@@ -468,7 +468,7 @@ class StripeGateway:
         db.query(PaymentMethod).filter(
             PaymentMethod.account_id == account.id,
             PaymentMethod.gateway == GATEWAY,
-            PaymentMethod.is_default == True,
+            PaymentMethod.is_default,
         ).update({"is_default": False, "updated_at": now})
 
         try:
@@ -611,7 +611,7 @@ class StripeGateway:
                     PaymentMethod.account_id == cust.account_id,
                     PaymentMethod.gateway == GATEWAY,
                     PaymentMethod.fingerprint == fingerprint,
-                    PaymentMethod.is_active == True,
+                    PaymentMethod.is_active,
                 )
                         .first()
         ):
@@ -631,7 +631,7 @@ class StripeGateway:
             .filter(
                 PaymentMethod.account_id == cust.account_id,
                 PaymentMethod.gateway == GATEWAY,
-                PaymentMethod.is_active == True,
+                PaymentMethod.is_active,
             )
             .count()
         )

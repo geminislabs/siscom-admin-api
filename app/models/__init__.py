@@ -47,10 +47,13 @@ from app.models.command import Command
 from app.models.device import Device, DeviceEvent
 
 # Device Services (LEGACY - no usar en código nuevo)
-from app.models.device_service import DeviceService, DeviceServiceStatus, SubscriptionType
+from app.models.device_service import (
+    DeviceService,
+    DeviceServiceStatus,
+    SubscriptionType,
+)
 from app.models.geofence import Geofence, GeofenceCell
 from app.models.invitation import Invitation
-
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.mobility_device import MobilityDevice
 from app.models.order import Order, OrderStatus

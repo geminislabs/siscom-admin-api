@@ -1,5 +1,6 @@
 # app/models/enums/payment_method_type.py
 from __future__ import annotations
+
 import enum
 
 

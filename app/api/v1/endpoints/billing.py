@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_organization_id, get_current_user_full
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.invoice import Invoice, InvoiceStatus
+from app.models.invoice import Invoice
 from app.models.organization import Organization
 from app.models.payment import Payment, PaymentStatus
 from app.models.plan import Plan
@@ -25,9 +25,11 @@ from app.schemas.billing import (
     CurrentPlanInfo,
     InvoiceOut,
     InvoicesListOut,
-    InvoiceStatus as SchemaInvoiceStatus,
     PaymentOut,
     PaymentsListOut,
+)
+from app.schemas.billing import (
+    InvoiceStatus as SchemaInvoiceStatus,
 )
 from app.schemas.invoice import InvoiceDetailOut, PaymentBrief
 from app.services.organization import OrganizationService

@@ -13,7 +13,11 @@ from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, SQLModel
 
-from app.core.pg_enums import payment_gateway_pg, payment_method_type_pg, payment_status_pg
+from app.core.pg_enums import (
+    payment_gateway_pg,
+    payment_method_type_pg,
+    payment_status_pg,
+)
 
 
 class PaymentStatus(str, enum.Enum):

@@ -12,7 +12,6 @@ from app.api.deps import (
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging_config import setup_logging
-from app.services.gateways import initialize_gateways
 from app.services.health import check_kafka_accessibility
 from app.startup import print_startup_banner
 
