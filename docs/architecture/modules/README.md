@@ -68,9 +68,12 @@ Esta documentación soporta diagramas de contenedores y componentes C4.
 
 | Endpoint | Método | Uso |
 |----------|--------|-----|
+| `KORE_API` | BASE | URL base para recursos SuperSIM (ej: `/Sims`) |
 | `KORE_API_AUTH` | POST | Obtener access token |
 | `KORE_API_SMS` | POST | Enviar comando SMS a SIM |
 | `{sms_url}` | GET | Consultar estado de SMS enviado |
+
+**Nota:** La sincronización de SIMs usa `{KORE_API}Sims` mediante `POST /api/v1/sims/sync/kore`.
 
 ---
 

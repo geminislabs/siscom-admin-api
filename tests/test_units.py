@@ -23,7 +23,9 @@ def test_create_unit_minimal_creates_default_profile(authenticated_client, db_se
     assert data["description"] == payload["description"]
 
     unit_id = UUID(data["id"])
-    profile = db_session.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
+    profile = (
+        db_session.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
+    )
 
     assert profile is not None
     assert profile.unit_type == "vehicle"
@@ -61,7 +63,9 @@ def test_create_unit_extended_camel_case_creates_profiles_and_device_assignment(
     data = response.json()
     unit_id = UUID(data["id"])
 
-    profile = db_session.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
+    profile = (
+        db_session.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
+    )
     assert profile is not None
     assert profile.icon_type == payload["iconType"]
     assert profile.brand == payload["brand"]
@@ -70,7 +74,9 @@ def test_create_unit_extended_camel_case_creates_profiles_and_device_assignment(
     assert profile.year == payload["year"]
 
     vehicle_profile = (
-        db_session.query(VehicleProfile).filter(VehicleProfile.unit_id == unit_id).first()
+        db_session.query(VehicleProfile)
+        .filter(VehicleProfile.unit_id == unit_id)
+        .first()
     )
     assert vehicle_profile is not None
     assert vehicle_profile.plate == payload["plate"]
@@ -108,7 +114,9 @@ def test_create_unit_extended_snake_case_supported(authenticated_client, db_sess
     data = response.json()
     unit_id = UUID(data["id"])
 
-    profile = db_session.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
+    profile = (
+        db_session.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
+    )
     assert profile is not None
     assert profile.icon_type == payload["icon_type"]
     assert profile.brand == payload["brand"]
@@ -117,7 +125,9 @@ def test_create_unit_extended_snake_case_supported(authenticated_client, db_sess
     assert profile.year == payload["year"]
 
     vehicle_profile = (
-        db_session.query(VehicleProfile).filter(VehicleProfile.unit_id == unit_id).first()
+        db_session.query(VehicleProfile)
+        .filter(VehicleProfile.unit_id == unit_id)
+        .first()
     )
     assert vehicle_profile is not None
     assert vehicle_profile.plate == payload["plate"]

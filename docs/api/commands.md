@@ -4,6 +4,8 @@
 
 Endpoints para gestionar comandos enviados a dispositivos GPS/IoT. Permite crear comandos, consultar su estado y obtener el historial de comandos por dispositivo.
 
+> Nota: Para comandos críticos iniciados por usuario master sobre unidades (ENGINE_STOP/ENGINE_RESUME con reglas de confirmation y password), usar `/api/v1/user-commands`. Ver [API de User Commands](./user-commands.md).
+
 ---
 
 ## ⚠️ ADVERTENCIA DE SEGURIDAD

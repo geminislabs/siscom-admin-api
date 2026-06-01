@@ -34,13 +34,14 @@ class SimCard(SQLModel, table=True):
         )
     )
 
-    device_id: str = Field(
+    device_id: Optional[str] = Field(
+        default=None,
         sa_column=Column(
             Text,
             ForeignKey("devices.device_id", ondelete="CASCADE"),
-            nullable=False,
+            nullable=True,
             unique=True,  # Constraint: unique_active_sim_per_device
-        )
+        ),
     )
 
     carrier: str = Field(

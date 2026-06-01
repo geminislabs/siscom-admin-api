@@ -28,6 +28,7 @@ from app.models.user_unit import UserUnit
 from app.schemas.telemetry import (
     AlertsOut,
     AvgMinMaxOut,
+    BatchMetricName,
     BatteryOut,
     CommQualityOut,
     Granularity,
@@ -38,6 +39,24 @@ from app.schemas.telemetry import (
     TelemetryDeviceItemOut,
     TelemetryPointOut,
 )
+
+BASE_METRICS = {
+    "speed",
+    "main_battery",
+    "backup_battery",
+    "alerts",
+    "comm_quality",
+    "samples",
+    "signal",
+    "satellites",
+    "odometer",
+}
+
+INTELLIGENCE_METRICS = {
+    "fuel_consumed_liters",
+    "moving_minutes",
+    "idle_minutes",
+}
 
 # ---------------------------------------------------------------------------
 # Control de acceso
@@ -257,6 +276,74 @@ def _query_single_day(
     return [_map_row_to_point(row, metrics) for row in rows]
 
 
+def _query_single_hour_intelligence(
+    db: Session,
+    device_id: str,
+    from_ts: datetime,
+    to_ts: datetime,
+    metrics: Sequence[BatchMetricName],
+) -> List[TelemetryPointOut]:
+    """Query para granularity=hour sobre un único dispositivo en tabla intelligence."""
+    metric_cols = _build_intelligence_select_columns(metrics)
+    if not metric_cols:
+        return []
+
+    sql = text(
+        f"""
+        SELECT
+            bucket,
+            {metric_cols}
+        FROM telemetry_intelligence_hourly_stats
+        WHERE device_id = :device_id
+          AND bucket >= :from_ts
+          AND bucket < :to_ts
+        GROUP BY bucket
+        ORDER BY bucket ASC
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {"device_id": device_id, "from_ts": from_ts, "to_ts": to_ts},
+    ).fetchall()
+
+    return [_map_row_to_point(row, metrics) for row in rows]
+
+
+def _query_single_day_intelligence(
+    db: Session,
+    device_id: str,
+    from_ts: datetime,
+    to_ts: datetime,
+    metrics: Sequence[BatchMetricName],
+) -> List[TelemetryPointOut]:
+    """Query para granularity=day sobre un único dispositivo en tabla intelligence."""
+    metric_cols = _build_intelligence_select_columns(metrics)
+    if not metric_cols:
+        return []
+
+    sql = text(
+        f"""
+        SELECT
+            date_trunc('day', bucket) AS bucket,
+            {metric_cols}
+        FROM telemetry_intelligence_hourly_stats
+        WHERE device_id = :device_id
+          AND bucket >= :from_ts
+          AND bucket < :to_ts
+        GROUP BY date_trunc('day', bucket)
+        ORDER BY bucket ASC
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {"device_id": device_id, "from_ts": from_ts, "to_ts": to_ts},
+    ).fetchall()
+
+    return [_map_row_to_point(row, metrics) for row in rows]
+
+
 # ---------------------------------------------------------------------------
 # Queries multi-dispositivo
 # ---------------------------------------------------------------------------
@@ -285,6 +372,57 @@ def _query_multi_hour(
         WHERE device_id = ANY(:device_ids)
           AND bucket >= :from_ts
           AND bucket < :to_ts
+                GROUP BY device_id, bucket
+        ORDER BY device_id ASC, bucket ASC
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {"device_ids": list(device_ids), "from_ts": from_ts, "to_ts": to_ts},
+    ).fetchall()
+
+    return _group_rows_by_device(rows, device_ids, metrics)
+
+
+def _build_intelligence_select_columns(metrics: Sequence[BatchMetricName]) -> str:
+    cols: List[str] = []
+
+    if "fuel_consumed_liters" in metrics:
+        cols.append("SUM(fuel_consumed_liters) AS fuel_consumed_liters")
+
+    if "moving_minutes" in metrics:
+        cols.append("SUM(moving_minutes) AS moving_minutes")
+
+    if "idle_minutes" in metrics:
+        cols.append("SUM(idle_minutes) AS idle_minutes")
+
+    return ",\n            ".join(cols)
+
+
+def _query_multi_hour_intelligence(
+    db: Session,
+    device_ids: Sequence[str],
+    from_ts: datetime,
+    to_ts: datetime,
+    metrics: Sequence[BatchMetricName],
+) -> Dict[str, List[TelemetryPointOut]]:
+    """Query batch para métricas de telemetry_intelligence_hourly_stats con granularity=hour."""
+    metric_cols = _build_intelligence_select_columns(metrics)
+    if not metric_cols:
+        return {d: [] for d in device_ids}
+
+    sql = text(
+        f"""
+        SELECT
+            device_id,
+            bucket,
+            {metric_cols}
+        FROM telemetry_intelligence_hourly_stats
+        WHERE device_id = ANY(:device_ids)
+          AND bucket >= :from_ts
+          AND bucket < :to_ts
+        GROUP BY device_id, bucket
         ORDER BY device_id ASC, bucket ASC
         """
     )
@@ -332,12 +470,47 @@ def _query_multi_day(
     return _group_rows_by_device(rows, device_ids, metrics)
 
 
+def _query_multi_day_intelligence(
+    db: Session,
+    device_ids: Sequence[str],
+    from_ts: datetime,
+    to_ts: datetime,
+    metrics: Sequence[BatchMetricName],
+) -> Dict[str, List[TelemetryPointOut]]:
+    """Query batch para métricas de telemetry_intelligence_hourly_stats con granularity=day."""
+    metric_cols = _build_intelligence_select_columns(metrics)
+    if not metric_cols:
+        return {d: [] for d in device_ids}
+
+    sql = text(
+        f"""
+        SELECT
+            device_id,
+            date_trunc('day', bucket) AS bucket,
+            {metric_cols}
+        FROM telemetry_intelligence_hourly_stats
+        WHERE device_id = ANY(:device_ids)
+          AND bucket >= :from_ts
+          AND bucket < :to_ts
+        GROUP BY device_id, date_trunc('day', bucket)
+        ORDER BY device_id ASC, bucket ASC
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {"device_ids": list(device_ids), "from_ts": from_ts, "to_ts": to_ts},
+    ).fetchall()
+
+    return _group_rows_by_device(rows, device_ids, metrics)
+
+
 # ---------------------------------------------------------------------------
 # Mapeo de filas a schemas semánticos
 # ---------------------------------------------------------------------------
 
 
-def _map_row_to_point(row, metrics: Sequence[MetricName]) -> TelemetryPointOut:
+def _map_row_to_point(row, metrics: Sequence[str]) -> TelemetryPointOut:
     """
     Convierte una fila de resultado SQL a TelemetryPointOut.
     Los campos de métricas no pedidas quedan como None (excluídos en la respuesta
@@ -410,6 +583,19 @@ def _map_row_to_point(row, metrics: Sequence[MetricName]) -> TelemetryPointOut:
             total_distance_mt = last_odometer - first_odometer
         odometer_out = OdometerOut(total_distance_mt=total_distance_mt)
 
+    fuel_consumed_liters: Optional[float] = None
+    moving_minutes: Optional[float] = None
+    idle_minutes: Optional[float] = None
+
+    if "fuel_consumed_liters" in metrics:
+        fuel_consumed_liters = mapping.get("fuel_consumed_liters")
+
+    if "moving_minutes" in metrics:
+        moving_minutes = mapping.get("moving_minutes")
+
+    if "idle_minutes" in metrics:
+        idle_minutes = mapping.get("idle_minutes")
+
     return TelemetryPointOut(
         bucket=mapping["bucket"],
         speed=speed_out,
@@ -421,13 +607,39 @@ def _map_row_to_point(row, metrics: Sequence[MetricName]) -> TelemetryPointOut:
         signal=signal_out,
         satellites=satellites_out,
         odometer=odometer_out,
+        fuel_consumed_liters=fuel_consumed_liters,
+        moving_minutes=moving_minutes,
+        idle_minutes=idle_minutes,
     )
+
+
+def _merge_series_by_bucket(
+    base_series: List[TelemetryPointOut],
+    extra_series: List[TelemetryPointOut],
+) -> List[TelemetryPointOut]:
+    """Fusiona dos series por bucket sin perder métricas ya calculadas."""
+    merged: Dict[datetime, TelemetryPointOut] = {p.bucket: p for p in base_series}
+
+    for extra in extra_series:
+        current = merged.get(extra.bucket)
+        if current is None:
+            merged[extra.bucket] = extra
+            continue
+
+        if extra.fuel_consumed_liters is not None:
+            current.fuel_consumed_liters = extra.fuel_consumed_liters
+        if extra.moving_minutes is not None:
+            current.moving_minutes = extra.moving_minutes
+        if extra.idle_minutes is not None:
+            current.idle_minutes = extra.idle_minutes
+
+    return sorted(merged.values(), key=lambda p: p.bucket)
 
 
 def _group_rows_by_device(
     rows,
     device_ids: Sequence[str],
-    metrics: Sequence[MetricName],
+    metrics: Sequence[str],
 ) -> Dict[str, List[TelemetryPointOut]]:
     """Agrupa filas por device_id, preservando orden original de device_ids."""
     result: Dict[str, List[TelemetryPointOut]] = {d: [] for d in device_ids}
@@ -450,7 +662,7 @@ def get_telemetry_single(
     from_ts: datetime,
     to_ts: datetime,
     granularity: Granularity,
-    metrics: List[MetricName],
+    metrics: List[BatchMetricName],
 ) -> List[TelemetryPointOut]:
     """
     Retorna la serie temporal de telemetría para un dispositivo.
@@ -458,10 +670,45 @@ def get_telemetry_single(
     """
     validate_device_access(db, user, device_id)
 
+    base_metrics = [m for m in metrics if m in BASE_METRICS]
+    intelligence_metrics = [m for m in metrics if m in INTELLIGENCE_METRICS]
+
     if granularity == "hour":
-        return _query_single_hour(db, device_id, from_ts, to_ts, metrics)
+        base_series = (
+            _query_single_hour(db, device_id, from_ts, to_ts, base_metrics)
+            if base_metrics
+            else []
+        )
+        intelligence_series = (
+            _query_single_hour_intelligence(
+                db,
+                device_id,
+                from_ts,
+                to_ts,
+                intelligence_metrics,
+            )
+            if intelligence_metrics
+            else []
+        )
     else:
-        return _query_single_day(db, device_id, from_ts, to_ts, metrics)
+        base_series = (
+            _query_single_day(db, device_id, from_ts, to_ts, base_metrics)
+            if base_metrics
+            else []
+        )
+        intelligence_series = (
+            _query_single_day_intelligence(
+                db,
+                device_id,
+                from_ts,
+                to_ts,
+                intelligence_metrics,
+            )
+            if intelligence_metrics
+            else []
+        )
+
+    return _merge_series_by_bucket(base_series, intelligence_series)
 
 
 def get_telemetry_batch(
@@ -471,7 +718,7 @@ def get_telemetry_batch(
     from_ts: datetime,
     to_ts: datetime,
     granularity: Granularity,
-    metrics: List[MetricName],
+    metrics: List[BatchMetricName],
 ) -> List[TelemetryDeviceItemOut]:
     """
     Retorna la serie temporal agrupada por dispositivo.
@@ -479,10 +726,50 @@ def get_telemetry_batch(
     """
     validate_batch_device_access(db, user, device_ids)
 
+    base_metrics = [m for m in metrics if m in BASE_METRICS]
+    intelligence_metrics = [m for m in metrics if m in INTELLIGENCE_METRICS]
+
     if granularity == "hour":
-        grouped = _query_multi_hour(db, device_ids, from_ts, to_ts, metrics)
+        grouped_base = (
+            _query_multi_hour(db, device_ids, from_ts, to_ts, base_metrics)
+            if base_metrics
+            else {d: [] for d in device_ids}
+        )
+        grouped_intelligence = (
+            _query_multi_hour_intelligence(
+                db,
+                device_ids,
+                from_ts,
+                to_ts,
+                intelligence_metrics,
+            )
+            if intelligence_metrics
+            else {d: [] for d in device_ids}
+        )
     else:
-        grouped = _query_multi_day(db, device_ids, from_ts, to_ts, metrics)
+        grouped_base = (
+            _query_multi_day(db, device_ids, from_ts, to_ts, base_metrics)
+            if base_metrics
+            else {d: [] for d in device_ids}
+        )
+        grouped_intelligence = (
+            _query_multi_day_intelligence(
+                db,
+                device_ids,
+                from_ts,
+                to_ts,
+                intelligence_metrics,
+            )
+            if intelligence_metrics
+            else {d: [] for d in device_ids}
+        )
+
+    grouped: Dict[str, List[TelemetryPointOut]] = {}
+    for dev_id in device_ids:
+        grouped[dev_id] = _merge_series_by_bucket(
+            grouped_base.get(dev_id, []),
+            grouped_intelligence.get(dev_id, []),
+        )
 
     # Preservar orden original del request
     return [

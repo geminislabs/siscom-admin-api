@@ -114,6 +114,8 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 5. [**Capabilities** (`/capabilities`)](#5-capabilities-capabilities) - Límites y features de la organización
 6. [**Dispositivos** (`/devices`)](#6-dispositivos-devices) - Inventario y gestión de GPS
   - [**Dispositivos de Usuario (Push)** (`/user-devices`)](#dispositivos-de-usuario-push-user-devices)
+  - [**Dispositivos de Movilidad** (`/mobility/devices`)](#dispositivos-de-movilidad-mobilitydevices)
+  - [**Ubicaciones de Movilidad** (`/mobility/locations`)](#ubicaciones-de-movilidad-mobilitylocations)
 7. [**Eventos de Dispositivos** (`/device-events`)](#7-eventos-de-dispositivos-device-events) - Historial de eventos
 8. [**Unidades/Vehículos** (`/units`)](#8-unidades-units) - Gestión de flotas
 9. [**Asignación Unidad-Dispositivo** (`/unit-devices`)](#9-asignación-unidad-dispositivo-unit-devices) - Instalaciones
@@ -960,12 +962,165 @@ Registra o actualiza un dispositivo de usuario por `device_token`.
 ```json
 {
   "device_token": "abc123",
-  "platform": "ios",
-  "endpoint_arn": "arn:aws:sns:us-east-1:123456789012:endpoint/APNS/app/...",
-  "is_active": true,
-  "last_seen_at": "2026-04-12T20:00:00Z"
+
+### Dispositivos de Movilidad (`/mobility/devices`)
+
+> Documentación completa: [docs/api/mobility-devices.md](docs/api/mobility-devices.md)
+
+#### `GET /api/v1/mobility/devices`
+
+**Listar dispositivos de movilidad**
+
+Lista los dispositivos de movilidad del usuario autenticado.
+
+**Headers:** `Authorization: Bearer {access_token}`
+
+**Query params opcionales:**
+
+- `is_active`: `true|false`
+- `device_type`: `PHONE|WATCH|BLE_TAG|WEARABLE`
+
+**Response:** `200 OK`
+
+```json
+[
+  {
+    "id": "57479658-86f4-49b4-95eb-37f9d2d994d2",
+    "user_id": "9a4a3dbf-5ba7-4550-8f14-89db1d58a8e8",
+    "device_type": "PHONE",
+    "platform": "android",
+    "device_name": "Pixel 8",
+    "external_device_id": "android-id-123",
+    "app_version": "1.9.0",
+    "os_version": "Android 15",
+    "last_seen_at": "2026-05-30T17:10:44.215Z",
+    "is_active": true,
+    "metadata": {
+      "manufacturer": "Google"
+    },
+    "created_at": "2026-05-30T17:10:44.215Z",
+    "updated_at": "2026-05-30T17:10:44.215Z",
+    "notification_device_id": "8f949f43-23dd-4a7b-9d7f-6e85017a7f80"
+  }
+]
+```
+
+---
+
+#### `POST /api/v1/mobility/devices`
+
+**Registrar/actualizar dispositivo de movilidad (upsert)**
+
+Registra o actualiza un dispositivo de movilidad asociado al usuario autenticado.
+
+- Persiste en `mobility.devices`.
+- Puede vincularse opcionalmente con un `user_devices.id` vía `notification_device_id`.
+- Si coincide por `external_device_id` del usuario, actualiza y retorna `200 OK`.
+- Si no existe coincidencia, crea y retorna `201 Created`.
+
+**Headers:** `Authorization: Bearer {access_token}`
+
+**Request:**
+
+```json
+{
+  "device_type": "PHONE",
+  "platform": "android",
+  "device_name": "Pixel 8",
+  "external_device_id": "android-id-123",
+  "app_version": "1.9.0",
+  "os_version": "Android 15",
+  "metadata": {
+    "manufacturer": "Google"
+  },
+  "notification_device_id": "8f949f43-23dd-4a7b-9d7f-6e85017a7f80"
 }
 ```
+
+**Response:** `201 Created` (creación) o `200 OK` (actualización)
+
+```json
+{
+  "id": "57479658-86f4-49b4-95eb-37f9d2d994d2",
+  "user_id": "9a4a3dbf-5ba7-4550-8f14-89db1d58a8e8",
+  "device_type": "PHONE",
+  "platform": "android",
+  "device_name": "Pixel 8",
+  "external_device_id": "android-id-123",
+  "app_version": "1.9.0",
+  "os_version": "Android 15",
+  "is_active": true,
+  "metadata": {
+    "manufacturer": "Google"
+  },
+  "created_at": "2026-05-30T17:10:44.215Z",
+  "updated_at": "2026-05-30T17:10:44.215Z",
+  "notification_device_id": "8f949f43-23dd-4a7b-9d7f-6e85017a7f80"
+}
+```
+
+**Errores comunes:**
+
+- `404 Not Found`: `notification_device_id` no existe o no pertenece al usuario.
+- `409 Conflict`: conflicto por integridad (ej. `notification_device_id` ya en uso).
+- `422 Unprocessable Entity`: `device_type` inválido.
+
+---
+
+### Ubicaciones de Movilidad (`/mobility/locations`)
+
+> Documentación completa: [docs/api/mobility-locations.md](docs/api/mobility-locations.md)
+
+#### `POST /api/v1/mobility/locations`
+
+**Publicar ubicación de movilidad en Kafka**
+
+Valida los campos obligatorios, agrega `received_at` en UTC y publica el JSON enriquecido al tópico configurado en `KAFKA_MOBILITY_TOPIC`.
+
+Campos obligatorios:
+
+- `device_id`
+- `recorded_at`
+- `lat`
+- `lon`
+
+**Request:**
+
+```json
+{
+  "device_id": "c7bb5f50-b8e6-4c7d-a0a2-c6fdb2b6f3f0",
+  "recorded_at": "2026-05-31T02:15:20Z",
+  "lat": 20.593212,
+  "lon": -100.392188,
+  "accuracy_m": 12.5,
+  "speed_mps": 0.0,
+  "heading": 180,
+  "altitude_m": 1810,
+  "battery_level": 82
+}
+```
+
+**Response:** `202 Accepted`
+
+```json
+{
+  "device_id": "c7bb5f50-b8e6-4c7d-a0a2-c6fdb2b6f3f0",
+  "recorded_at": "2026-05-31T02:15:20Z",
+  "received_at": "2026-05-31T02:15:21Z",
+  "lat": 20.593212,
+  "lon": -100.392188,
+  "accuracy_m": 12.5,
+  "speed_mps": 0.0,
+  "heading": 180,
+  "altitude_m": 1810,
+  "battery_level": 82
+}
+```
+
+**Errores comunes:**
+
+- `422 Unprocessable Entity`: faltan campos obligatorios o formato inválido.
+- `503 Service Unavailable`: no se pudo publicar en Kafka.
 
 ---
 

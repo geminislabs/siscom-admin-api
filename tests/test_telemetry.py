@@ -216,9 +216,12 @@ class TestTelemetryQueryRequestValidation:
             "signal",
             "satellites",
             "odometer",
+            "fuel_consumed_liters",
+            "moving_minutes",
+            "idle_minutes",
         ]
         req = TelemetryQueryRequest.model_validate(self._make(metrics=all_metrics))
-        assert len(req.metrics) == 9
+        assert len(req.metrics) == 12
 
 
 # ===========================================================================
@@ -235,8 +238,12 @@ class TestTelemetryAccessControl:
     def _make_db_with_rows(self, rows):
         """Mock de db que devuelve rows en query().filter().distinct().all()"""
         mock_db = MagicMock()
-        mock_db.query.return_value.join.return_value.filter.return_value.distinct.return_value.all.return_value = rows
-        mock_db.query.return_value.filter.return_value.distinct.return_value.all.return_value = rows
+        mock_db.query.return_value.join.return_value.filter.return_value.distinct.return_value.all.return_value = (
+            rows
+        )
+        mock_db.query.return_value.filter.return_value.distinct.return_value.all.return_value = (
+            rows
+        )
         return mock_db
 
     def test_validate_device_access_passes_for_accessible_device(self):
@@ -381,7 +388,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         buckets = [s["bucket"] for s in resp.json()["series"]]
@@ -400,7 +411,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         point = resp.json()["series"][0]
@@ -461,7 +476,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         assert resp.status_code == status.HTTP_200_OK
@@ -503,9 +522,48 @@ class TestGetDeviceTelemetryEndpoint:
         # FastAPI valida el Literal antes de llamar al handler → 422
         resp = api_client.get(
             "/api/v1/devices/DEV-001/telemetry",
-            params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "temperatura")],
+            params=[
+                ("from", iso(FROM_TS)),
+                ("to", iso(TO_TS)),
+                ("metrics", "temperatura"),
+            ],
         )
         assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    def test_get_accepts_new_intelligence_metrics(self, api_client):
+        point = TelemetryPointOut(
+            bucket=FROM_TS,
+            fuel_consumed_liters=1.2,
+            moving_minutes=44.0,
+            idle_minutes=16.0,
+        )
+
+        with patch(
+            "app.api.v1.endpoints.telemetry.get_telemetry_single",
+            return_value=[point],
+        ):
+            resp = api_client.get(
+                "/api/v1/devices/DEV-001/telemetry",
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "fuel_consumed_liters"),
+                    ("metrics", "moving_minutes"),
+                    ("metrics", "idle_minutes"),
+                ],
+            )
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert data["metrics"] == [
+            "fuel_consumed_liters",
+            "moving_minutes",
+            "idle_minutes",
+        ]
+        series_point = data["series"][0]
+        assert series_point["fuel_consumed_liters"] == 1.2
+        assert series_point["moving_minutes"] == 44.0
+        assert series_point["idle_minutes"] == 16.0
 
     def test_no_metrics_param_returns_400(self, api_client):
         # FastAPI trata List[X]=Query(...) sin valor como lista vacía [];
@@ -527,7 +585,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-FORBIDDEN/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         assert resp.status_code == status.HTTP_404_NOT_FOUND
@@ -539,7 +601,11 @@ class TestGetDeviceTelemetryEndpoint:
         ):
             resp = api_client.get(
                 "/api/v1/devices/DEV-001/telemetry",
-                params=[("from", iso(FROM_TS)), ("to", iso(TO_TS)), ("metrics", "speed")],
+                params=[
+                    ("from", iso(FROM_TS)),
+                    ("to", iso(TO_TS)),
+                    ("metrics", "speed"),
+                ],
             )
 
         data = resp.json()
@@ -658,3 +724,40 @@ class TestQueryTelemetryBatchEndpoint:
         assert "from" in data
         assert "to" in data
         assert "metrics" in data
+
+    def test_accepts_new_intelligence_metrics(self, api_client):
+        point = TelemetryPointOut(
+            bucket=FROM_TS,
+            fuel_consumed_liters=2.75,
+            moving_minutes=38.0,
+            idle_minutes=12.0,
+        )
+        mocked_batch = [TelemetryDeviceItemOut(device_id="DEV-001", series=[point])]
+
+        with patch(
+            "app.api.v1.endpoints.telemetry.get_telemetry_batch",
+            return_value=mocked_batch,
+        ):
+            resp = api_client.post(
+                "/api/v1/telemetry/query",
+                json=self._body(
+                    device_ids=["DEV-001"],
+                    metrics=[
+                        "fuel_consumed_liters",
+                        "moving_minutes",
+                        "idle_minutes",
+                    ],
+                ),
+            )
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert data["metrics"] == [
+            "fuel_consumed_liters",
+            "moving_minutes",
+            "idle_minutes",
+        ]
+        series_point = data["devices"][0]["series"][0]
+        assert series_point["fuel_consumed_liters"] == 2.75
+        assert series_point["moving_minutes"] == 38.0
+        assert series_point["idle_minutes"] == 12.0

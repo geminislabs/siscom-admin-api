@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -10,6 +11,7 @@ class DeviceRegisterIn(BaseModel):
 
 
 class DeviceRegisterOut(BaseModel):
+    id: UUID
     device_token: str
     platform: str
     endpoint_arn: Optional[str] = None

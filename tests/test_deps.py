@@ -11,9 +11,11 @@ import app.api.deps as deps_mod
 from app.api.deps import (
     AuthResult,
     close_geofences_kafka_producer,
+    close_mobility_kafka_producer,
     close_rules_kafka_producer,
     close_user_devices_kafka_producer,
     get_auth_for_gac_admin,
+    get_mobility_kafka_producer,
     get_rules_kafka_producer,
     require_capability,
     require_organization_role,
@@ -89,10 +91,27 @@ def test_close_kafka_helpers_are_safe_when_already_none():
     deps_mod._rules_kafka_producer = None
     deps_mod._user_devices_kafka_producer = None
     deps_mod._geofences_kafka_producer = None
+    deps_mod._mobility_kafka_producer = None
 
     close_rules_kafka_producer()
     close_user_devices_kafka_producer()
     close_geofences_kafka_producer()
+    close_mobility_kafka_producer()
+
+
+def test_get_mobility_kafka_producer_singleton_and_close(monkeypatch):
+    deps_mod._mobility_kafka_producer = None
+
+    fake_prod = MagicMock()
+    monkeypatch.setattr(deps_mod, "MobilityKafkaProducer", lambda: fake_prod)
+
+    p1 = get_mobility_kafka_producer()
+    p2 = get_mobility_kafka_producer()
+    assert p1 is p2 is fake_prod
+
+    close_mobility_kafka_producer()
+    assert deps_mod._mobility_kafka_producer is None
+    fake_prod.close.assert_called_once()
 
 
 def test_auth_cognito_or_paseto_cognito_success(monkeypatch):

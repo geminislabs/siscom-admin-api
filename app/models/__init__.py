@@ -51,9 +51,8 @@ from app.models.device_service import DeviceService, DeviceServiceStatus, Subscr
 from app.models.geofence import Geofence, GeofenceCell
 from app.models.invitation import Invitation
 
-# Billing
 from app.models.invoice import Invoice, InvoiceStatus
-
+from app.models.mobility_device import MobilityDevice
 from app.models.order import Order, OrderStatus
 from app.models.order_item import OrderItem, OrderItemType
 
@@ -91,8 +90,6 @@ from app.models.unified_sim_profile import UnifiedSimProfile
 from app.models.unit import Unit
 from app.models.unit_device import UnitDevice
 from app.models.unit_profile import UnitProfile
-
-# Users
 from app.models.user import User
 from app.models.user_device import UserDevice
 from app.models.user_unit import UserUnit
@@ -140,6 +137,7 @@ __all__ = [
     "Device",
     "DeviceEvent",
     "UnitDevice",
+    "MobilityDevice",
     "UserDevice",
     "UserUnit",
     # Payments & Orders

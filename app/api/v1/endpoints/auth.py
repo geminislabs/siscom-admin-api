@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full
+from app.api.deps import get_current_user, get_current_user_full
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.account import Account, AccountStatus
@@ -1293,15 +1293,16 @@ def logout_user(
 )
 def generate_internal_token(
     request: InternalTokenRequest,
+    db: Session = Depends(get_db),
+    cognito_payload: dict = Depends(get_current_user),
 ):
     """
     Genera un token PASETO para autenticación de servicios internos.
 
-    Este endpoint permite a servicios internos obtener un token PASETO
-    que puede usarse para autenticarse en otros endpoints de la API.
+    Requiere autenticación con token Cognito. El email del usuario autenticado
+    se incluye automáticamente en el token PASETO generado.
 
     **Parámetros:**
-    - `email`: Email del usuario que solicita el token (obligatorio)
     - `service`: Nombre del servicio (ej: "gac")
     - `role`: Rol del servicio (ej: "GAC_ADMIN")
     - `expires_in_hours`: Horas de validez del token (default: 24, max: 720)
@@ -1310,15 +1311,20 @@ def generate_internal_token(
     - `token`: Token PASETO generado
     - `expires_at`: Fecha de expiración del token
     - `token_type`: Tipo de token (Bearer)
-
-    **Nota:** Este endpoint debe estar protegido en producción
-    mediante reglas de firewall o API Gateway.
     """
+    cognito_sub = cognito_payload.get("sub")
+    user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
     token, expires_at = generate_service_token(
         service=request.service,
         role=request.role,
         expires_in_hours=request.expires_in_hours,
-        additional_claims={"email": request.email},
+        additional_claims={"email": user.email},
     )
 
     return InternalTokenResponse(

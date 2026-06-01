@@ -81,6 +81,8 @@ from app.schemas.device_service import (
     DeviceServiceOut,
     DeviceServiceWithDetails,
 )
+from app.schemas.mobility_device import MobilityDeviceCreateIn, MobilityDeviceOut
+from app.schemas.mobility_location import MobilityLocationIn, MobilityLocationOut
 
 # Orders
 from app.schemas.order import OrderCreate, OrderItemCreate, OrderItemOut, OrderOut
@@ -177,6 +179,8 @@ __all__ = [
     "CommandResponse",
     "CommandOut",
     "CommandListResponse",
+    "MobilityLocationIn",
+    "MobilityLocationOut",
     # Users
     "UserBase",
     "UserCreate",
@@ -217,6 +221,8 @@ __all__ = [
     "OrderOut",
     "OrderItemCreate",
     "OrderItemOut",
+    "MobilityDeviceCreateIn",
+    "MobilityDeviceOut",
     # Trips
     "TripBase",
     "TripOut",

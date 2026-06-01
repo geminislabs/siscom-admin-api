@@ -1,5 +1,5 @@
-# app/core/config.py
-from typing import Optional
+import json
+from typing import Any, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,9 +49,12 @@ class Settings(BaseSettings):
     # PASETO - Token para compartir ubicación
     PASETO_SECRET_KEY: str
 
-    # KORE Wireless - API para envío de comandos SMS
+    # KORE Wireless
     KORE_CLIENT_ID: Optional[str] = None
     KORE_CLIENT_SECRET: Optional[str] = None
+    KORE_API: Optional[str] = (
+        "https://supersim.api.korewireless.com/v1/"  # Base URL de SuperSIM API
+    )
     KORE_API_AUTH: Optional[str] = None  # URL del endpoint de autenticación
     KORE_API_SMS: Optional[str] = None  # URL del endpoint de SMS
 
@@ -60,6 +63,7 @@ class Settings(BaseSettings):
     KAFKA_RULES_UPDATES_TOPIC: str = "alert-rules-updates"
     KAFKA_GEOFENCES_UPDATES_TOPIC: str = "geofences-updates"
     KAFKA_USER_DEVICES_UPDATES_TOPIC: str = "user-devices-updates"
+    KAFKA_MOBILITY_TOPIC: str = "mobility-locations-raw"
     KAFKA_RULES_UPDATES_GROUP_ID: str = "alert-rules-updates-group"
     KAFKA_SASL_USERNAME: Optional[str] = "events-alert-consumer"
     KAFKA_SASL_PASSWORD: Optional[str] = "eventsalertconsumerpassword"
@@ -77,6 +81,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8100",
         "http://10.8.0.1:5160",
         "http://10.8.0.1:8100",
+        "https://geminislabs.com",
+        "https://admin.geminislabs.com",
+        "https://nexus.geminislabs.com",
     ]
 
     LOG_LEVEL: str = "INFO"
@@ -120,6 +127,46 @@ class Settings(BaseSettings):
             )
         return v.strip()
 
-    model_config = SettingsConfigDict(env_file=".env",extra="ignore",)
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: Any) -> list[str]:
+        """Accept JSON array or comma-separated origins from env vars."""
+        if v is None:
+            return []
+
+        if isinstance(v, list):
+            origins = v
+        elif isinstance(v, str):
+            raw = v.strip()
+            if not raw:
+                return []
+
+            if raw.startswith("["):
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError:
+                    parsed = []
+                origins = parsed if isinstance(parsed, list) else []
+            else:
+                origins = [origin.strip() for origin in raw.split(",")]
+        else:
+            return []
+
+        normalized: list[str] = []
+        for origin in origins:
+            if not isinstance(origin, str):
+                continue
+            clean_origin = origin.strip().rstrip("/")
+            if clean_origin:
+                normalized.append(clean_origin)
+
+        # Preserve order while removing duplicates.
+        return list(dict.fromkeys(normalized))
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+    )
+
 
 settings = Settings()

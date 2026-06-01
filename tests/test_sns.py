@@ -116,9 +116,7 @@ def test_platform_arn_missing_configuration_ios(monkeypatch):
 
 
 def test_platform_arn_missing_configuration_android(monkeypatch):
-    monkeypatch.setattr(
-        sns_module.settings, "SNS_PLATFORM_APPLICATION_ARN_ANDROID", ""
-    )
+    monkeypatch.setattr(sns_module.settings, "SNS_PLATFORM_APPLICATION_ARN_ANDROID", "")
     with pytest.raises(ValueError, match="SNS platform ARN no configurado"):
         _platform_application_arn("android")
 
@@ -128,10 +126,7 @@ def test_extract_arn_from_error_finds_arn():
         "Endpoint already exists; existing arn:aws:sns:us-east-1:999:endpoint/foo/bar "
         "must be reused"
     )
-    assert (
-        _extract_arn_from_error(msg)
-        == "arn:aws:sns:us-east-1:999:endpoint/foo/bar"
-    )
+    assert _extract_arn_from_error(msg) == "arn:aws:sns:us-east-1:999:endpoint/foo/bar"
 
 
 def test_extract_arn_from_error_returns_none_when_no_arn():
@@ -167,7 +162,6 @@ def test_create_endpoint_reuses_arn_on_duplicate_invalid_parameter(monkeypatch):
         "SNS_PLATFORM_APPLICATION_ARN_ANDROID",
         "arn:aws:sns:us-east-1:1:app/GCM/x",
     )
-
     existing = "arn:aws:sns:us-east-1:1:endpoint/GCM/existing"
     exc = ClientError(
         {
@@ -194,12 +188,12 @@ def test_create_endpoint_duplicate_logs_reuse(caplog, monkeypatch):
         "arn:aws:sns:us-east-1:1:app/GCM/x",
     )
 
-    existing = "arn:aws:sns:us-east-1:1:endpoint/GCM/existing"
+    # existing = "arn:aws:sns:us-east-1:1:endpoint/GCM/existing"  # Eliminada para ruff
     exc = ClientError(
         {
             "Error": {
                 "Code": "InvalidParameter",
-                "Message": f"already exists token dup arn:aws:sns:us-east-1:1:endpoint/GCM/existing",
+                "Message": "already exists token dup arn:aws:sns:us-east-1:1:endpoint/GCM/existing",
             }
         },
         "CreatePlatformEndpoint",

@@ -1,12 +1,13 @@
 """Tests para app.services.messaging.kafka_producer."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 import app.services.messaging.kafka_producer as kp_mod
 from app.services.messaging.kafka_producer import (
     GeofencesKafkaProducer,
+    MobilityKafkaProducer,
     RulesKafkaProducer,
     UserDevicesKafkaProducer,
 )
@@ -23,6 +24,7 @@ def kafka_settings(monkeypatch):
     monkeypatch.setattr(kp_mod.settings, "KAFKA_RULES_UPDATES_GROUP_ID", "rules-group")
     monkeypatch.setattr(kp_mod.settings, "KAFKA_USER_DEVICES_UPDATES_TOPIC", "ud-topic")
     monkeypatch.setattr(kp_mod.settings, "KAFKA_GEOFENCES_UPDATES_TOPIC", "gf-topic")
+    monkeypatch.setattr(kp_mod.settings, "KAFKA_MOBILITY_TOPIC", "mobility-topic")
 
 
 def test_rules_build_client_config_includes_sasl_when_set(monkeypatch, kafka_settings):
@@ -41,7 +43,9 @@ def test_rules_build_client_config_includes_sasl_when_set(monkeypatch, kafka_set
     assert cfg["sasl_mechanism"] == "PLAIN"
 
 
-def test_rules_publish_returns_false_when_kafka_not_installed(monkeypatch, kafka_settings):
+def test_rules_publish_returns_false_when_kafka_not_installed(
+    monkeypatch, kafka_settings
+):
     monkeypatch.setattr(kp_mod, "KafkaProducer", None)
 
     prod = RulesKafkaProducer()
@@ -73,7 +77,9 @@ def test_rules_close_noops_when_never_created(monkeypatch, kafka_settings):
 
 
 def test_user_devices_publish_failure_returns_false(monkeypatch, kafka_settings):
-    monkeypatch.setattr(kp_mod, "KafkaProducer", MagicMock(side_effect=RuntimeError("boom")))
+    monkeypatch.setattr(
+        kp_mod, "KafkaProducer", MagicMock(side_effect=RuntimeError("boom"))
+    )
 
     prod = UserDevicesKafkaProducer()
     assert prod.publish_update({"type": "link"}) is False
@@ -96,3 +102,39 @@ def test_key_serializer_handles_none():
     cfg = prod._build_client_config()
     ser = cfg["key_serializer"]
     assert ser(None) is None
+
+
+def test_mobility_publish_success_path(monkeypatch, kafka_settings):
+    future = MagicMock()
+    future.get.return_value = None
+
+    mock_inner = MagicMock()
+    mock_inner.send.return_value = future
+
+    kafka_cls = MagicMock(return_value=mock_inner)
+    monkeypatch.setattr(kp_mod, "KafkaProducer", kafka_cls)
+
+    prod = MobilityKafkaProducer()
+    ok = prod.publish_location(
+        {
+            "device_id": "dev-1",
+            "recorded_at": "2026-05-31T02:15:20Z",
+            "received_at": "2026-05-31T02:15:21Z",
+            "lat": 20.59,
+            "lon": -100.39,
+        },
+        key="dev-1",
+    )
+
+    assert ok is True
+    mock_inner.send.assert_called_once_with(
+        "mobility-topic",
+        key="dev-1",
+        value={
+            "device_id": "dev-1",
+            "recorded_at": "2026-05-31T02:15:20Z",
+            "received_at": "2026-05-31T02:15:21Z",
+            "lat": 20.59,
+            "lon": -100.39,
+        },
+    )

@@ -7,7 +7,7 @@ a través de la API de KORE Wireless (SuperSIM).
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -65,8 +65,11 @@ class KoreService:
     def __init__(self):
         self.client_id = settings.KORE_CLIENT_ID
         self.client_secret = settings.KORE_CLIENT_SECRET
+        self.api_base_url = settings.KORE_API
         self.auth_url = settings.KORE_API_AUTH
         self.sms_url = settings.KORE_API_SMS
+        base_url = (self.api_base_url or "").rstrip("/")
+        self.sims_url = f"{base_url}/Sims" if base_url else None
         self._cached_token: Optional[str] = None
 
     def is_configured(self) -> bool:
@@ -82,6 +85,22 @@ class KoreService:
                 self.client_secret,
                 self.auth_url,
                 self.sms_url,
+            ]
+        )
+
+    def is_sync_configured(self) -> bool:
+        """
+        Verifica si el servicio KORE está configurado para sincronización de SIMs.
+
+        Returns:
+            True si las variables necesarias para auth y listado de SIMs están definidas.
+        """
+        return all(
+            [
+                self.client_id,
+                self.client_secret,
+                self.auth_url,
+                self.sims_url,
             ]
         )
 
@@ -264,6 +283,101 @@ class KoreService:
             payload=command,
             access_token=auth_response.access_token,
         )
+
+    async def list_sims(
+        self,
+        page_size: int = 50,
+        access_token: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Lista todas las SIMs de KORE recorriendo la paginación de la API.
+
+        Args:
+            page_size: Tamaño de página solicitado a KORE.
+            access_token: Token de acceso opcional. Si no se pasa, usa cache o autentica.
+
+        Returns:
+            Lista completa de objetos SIM retornados por KORE.
+
+        Raises:
+            KoreAuthError: Si falla autenticación o faltan variables de configuración.
+            KoreServiceError: Si falla la consulta de SIMs.
+        """
+        if not self.is_sync_configured():
+            raise KoreAuthError(
+                "Servicio KORE no configurado para sincronización de SIMs. "
+                "Verifique KORE_CLIENT_ID, KORE_CLIENT_SECRET, KORE_API_AUTH y KORE_API"
+            )
+
+        token = access_token or self._cached_token
+        if not token:
+            auth_response = await self.authenticate()
+            token = auth_response.access_token
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+
+        all_sims: list[dict[str, Any]] = []
+        next_page_url: Optional[str] = f"{self.sims_url}?Page=0&PageSize={page_size}"
+        pages_fetched = 0
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                while next_page_url:
+                    response = await client.get(next_page_url, headers=headers)
+
+                    if response.status_code == 401:
+                        logger.warning(
+                            "[KORE SIMS] Token expirado, reintentando con autenticación nueva"
+                        )
+                        auth_response = await self.authenticate()
+                        headers["Authorization"] = (
+                            f"Bearer {auth_response.access_token}"
+                        )
+                        response = await client.get(next_page_url, headers=headers)
+
+                    if response.status_code != 200:
+                        logger.error(
+                            f"[KORE SIMS] Error consultando SIMs: "
+                            f"Status {response.status_code}, Body: {response.text}"
+                        )
+                        raise KoreServiceError(
+                            f"Error consultando SIMs en KORE: {response.status_code}"
+                        )
+
+                    payload = response.json()
+                    meta = payload.get("meta", {})
+                    sims_key = meta.get("key") or "sims"
+                    sims_page = payload.get(sims_key, [])
+
+                    if not isinstance(sims_page, list):
+                        logger.error(
+                            "[KORE SIMS] Respuesta inválida: '%s' no es una lista",
+                            sims_key,
+                        )
+                        raise KoreServiceError(
+                            "Respuesta inválida de KORE al listar SIMs"
+                        )
+
+                    all_sims.extend(sims_page)
+                    next_page_url = meta.get("next_page_url")
+                    pages_fetched += 1
+
+            logger.info(
+                "[KORE SIMS] Sincronización remota completada: %s SIMs en %s páginas",
+                len(all_sims),
+                pages_fetched,
+            )
+            return all_sims
+
+        except httpx.RequestError as e:
+            logger.error(f"[KORE SIMS] Error de conexión: {str(e)}")
+            raise KoreServiceError(f"Error de conexión con KORE: {str(e)}")
+        except ValueError as e:
+            logger.error(f"[KORE SIMS] JSON inválido en respuesta: {str(e)}")
+            raise KoreServiceError("Respuesta inválida de KORE al listar SIMs")
 
 
 # Instancia singleton del servicio

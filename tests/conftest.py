@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, JSON, Text, TypeDecorator
+from sqlalchemy import JSON, Text, TypeDecorator, create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql.schema import ColumnDefault
@@ -34,6 +34,7 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 class _SQLiteUUID(TypeDecorator):
     impl = Text
     cache_ok = True
@@ -54,7 +55,9 @@ class _SQLiteUUID(TypeDecorator):
 
 _PG_TYPE_REPLACEMENTS = {}
 try:
-    from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, ARRAY, INET, CIDR
+    from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET, JSONB
+    from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+
     _PG_TYPE_REPLACEMENTS = {
         JSONB: JSON(),
         PG_UUID: _SQLiteUUID(),
@@ -83,6 +86,15 @@ def _patch_metadata(metadata) -> dict:
     """Elimina server_defaults PG y reemplaza tipos PG con equivalentes SQLite."""
     saved = {}
     for table in metadata.tables.values():
+        table_id = id(table)
+        if table.schema is not None:
+            saved[(table_id, "__table_schema__")] = {
+                "schema": table.schema,
+                "name": table.name,
+            }
+            table.name = f"{table.schema}_{table.name}"
+            table.schema = None
+
         for column in table.columns:
             col_save = {}
 
@@ -102,7 +114,7 @@ def _patch_metadata(metadata) -> dict:
                     break
 
             if col_save:
-                saved[(table.name, column.name)] = col_save
+                saved[(table_id, column.name)] = col_save
 
     return saved
 
@@ -110,8 +122,16 @@ def _patch_metadata(metadata) -> dict:
 def _restore_metadata(metadata, saved: dict) -> None:
     """Restaura server_defaults y tipos originales."""
     for table in metadata.tables.values():
+        table_id = id(table)
+        schema_key = (table_id, "__table_schema__")
+        if schema_key in saved:
+            if "name" in saved[schema_key]:
+                table.name = saved[schema_key]["name"]
+            if "schema" in saved[schema_key]:
+                table.schema = saved[schema_key]["schema"]
+
         for column in table.columns:
-            key = (table.name, column.name)
+            key = (table_id, column.name)
             if key in saved:
                 if "server_default" in saved[key]:
                     column.server_default = saved[key]["server_default"]

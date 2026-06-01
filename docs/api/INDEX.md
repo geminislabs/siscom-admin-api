@@ -150,12 +150,31 @@ Gestión completa del inventario de dispositivos GPS.
 - `PATCH /api/v1/devices/{device_id}/status` - Cambiar estado
 - `POST /api/v1/devices/{device_id}/notes` - Agregar nota
 
+### [sims.md](./sims.md)
+Sincronizacion de SIMs con KORE para poblar y actualizar `sim_cards` y `sim_kore_profiles`.
+
+**Endpoint:**
+- `POST /api/v1/sims/sync/kore` - Sincronizar SIMs desde KORE
+
 ### [user-devices.md](./user-devices.md)
 Gestión de dispositivos móviles de usuario para notificaciones push (SNS).
 
 **Endpoints:**
 - `POST /api/v1/user-devices/register` - Registrar/actualizar dispositivo push
 - `POST /api/v1/user-devices/deactivate` - Desactivar dispositivo push
+
+### [mobility-devices.md](./mobility-devices.md)
+Registro de dispositivos de movilidad asociados al usuario autenticado.
+
+**Endpoints:**
+- `GET /api/v1/mobility/devices` - Listar dispositivos de movilidad
+- `POST /api/v1/mobility/devices` - Registrar dispositivo de movilidad
+
+### [mobility-locations.md](./mobility-locations.md)
+Ingesta de ubicaciones de movilidad y publicación al tópico Kafka de movilidad.
+
+**Endpoints:**
+- `POST /api/v1/mobility/locations` - Publicar ubicación enriquecida con `received_at`
 
 ### [device-events.md](./device-events.md)
 Historial de eventos y auditoría de dispositivos.
@@ -171,6 +190,14 @@ Envío de comandos a dispositivos GPS.
 - `GET /api/v1/commands/device/{device_id}` - Comandos por dispositivo
 - `GET /api/v1/commands/{command_id}` - Detalle de comando
 - `POST /api/v1/commands/{command_id}/sync` - Sincronizar estado
+
+### [user-commands.md](./user-commands.md)
+Comandos críticos iniciados por usuario master con validación de confirmation y password.
+
+**Endpoint:**
+- `POST /api/v1/user-commands` - Crear y enviar comando crítico a unidad
+- `GET /api/v1/user-commands/unit/{unit_id}` - Listar comandos críticos por unidad
+- `POST /api/v1/user-commands/{command_id}/sync` - Sincronizar comando crítico con KORE
 
 ---
 
@@ -246,6 +273,38 @@ Reglas de alerta por organizacion y consulta de alertas generadas por unidad.
 
 - Duplicados por fingerprint responden `409 Conflict`
 - Sin `unit_id`, `GET /api/v1/alerts` devuelve las ultimas 20 alertas de la organizacion
+
+---
+
+## 🔑 API Platform
+
+### [api-platform.md](./api-platform.md)
+
+Gestión de API keys de integración, métricas de uso, logs de solicitudes y alertas operativas.
+
+**Endpoints:**
+
+- `POST /api/v1/api-platform/keys` - Crear API key (retorna clave en texto plano solo una vez)
+- `GET /api/v1/api-platform/keys` - Listar keys (filtro por status, product_id)
+- `GET /api/v1/api-platform/keys/{key_id}` - Detalle de key
+- `POST /api/v1/api-platform/keys/{key_id}/revoke` - Revocar key
+- `PATCH /api/v1/api-platform/keys/{key_id}` - Actualizar nombre/status
+- `GET /api/v1/api-platform/usage/summary` - Resumen: active_keys, requests hoy/mes, error_rate
+- `GET /api/v1/api-platform/usage/by-key` - Desglose de tráfico por key con porcentaje
+- `GET /api/v1/api-platform/usage/timeseries` - Serie temporal (minute/day/month)
+- `GET /api/v1/api-platform/usage/limits` - Límites del plan vs consumo actual
+- `GET /api/v1/api-platform/logs` - Logs con paginación cursor-based
+- `GET /api/v1/api-platform/logs/stats` - p50 latency, success rate, errors 24h
+- `GET /api/v1/api-platform/throttles` - Eventos de throttling
+- `POST /api/v1/api-platform/alerts` - Crear alerta (ERROR_RATE, USAGE_THRESHOLD)
+- `GET /api/v1/api-platform/alerts` - Listar alertas
+- `PATCH /api/v1/api-platform/alerts/{alert_id}` - Activar/desactivar alerta
+
+**Notas:**
+
+- `full_key` solo se retorna al crear; el backend guarda únicamente el hash SHA-256
+- Logs usan paginación por cursor, no offset
+- Dashboard de uso consulta tablas de agregados, no logs crudos
 
 ---
 

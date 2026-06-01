@@ -44,6 +44,8 @@ from app.api.v1.endpoints import (
     device_events,
     devices,
     geofences,
+    mobility_devices,
+    mobility_locations,
     orders,
     organization_capabilities,
     organization_users,
@@ -51,16 +53,19 @@ from app.api.v1.endpoints import (
     payments,
     plans,
     services,
+    sims,
     stripe_billing,
     subscriptions,
     telemetry,
     trips,
     unit_devices,
     units,
+    user_commands,
     user_devices,
     user_units,
     users,
 )
+from app.api.v1.endpoints.api_platform.router import api_platform_router
 from app.api.v1.endpoints.internal import accounts as internal_accounts
 from app.api.v1.endpoints.internal import organizations as internal_organizations
 from app.api.v1.endpoints.internal import plans as internal_plans
@@ -115,6 +120,7 @@ api_router.include_router(plans.router, prefix="/plans", tags=["plans"])
 
 # Dispositivos y Unidades
 api_router.include_router(devices.router, prefix="/devices", tags=["devices"])
+api_router.include_router(sims.router, prefix="/sims", tags=["sims"])
 
 # Telemetría agregada (GET /devices/{device_id}/telemetry y POST /telemetry/query)
 api_router.include_router(telemetry.router, tags=["telemetry"])
@@ -124,6 +130,16 @@ api_router.include_router(
 )
 api_router.include_router(
     user_devices.router, prefix="/user-devices", tags=["user-devices"]
+)
+api_router.include_router(
+    mobility_devices.router,
+    prefix="/mobility/devices",
+    tags=["mobility-devices"],
+)
+api_router.include_router(
+    mobility_locations.router,
+    prefix="/mobility/locations",
+    tags=["mobility-locations"],
 )
 api_router.include_router(user_units.router, prefix="/user-units", tags=["user-units"])
 api_router.include_router(
@@ -160,9 +176,21 @@ api_router.include_router(geofences.router, prefix="/geofences", tags=["geofence
 
 # Comandos
 api_router.include_router(commands.router, prefix="/commands", tags=["commands"])
+api_router.include_router(
+    user_commands.router,
+    prefix="/user-commands",
+    tags=["user-commands"],
+)
 
 # Contacto
 api_router.include_router(contact.router, prefix="/contact", tags=["contact"])
+
+# API Platform (API keys, usage, logs, alerts)
+api_router.include_router(
+    api_platform_router,
+    prefix="/api-platform",
+    tags=["api-platform"],
+)
 
 # ============================================
 # API Interna (Autenticación: PASETO)

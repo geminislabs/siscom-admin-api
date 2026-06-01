@@ -12,9 +12,7 @@ from app.models.organization_user import OrganizationRole, OrganizationUser
 from app.models.user import User as UserModel
 from app.services.organization import (
     OrganizationService,
-    can_manage_billing,
     can_manage_billing_for_client,
-    can_manage_users,
     can_manage_users_for_client,
     get_user_role,
     get_user_role_for_client,

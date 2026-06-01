@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
-from fastapi.middleware.cors import CORSMiddleware # type: ignore[attr-defined]
+from fastapi.middleware.cors import CORSMiddleware  # type: ignore[attr-defined]
 
 from app.api.deps import (
     close_geofences_kafka_producer,
+    close_mobility_kafka_producer,
     close_rules_kafka_producer,
     close_user_devices_kafka_producer,
 )
@@ -16,6 +17,7 @@ from app.services.health import check_kafka_accessibility
 from app.startup import print_startup_banner
 
 setup_logging()
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -29,9 +31,15 @@ async def lifespan(_: FastAPI):
     close_rules_kafka_producer()
     close_geofences_kafka_producer()
     close_user_devices_kafka_producer()
+    close_mobility_kafka_producer()
+
 
 app = FastAPI(
-    title=settings.PROJECT_NAME, version="1.0.0", docs_url="/docs", redoc_url="/redoc", lifespan=lifespan
+    title=settings.PROJECT_NAME,
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 
@@ -60,8 +68,9 @@ async def limit_body_size(request: Request, call_next):
 
     return await call_next(request)
 
+
 app.add_middleware(
-    CORSMiddleware, # type: ignore[arg-type]
+    CORSMiddleware,  # type: ignore[arg-type]
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
