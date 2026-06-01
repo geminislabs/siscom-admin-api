@@ -12,6 +12,7 @@ from app.api.deps import (
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging_config import setup_logging
+from app.services.gateways import initialize_gateways
 from app.services.health import check_kafka_accessibility
 from app.startup import print_startup_banner
 
@@ -51,7 +52,10 @@ async def limit_body_size(request: Request, call_next):
 
     Límite: 50KB (50,000 bytes)
     """
-    max_body_size = 50000  # 50KB
+    max_body_size = 50_000  # 50KB
+
+    if "/stripe/webhook/" in request.url.path:
+        return await call_next(request)
 
     if request.headers.get("content-length"):
         content_length = int(request.headers["content-length"])

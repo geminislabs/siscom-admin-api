@@ -32,7 +32,6 @@ from sqlmodel import Field, Relationship, SQLModel
 if TYPE_CHECKING:
     from app.models.account_user import AccountUser
     from app.models.organization import Organization
-    from app.models.payment import Payment
 
 
 class AccountStatus(str, enum.Enum):
@@ -100,7 +99,6 @@ class Account(SQLModel, table=True):
 
     # Relationships
     organizations: List["Organization"] = Relationship(back_populates="account")
-    payments: List["Payment"] = Relationship(back_populates="account")
     account_users: List["AccountUser"] = Relationship(back_populates="account")
 
     def get_default_organization(self) -> Optional["Organization"]:

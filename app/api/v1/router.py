@@ -54,6 +54,7 @@ from app.api.v1.endpoints import (
     plans,
     services,
     sims,
+    stripe_billing,
     subscriptions,
     telemetry,
     trips,
@@ -152,6 +153,12 @@ api_router.include_router(services.router, prefix="/services", tags=["services"]
 api_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 api_router.include_router(payments.router, prefix="/payments", tags=["payments"])
 api_router.include_router(orders.router, prefix="/orders", tags=["orders"])
+
+api_router.include_router(
+    stripe_billing.router,
+    prefix="/stripe",
+    tags=["stripe"],
+)
 
 # Viajes
 api_router.include_router(trips.router, prefix="/trips", tags=["trips"])

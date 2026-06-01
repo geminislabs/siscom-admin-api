@@ -1,55 +1,61 @@
-"""
-Modelo de Payment.
-
-Los pagos pertenecen a Account (no a Organization).
-Esto es parte del modelo dual:
-- Account = Raíz comercial (billing, facturación)
-- Organization = Raíz operativa (permisos, uso diario)
-
-Los pagos se registran a nivel de Account para permitir
-facturación consolidada de múltiples organizaciones.
-"""
+# app/models/payment.py
+from __future__ import annotations
 
 import enum
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, List, Optional
+from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Numeric, Text
+from sqlalchemy import text as sa_text
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlmodel import Field, Index, Relationship, SQLModel
+from sqlmodel import Field, Index, SQLModel
 
-if TYPE_CHECKING:
-    from app.models.account import Account
-    from app.models.order import Order
+from app.core.pg_enums import payment_gateway_pg, payment_method_type_pg, payment_status_pg
 
 
 class PaymentStatus(str, enum.Enum):
-    SUCCESS = "SUCCESS"
-    FAILED = "FAILED"
-    REFUNDED = "REFUNDED"
-    PENDING = "PENDING"
+    PENDING             = "PENDING"
+    REQUIRES_ACTION     = "REQUIRES_ACTION"
+    PROCESSING          = "PROCESSING"
+    SUCCESS             = "SUCCESS"
+    FAILED              = "FAILED"
+    CANCELED            = "CANCELED"
+    DISPUTED            = "DISPUTED"
+    REFUNDED            = "REFUNDED"
+    PARTIALLY_REFUNDED  = "PARTIALLY_REFUNDED"
 
 
 class Payment(SQLModel, table=True):
     """
-    Registro de pago.
-
-    Pertenece a Account (entidad comercial/billing).
+    Intento de pago.
+    Pertenece a Invoice (y por transitividad a Account + Organization).
     """
 
     __tablename__ = "payments"
     __table_args__ = (
-        Index("idx_payments_account", "account_id"),
-        Index("idx_payments_status", "status"),
+        Index("idx_pay_invoice",  "invoice_id"),
+        Index("idx_pay_account",  "account_id"),
+        Index("idx_pay_status",   "payment_status"),
+        Index("idx_pay_method",   "payment_method_id"),
     )
 
     id: UUID = Field(
         sa_column=Column(
             PGUUID(as_uuid=True),
             primary_key=True,
-            server_default=text("gen_random_uuid()"),
+            server_default=sa_text("gen_random_uuid()"),
+        )
+    )
+
+    # ── Claves foráneas ──────────────────────────────────────────────────────
+    invoice_id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("invoices.id"),
+            nullable=False,
         )
     )
     account_id: UUID = Field(
@@ -57,34 +63,110 @@ class Payment(SQLModel, table=True):
             PGUUID(as_uuid=True),
             ForeignKey("accounts.id"),
             nullable=False,
+        )
+    )
+    organization_id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("organizations.id"),
+            nullable=False,
+        )
+    )
+
+    # ── Pasarela ─────────────────────────────────────────────────────────────
+    gateway: str = Field(sa_column=Column(payment_gateway_pg, nullable=False))
+    gateway_payment_id: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    idempotency_key: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    # ── Método de pago ────────────────────────────────────────────────────────
+    payment_method_type: str = Field(
+        sa_column=Column(payment_method_type_pg, nullable=False)
+    )
+    payment_method_id: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("payment_methods.id", ondelete="SET NULL"),
+            nullable=True,
         ),
     )
-    amount: Decimal = Field(sa_column=Column(String, nullable=False))
-    currency: str = Field(max_length=10, default="MXN", nullable=False)
-    method: Optional[str] = Field(default=None, max_length=50)
-    paid_at: Optional[datetime] = Field(
-        default=None, sa_column=Column(DateTime, nullable=True)
+    payment_method_meta: dict = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=sa_text("'{}'::jsonb")),
     )
-    status: PaymentStatus = Field(
-        sa_column=Column(String, default=PaymentStatus.PENDING.value, nullable=False)
-    )
-    transaction_ref: Optional[str] = Field(default=None, max_length=255)
-    invoice_url: Optional[str] = Field(default=None, max_length=500)
 
+    # ── Montos ────────────────────────────────────────────────────────────────
+    amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
+    currency: str = Field(default="MXN", sa_column=Column(Text, nullable=False, server_default="MXN"))
+    refunded_amount: Decimal = Field(
+        default=Decimal("0"),
+        sa_column=Column(Numeric(10, 2), nullable=False, server_default=sa_text("0")),
+    )
+
+    # ── MSI ───────────────────────────────────────────────────────────────────
+    installments: Optional[int] = Field(default=None)
+    installment_amount: Optional[Decimal] = Field(
+        default=None, sa_column=Column(Numeric(10, 2), nullable=True)
+    )
+
+    # ── Estado ───────────────────────────────────────────────────────────────
+    payment_status: str = Field(
+        default=PaymentStatus.PENDING.value,
+        sa_column=Column(
+            payment_status_pg,
+            nullable=False,
+            server_default=PaymentStatus.PENDING.value,
+        ),
+    )
+
+    # ── Ciclo de vida ─────────────────────────────────────────────────────────
+    authorized_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    captured_at:   Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    initiated_at:  Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    succeeded_at:  Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    failed_at:     Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    canceled_at:   Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    refunded_at:   Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
+    # ── Fallo ─────────────────────────────────────────────────────────────────
+    failure_code:    Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    failure_message: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    # ── Disputa ───────────────────────────────────────────────────────────────
+    is_disputed: bool = Field(
+        default=False,
+        sa_column=Column(Boolean, nullable=False, server_default=sa_text("false")),
+    )
+    dispute_id:          Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    dispute_reason:      Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    dispute_status:      Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    dispute_due_at:      Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    dispute_resolved_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
+    # ── Antifraude ────────────────────────────────────────────────────────────
+    risk_score:        Optional[int] = Field(default=None)
+    risk_level:        Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+    client_ip:         Optional[str] = Field(default=None, sa_column=Column(INET, nullable=True))
+    device_session_id: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    # ── Raw PSP ───────────────────────────────────────────────────────────────
+    provider_response: Optional[dict] = Field(default=None, sa_column=Column(JSONB, nullable=True))
+
+    # ── Pago manual ───────────────────────────────────────────────────────────
+    registered_by: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=True),
+    )
+    registration_notes: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
+
+    # ── Metadata / Timestamps ─────────────────────────────────────────────────
+    extra_data: dict = Field(
+        default_factory=dict,
+        sa_column=Column("metadata", JSONB, nullable=False, server_default=sa_text("'{}'::jsonb")),
+    )
     created_at: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=sa_text("now()"))
     )
-
-    # Relationships
-    account: "Account" = Relationship(back_populates="payments")
-    orders: List["Order"] = Relationship(back_populates="payment")
-
-    # Alias para compatibilidad (DEPRECATED)
-    # NOTA: client_id no aplica a Payment - usa account_id
-    @property
-    def client_id(self) -> UUID:
-        """
-        DEPRECATED: Payment pertenece a Account, no a Organization.
-        Este property existe solo para compatibilidad temporal.
-        """
-        return self.account_id
+    updated_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=sa_text("now()"))
+    )
