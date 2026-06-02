@@ -76,6 +76,28 @@ def test_publish_mobility_location_accepts_h3_fields(client):
     app.dependency_overrides.clear()
 
 
+def test_publish_mobility_location_accepts_motion_state(client):
+    fake_producer = _FakeMobilityProducer(should_publish=True)
+    app.dependency_overrides[get_mobility_kafka_producer] = lambda: fake_producer
+
+    payload = {
+        "device_id": str(uuid4()),
+        "recorded_at": "2026-05-31T02:15:20Z",
+        "lat": 20.593212,
+        "lon": -100.392188,
+        "motion_state": "moving",
+    }
+
+    response = client.post("/api/v1/mobility/locations", json=payload)
+    assert response.status_code == status.HTTP_202_ACCEPTED
+
+    data = response.json()
+    assert data["motion_state"] == payload["motion_state"]
+    assert fake_producer.calls[0]["payload"]["motion_state"] == payload["motion_state"]
+
+    app.dependency_overrides.clear()
+
+
 def test_publish_mobility_location_requires_required_fields(client):
     payload = {
         "device_id": str(uuid4()),
@@ -116,6 +138,7 @@ def test_publish_mobility_locations_batch_success(client):
                 "lat": 20.593,
                 "lon": -100.392,
                 "accuracy_m": 12,
+                "motion_state": "moving",
                 "h3_index": "8a2a1072b59ffff",
                 "h3_resolution": 10,
             },
@@ -135,6 +158,9 @@ def test_publish_mobility_locations_batch_success(client):
     assert data["device_id"] == payload["device_id"]
     assert len(data["locations"]) == 2
     assert data["locations"][0]["recorded_at"] == payload["locations"][0]["recorded_at"]
+    assert (
+        data["locations"][0]["motion_state"] == payload["locations"][0]["motion_state"]
+    )
     assert data["locations"][0]["h3_index"] == payload["locations"][0]["h3_index"]
     assert (
         data["locations"][0]["h3_resolution"]

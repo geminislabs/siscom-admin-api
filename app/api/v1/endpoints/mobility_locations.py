@@ -34,6 +34,7 @@ def _build_message(
         "heading": payload.heading,
         "altitude_m": payload.altitude_m,
         "battery_level": payload.battery_level,
+        "motion_state": payload.motion_state,
         "h3_index": payload.h3_index,
         "h3_resolution": payload.h3_resolution,
     }
@@ -113,6 +114,7 @@ def publish_mobility_locations_batch(
                 heading=message["heading"],
                 altitude_m=message["altitude_m"],
                 battery_level=message["battery_level"],
+                motion_state=message["motion_state"],
                 h3_index=message["h3_index"],
                 h3_resolution=message["h3_resolution"],
             )

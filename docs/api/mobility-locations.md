@@ -28,6 +28,7 @@ Campos opcionales:
 - `heading` (number)
 - `altitude_m` (number)
 - `battery_level` (number entre 0 y 100)
+- `motion_state` (string)
 - `h3_index` (string)
 - `h3_resolution` (integer entre 0 y 15)
 
@@ -44,6 +45,7 @@ Ejemplo:
   "heading": 180,
   "altitude_m": 1810,
   "battery_level": 82,
+  "motion_state": "stopped",
   "h3_index": "8a2a1072b59ffff",
   "h3_resolution": 10
 }
@@ -65,6 +67,7 @@ Retorna el payload publicado, enriquecido con `received_at`:
   "heading": 180,
   "altitude_m": 1810,
   "battery_level": 82,
+  "motion_state": "stopped",
   "h3_index": "8a2a1072b59ffff",
   "h3_resolution": 10
 }
@@ -86,7 +89,7 @@ Campos obligatorios:
 Cada elemento en `locations`:
 
 - Obligatorios: `recorded_at`, `lat`, `lon`
-- Opcionales: `accuracy_m`, `speed_mps`, `heading`, `altitude_m`, `battery_level`, `h3_index`, `h3_resolution`
+- Opcionales: `accuracy_m`, `speed_mps`, `heading`, `altitude_m`, `battery_level`, `motion_state`, `h3_index`, `h3_resolution`
 
 Ejemplo:
 
@@ -99,6 +102,7 @@ Ejemplo:
       "lat": 20.593,
       "lon": -100.392,
       "accuracy_m": 12,
+      "motion_state": "moving",
       "h3_index": "8a2a1072b59ffff",
       "h3_resolution": 10
     },
@@ -126,6 +130,7 @@ Retorna `device_id` y el arreglo de ubicaciones publicadas, enriquecidas con `re
       "lat": 20.593,
       "lon": -100.392,
       "accuracy_m": 12,
+      "motion_state": "moving",
       "h3_index": "8a2a1072b59ffff",
       "h3_resolution": 10
     },

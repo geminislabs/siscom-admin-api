@@ -14,6 +14,7 @@ class MobilityLocationPayload(BaseModel):
     heading: Optional[float] = None
     altitude_m: Optional[float] = None
     battery_level: Optional[float] = Field(default=None, ge=0, le=100)
+    motion_state: Optional[str] = None
     h3_index: Optional[str] = None
     h3_resolution: Optional[int] = Field(default=None, ge=0, le=15)
 
@@ -37,6 +38,7 @@ class MobilityLocationBatchItemOut(BaseModel):
     heading: Optional[float] = None
     altitude_m: Optional[float] = None
     battery_level: Optional[float] = None
+    motion_state: Optional[str] = None
     h3_index: Optional[str] = None
     h3_resolution: Optional[int] = None
 
@@ -57,6 +59,7 @@ class MobilityLocationOut(BaseModel):
     heading: Optional[float] = None
     altitude_m: Optional[float] = None
     battery_level: Optional[float] = None
+    motion_state: Optional[str] = None
     h3_index: Optional[str] = None
     h3_resolution: Optional[int] = None
 
