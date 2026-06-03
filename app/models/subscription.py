@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Text, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, Relationship, SQLModel
 
@@ -123,6 +123,10 @@ class Subscription(SQLModel, table=True):
     )
     current_period_end: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
+    )
+    active_units: int = Field(
+        default=1,
+        sa_column=Column(Integer, nullable=False, server_default=text("1")),
     )
 
     created_at: Optional[datetime] = Field(

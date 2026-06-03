@@ -67,6 +67,7 @@ from app.api.v1.endpoints import (
 )
 from app.api.v1.endpoints.api_platform.router import api_platform_router
 from app.api.v1.endpoints.internal import accounts as internal_accounts
+from app.api.v1.endpoints.internal import billing as internal_billing
 from app.api.v1.endpoints.internal import organizations as internal_organizations
 from app.api.v1.endpoints.internal import plans as internal_plans
 from app.api.v1.endpoints.internal import products as internal_products
@@ -217,4 +218,10 @@ api_router.include_router(
     internal_products.router,
     prefix="/internal/products",
     tags=["internal-products"],
+)
+
+api_router.include_router(
+    internal_billing.router,
+    prefix="/internal/billing",
+    tags=["internal-billing"],
 )
