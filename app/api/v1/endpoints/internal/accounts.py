@@ -33,6 +33,11 @@ from app.models.device import Device
 from app.models.organization import Organization
 from app.models.unit_device import UnitDevice
 from app.models.user import User
+from app.services.account_nexus_status import (
+    get_account_nexus_status,
+    get_accounts_nexus_status_map,
+    get_organization_nexus_status,
+)
 
 router = APIRouter()
 
@@ -130,9 +135,13 @@ def list_all_accounts(
     # Ejecutar query
     results = query.all()
 
+    account_ids = [row.id for row in results]
+    nexus_by_account = get_accounts_nexus_status_map(db, account_ids)
+
     # Construir respuesta
     accounts = []
     for row in results:
+        nexus = nexus_by_account.get(row.id, {})
         accounts.append(
             {
                 "id": str(row.id),
@@ -144,6 +153,7 @@ def list_all_accounts(
                 "owner_email": row.owner_email,
                 "total_organizations": row.total_organizations,
                 "total_users": row.total_users,
+                **nexus,
             }
         )
 
@@ -282,6 +292,7 @@ def get_account_by_id(
         "owner_email": owner_email,
         "total_organizations": total_organizations,
         "total_users": total_users,
+        **get_account_nexus_status(db, account_id),
     }
 
 
@@ -339,6 +350,7 @@ def get_account_organizations(
             "total_users": org.total_users,
             "created_at": org.created_at.isoformat() if org.created_at else None,
             "updated_at": org.updated_at.isoformat() if org.updated_at else None,
+            **get_organization_nexus_status(db, org.id),
         }
         for org in organizations
     ]

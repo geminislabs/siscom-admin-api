@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None
 
+    # Usuario técnico Siscom para registered_by en pagos manuales desde GAC
+    GAC_SYSTEM_USER_ID: Optional[str] = None
+
     @field_validator(
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
