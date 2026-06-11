@@ -145,6 +145,7 @@ def list_all_accounts(
         accounts.append(
             {
                 "id": str(row.id),
+                "commercial_client_id": str(row.id),
                 "account_name": row.account_name,
                 "billing_email": row.billing_email,
                 "status": row.status,
@@ -284,6 +285,7 @@ def get_account_by_id(
 
     return {
         "id": str(account.id),
+        "commercial_client_id": str(account.id),
         "account_name": account.name,
         "billing_email": account.billing_email,
         "status": account.status,
