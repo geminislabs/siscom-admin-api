@@ -56,6 +56,12 @@ class OrganizationCreate(BaseModel):
         }
 
 
+class InternalOrganizationCreate(OrganizationCreate):
+    """Crear organización desde GAC (staff) bajo una cuenta existente."""
+
+    account_id: UUID = Field(..., description="ID del account (raíz comercial)")
+
+
 class OrganizationOut(OrganizationBase):
     """Organización en respuestas."""
 
