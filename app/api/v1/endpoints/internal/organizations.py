@@ -12,6 +12,7 @@ Account = Raíz comercial (billing, facturación)
 Organization = Raíz operativa (permisos, uso diario)
 """
 
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -20,9 +21,15 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import AuthResult, get_auth_cognito_or_paseto
 from app.db.session import get_db
+from app.models.account import Account
 from app.models.organization import Organization, OrganizationStatus
 from app.models.user import User
-from app.schemas.organization import OrganizationOut
+from app.schemas.organization import (
+    InternalOrganizationCreate,
+    OrganizationOut,
+    OrganizationUpdate,
+)
+from app.services.account_nexus_status import get_organization_nexus_status
 
 router = APIRouter()
 
@@ -42,6 +49,9 @@ def list_all_organizations(
     ),
     search: Optional[str] = Query(
         None, description="Buscar por nombre (parcial, case-insensitive)"
+    ),
+    account_id: Optional[UUID] = Query(
+        None, description="Filtrar por cuenta (account_id)"
     ),
     limit: int = Query(50, ge=1, le=200, description="Límite de resultados"),
     offset: int = Query(0, ge=0, description="Offset para paginación"),
@@ -65,6 +75,9 @@ def list_all_organizations(
 
     if search:
         query = query.filter(Organization.name.ilike(f"%{search}%"))
+
+    if account_id:
+        query = query.filter(Organization.account_id == account_id)
 
     # Ordenar por fecha de creación descendente
     query = query.order_by(Organization.created_at.desc())
@@ -118,6 +131,37 @@ def get_organizations_stats(
     }
 
 
+@router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
+def create_organization_for_account(
+    data: InternalOrganizationCreate,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_internal_organizations),
+):
+    """
+    Crea una organización bajo una cuenta existente (staff GAC).
+    No requiere sesión Cognito del cliente.
+    """
+    account = db.query(Account).filter(Account.id == data.account_id).first()
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account no encontrado",
+        )
+
+    new_org = Organization(
+        account_id=data.account_id,
+        name=data.name,
+        billing_email=data.billing_email,
+        country=data.country or "MX",
+        timezone=data.timezone or "America/Mexico_City",
+        status=OrganizationStatus.ACTIVE,
+    )
+    db.add(new_org)
+    db.commit()
+    db.refresh(new_org)
+    return new_org
+
+
 @router.get("/{organization_id}", response_model=OrganizationOut)
 def get_organization_by_id(
     organization_id: UUID,
@@ -139,6 +183,52 @@ def get_organization_by_id(
             detail="Organización no encontrada",
         )
 
+    return organization
+
+
+@router.get("/{organization_id}/nexus-status")
+def get_organization_nexus_status_endpoint(
+    organization_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_internal_organizations),
+):
+    """Resumen de suscripción Nexus activa para la organización."""
+    organization = (
+        db.query(Organization).filter(Organization.id == organization_id).first()
+    )
+    if not organization:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organización no encontrada",
+        )
+    return get_organization_nexus_status(db, organization_id)
+
+
+@router.patch("/{organization_id}", response_model=OrganizationOut)
+def update_organization_metadata(
+    organization_id: UUID,
+    data: OrganizationUpdate,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_internal_organizations),
+):
+    """Actualiza metadatos de la organización (nombre, billing, timezone)."""
+    organization = (
+        db.query(Organization).filter(Organization.id == organization_id).first()
+    )
+    if not organization:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organización no encontrada",
+        )
+
+    update_data = data.model_dump(exclude_unset=True)
+    for field in ("name", "billing_email", "country", "timezone"):
+        if field in update_data:
+            setattr(organization, field, update_data[field])
+
+    organization.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(organization)
     return organization
 
 
