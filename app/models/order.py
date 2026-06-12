@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.order_item import OrderItem
     from app.models.organization import Organization
 
+
 class OrderStatus(str, enum.Enum):
     PENDING = "PENDING"
     PAID = "PAID"

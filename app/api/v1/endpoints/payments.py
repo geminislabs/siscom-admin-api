@@ -24,7 +24,11 @@ router = APIRouter()
 
 
 def _resolve_account_id(db: Session, organization_id: UUID) -> Optional[UUID]:
-    org = db.query(Organization.account_id).filter(Organization.id == organization_id).first()
+    org = (
+        db.query(Organization.account_id)
+        .filter(Organization.id == organization_id)
+        .first()
+    )
     return org.account_id if org else None
 
 
@@ -49,10 +53,4 @@ def list_payments(
     if status:
         query = query.filter(Payment.status == status.value)
 
-    return (
-        query
-        .order_by(Payment.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-        .all()
-    )
+    return query.order_by(Payment.created_at.desc()).limit(limit).offset(offset).all()

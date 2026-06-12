@@ -77,7 +77,9 @@ def get_account_nexus_status(db: Session, account_id: UUID) -> dict:
     return _summary_from_subscription(sub, plan, org)
 
 
-def get_accounts_nexus_status_map(db: Session, account_ids: list[UUID]) -> dict[UUID, dict]:
+def get_accounts_nexus_status_map(
+    db: Session, account_ids: list[UUID]
+) -> dict[UUID, dict]:
     """Mapa account_id → resumen Nexus (una query para listados)."""
     if not account_ids:
         return {}

@@ -5,8 +5,8 @@ import enum
 
 
 class PaymentGateway(str, enum.Enum):
-    STRIPE      = "stripe"
-    CONEKTA     = "conekta"
+    STRIPE = "stripe"
+    CONEKTA = "conekta"
     MERCADOPAGO = "mercadopago"
-    PAYPAL      = "paypal"
-    MANUAL      = "manual"
+    PAYPAL = "paypal"
+    MANUAL = "manual"

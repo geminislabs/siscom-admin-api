@@ -145,17 +145,19 @@ def register_manual_payment(
         )
 
     plan = (
-        db.query(Plan)
-        .filter(Plan.id == body.plan_id, Plan.is_active.is_(True))
-        .first()
+        db.query(Plan).filter(Plan.id == body.plan_id, Plan.is_active.is_(True)).first()
     )
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado o inactivo")
 
     _validate_migrate_units(plan, body.active_units)
-    amount = calculate_manual_payment_amount(plan, body.billing_cycle, body.active_units)
+    amount = calculate_manual_payment_amount(
+        plan, body.billing_cycle, body.active_units
+    )
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="El monto calculado debe ser mayor a cero")
+        raise HTTPException(
+            status_code=400, detail="El monto calculado debe ser mayor a cero"
+        )
 
     now = datetime.now(timezone.utc)
     subscription = _activate_subscription(

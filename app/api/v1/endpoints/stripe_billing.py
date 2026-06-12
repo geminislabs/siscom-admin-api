@@ -16,6 +16,7 @@ from app.services.organization import OrganizationService
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
 class PaymentIntentRequest(BaseModel):
     plan_id: UUID
     billing_cycle: str
@@ -44,6 +45,7 @@ class SetDefaultPMRequest(BaseModel):
     def validate_gw(cls, v: str) -> str:
         return v.lower()
 
+
 def _require_billing_permission(
     db: Session,
     current_user: User,
@@ -57,8 +59,9 @@ def _require_billing_permission(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permiso para gestionar facturación. "
-                   "Se requiere rol owner o billing.",
+            "Se requiere rol owner o billing.",
         )
+
 
 @router.get("/config")
 def get_payment_config(
@@ -95,6 +98,7 @@ def create_setup_intent(
     _require_billing_permission(db, current_user, organization_id)
     return registry.get(gateway.lower()).create_setup_intent(db, organization_id)
 
+
 @router.post("/payment-intent", status_code=201)
 def create_payment_intent(
     body: PaymentIntentRequest,
@@ -113,6 +117,7 @@ def create_payment_intent(
     return registry.get(body.gateway).create_payment_intent(
         db, organization_id, body.plan_id, body.billing_cycle
     )
+
 
 @router.get("/payment-methods")
 def list_payment_methods(
@@ -157,6 +162,7 @@ def set_default_payment_method(
         db, organization_id, body.external_token
     )
     return {"ok": True}
+
 
 @router.post(
     "/webhook/{gateway}",

@@ -3,6 +3,7 @@ Endpoints de Billing.
 
 Expone información de facturación y pagos de forma estructurada.
 """
+
 from decimal import Decimal
 from uuid import UUID
 
@@ -40,12 +41,17 @@ router = APIRouter()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _get_account_id(db: Session, organization_id: UUID) -> UUID | None:
     """
     Obtiene el account_id de una organización.
     Los pagos están ligados a la cuenta (account), no a la organización directamente.
     """
-    org = db.query(Organization.account_id).filter(Organization.id == organization_id).first()
+    org = (
+        db.query(Organization.account_id)
+        .filter(Organization.id == organization_id)
+        .first()
+    )
     return org.account_id if org else None
 
 
@@ -58,22 +64,34 @@ def _get_billing_stats(db: Session, organization_id: UUID) -> BillingStats:
 
     if not account_id:
         return BillingStats(
-            total_paid=Decimal(0), payments_count=0,
-            last_payment_date=None, last_payment_amount=None, currency="MXN"
+            total_paid=Decimal(0),
+            payments_count=0,
+            last_payment_date=None,
+            last_payment_amount=None,
+            currency="MXN",
         )
     total_result = (
         db.query(func.sum(Payment.amount))
-        .filter(Payment.account_id == account_id, Payment.payment_status == PaymentStatus.SUCCESS.value)
+        .filter(
+            Payment.account_id == account_id,
+            Payment.payment_status == PaymentStatus.SUCCESS.value,
+        )
         .scalar()
     )
     payments_count = (
         db.query(Payment)
-        .filter(Payment.account_id == account_id, Payment.payment_status == PaymentStatus.SUCCESS.value)
+        .filter(
+            Payment.account_id == account_id,
+            Payment.payment_status == PaymentStatus.SUCCESS.value,
+        )
         .count()
     )
     last_payment = (
         db.query(Payment)
-        .filter(Payment.account_id == account_id, Payment.payment_status == PaymentStatus.SUCCESS.value)
+        .filter(
+            Payment.account_id == account_id,
+            Payment.payment_status == PaymentStatus.SUCCESS.value,
+        )
         .order_by(Payment.succeeded_at.desc())
         .first()
     )
@@ -95,7 +113,10 @@ def _get_pending_amount(db: Session, organization_id: UUID) -> Decimal:
         return Decimal(0)
     result = (
         db.query(func.sum(Payment.amount))
-        .filter(Payment.account_id == account_id, Payment.payment_status == PaymentStatus.PENDING.value)
+        .filter(
+            Payment.account_id == account_id,
+            Payment.payment_status == PaymentStatus.PENDING.value,
+        )
         .scalar()
     )
     return Decimal(result or 0)
@@ -124,6 +145,7 @@ def _fetch_stripe_receipt(gateway_payment_id: str) -> str | None:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/summary", response_model=BillingSummaryOut)
 def get_billing_summary(
     organization_id: UUID = Depends(get_current_organization_id),
@@ -132,19 +154,28 @@ def get_billing_summary(
     """
     Obtiene el resumen de facturación de la organización.
     """
-    organization = db.query(Organization).filter(Organization.id == organization_id).first()
-    active_sub   = get_primary_active_subscription(db, organization_id)
+    organization = (
+        db.query(Organization).filter(Organization.id == organization_id).first()
+    )
+    active_sub = get_primary_active_subscription(db, organization_id)
 
     current_plan = None
     if active_sub:
         plan = db.query(Plan).filter(Plan.id == active_sub.plan_id).first()
         if plan:
-            amount_due = plan.price_yearly if active_sub.billing_cycle == "YEARLY" else plan.price_monthly
+            amount_due = (
+                plan.price_yearly
+                if active_sub.billing_cycle == "YEARLY"
+                else plan.price_monthly
+            )
             current_plan = CurrentPlanInfo(
-                plan_id=plan.id, plan_name=plan.name, plan_code=plan.code,
+                plan_id=plan.id,
+                plan_name=plan.name,
+                plan_code=plan.code,
                 billing_cycle=active_sub.billing_cycle or "MONTHLY",
                 next_billing_date=active_sub.expires_at,
-                amount_due=amount_due, currency="MXN",
+                amount_due=amount_due,
+                currency="MXN",
             )
 
     return BillingSummaryOut(
@@ -164,7 +195,9 @@ def list_payments(
     db: Session = Depends(get_db),
     limit: int = Query(default=20, le=100, description="Máximo de resultados"),
     offset: int = Query(default=0, ge=0, description="Offset para paginación"),
-    status: PaymentStatus | None = Query(default=None, description="Filtrar por estado"),
+    status: PaymentStatus | None = Query(
+        default=None, description="Filtrar por estado"
+    ),
 ):
     """
     Lista el historial de pagos de la organización.
@@ -177,8 +210,13 @@ def list_payments(
     if status:
         query = query.filter(Payment.payment_status == status.value)
 
-    total    = query.count()
-    payments = query.order_by(Payment.succeeded_at.desc().nullslast()).limit(limit).offset(offset).all()
+    total = query.count()
+    payments = (
+        query.order_by(Payment.succeeded_at.desc().nullslast())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
 
     return PaymentsListOut(
         payments=[PaymentOut.model_validate(p) for p in payments],
@@ -204,9 +242,11 @@ def list_invoices(
     if not account_id:
         return InvoicesListOut(invoices=[], total=0, has_more=False)
 
-    query       = db.query(Invoice).filter(Invoice.account_id == account_id)
-    total       = query.count()
-    invoices_db = query.order_by(Invoice.created_at.desc()).limit(limit).offset(offset).all()
+    query = db.query(Invoice).filter(Invoice.account_id == account_id)
+    total = query.count()
+    invoices_db = (
+        query.order_by(Invoice.created_at.desc()).limit(limit).offset(offset).all()
+    )
 
     invoices = [
         InvoiceOut(
@@ -226,7 +266,9 @@ def list_invoices(
         for inv in invoices_db
     ]
 
-    return InvoicesListOut(invoices=invoices, total=total, has_more=(offset + len(invoices)) < total)
+    return InvoicesListOut(
+        invoices=invoices, total=total, has_more=(offset + len(invoices)) < total
+    )
 
 
 @router.get("/invoices/{invoice_id}", response_model=InvoiceDetailOut)
@@ -269,7 +311,7 @@ def get_invoice_detail(
     )
 
     payment_brief: PaymentBrief | None = None
-    stripe_receipt_url: str | None     = None
+    stripe_receipt_url: str | None = None
 
     if payment:
         payment_brief = PaymentBrief(
@@ -287,7 +329,10 @@ def get_invoice_detail(
         )
 
         # Intentar obtener el recibo de Stripe solo si el pago fue exitoso
-        if payment.gateway == "stripe" and payment.payment_status == PaymentStatus.SUCCESS.value:
+        if (
+            payment.gateway == "stripe"
+            and payment.payment_status == PaymentStatus.SUCCESS.value
+        ):
             stripe_receipt_url = _fetch_stripe_receipt(payment.gateway_payment_id)
 
     return InvoiceDetailOut(

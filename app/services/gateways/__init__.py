@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class GatewayRegistry:
     """
     Registro de pasarelas disponibles en runtime.
@@ -48,6 +49,7 @@ class GatewayRegistry:
     def available(self) -> list[str]:
         return list(self._providers.keys())
 
+
 registry = GatewayRegistry()
 
 
@@ -61,6 +63,7 @@ def initialize_gateways() -> None:
     if getattr(settings, "STRIPE_SECRET_KEY", None):
         try:
             from app.services.gateways.stripe_gateway import StripeGateway
+
             registry.register("stripe", StripeGateway())
         except Exception as e:
             logger.error("No se pudo inicializar Stripe: %s", e)

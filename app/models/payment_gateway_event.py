@@ -21,13 +21,13 @@ class PaymentGatewayEvent(SQLModel, table=True):
 
     __tablename__ = "payment_gateway_events"
     __table_args__ = (
-        Index("idx_pge_type",      "gateway", "event_type"),
+        Index("idx_pge_type", "gateway", "event_type"),
         Index("idx_pge_processed", "processed_at"),
     )
 
-    gateway:           str = Field(sa_column=Column(payment_gateway_pg, primary_key=True))
+    gateway: str = Field(sa_column=Column(payment_gateway_pg, primary_key=True))
     external_event_id: str = Field(sa_column=Column(Text, primary_key=True))
-    event_type:        str = Field(sa_column=Column(Text, nullable=False))
+    event_type: str = Field(sa_column=Column(Text, nullable=False))
 
     event_status: GatewayEventStatus = Field(
         default=GatewayEventStatus.PROCESSED,
@@ -38,9 +38,13 @@ class PaymentGatewayEvent(SQLModel, table=True):
         ),
     )
 
-    payload:       Optional[dict] = Field(default=None, sa_column=Column(JSONB, nullable=True))
-    error_message: Optional[str]  = Field(default=None, sa_column=Column(Text, nullable=True))
-    retry_count:   int             = Field(
+    payload: Optional[dict] = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
+    error_message: Optional[str] = Field(
+        default=None, sa_column=Column(Text, nullable=True)
+    )
+    retry_count: int = Field(
         default=0,
         sa_column=Column(Integer, nullable=False, server_default=sa_text("0")),
     )

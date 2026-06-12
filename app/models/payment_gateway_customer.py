@@ -44,8 +44,12 @@ class PaymentGatewayCustomer(SQLModel, table=True):
     gateway: str = Field(sa_column=Column(payment_gateway_pg, nullable=False))
     external_customer_id: str = Field(sa_column=Column(Text, nullable=False))
     created_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=sa_text("now()"))
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=sa_text("now()")
+        )
     )
     updated_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=sa_text("now()"))
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=sa_text("now()")
+        )
     )

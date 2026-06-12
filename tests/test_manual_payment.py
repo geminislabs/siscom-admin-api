@@ -7,13 +7,13 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.models.plan import Plan
 from app.models.invoice import Invoice, InvoiceStatus
+from app.models.plan import Plan
 from app.services.manual_payment_service import (
     MIGRATE_MIN_UNITS,
     _next_invoice_number,
-    calculate_manual_payment_amount,
     _validate_migrate_units,
+    calculate_manual_payment_amount,
 )
 
 
@@ -50,7 +50,9 @@ def test_migrate_plan_accepts_minimum_units():
     _validate_migrate_units(plan, MIGRATE_MIN_UNITS)
 
 
-def test_next_invoice_number_is_globally_unique(db_session, test_account_data, test_organization_data):
+def test_next_invoice_number_is_globally_unique(
+    db_session, test_account_data, test_organization_data
+):
     year = datetime.now(timezone.utc).year
     db_session.add(
         Invoice(

@@ -54,10 +54,14 @@ class StripeGateway:
             raise HTTPException(404, "Organización no encontrada")
         account = db.query(Account).filter(Account.id == org.account_id).first()
         if not account:
-            raise HTTPException(400, "La organización no tiene cuenta comercial asociada")
+            raise HTTPException(
+                400, "La organización no tiene cuenta comercial asociada"
+            )
         return account
 
-    def _assert_pm_ownership(self, db: Session, external_token: str, account_id: UUID) -> PaymentMethod:
+    def _assert_pm_ownership(
+        self, db: Session, external_token: str, account_id: UUID
+    ) -> PaymentMethod:
         """
         ANTI-IDOR: verifica que el PM pertenece al account antes de operar.
         Un usuario no puede eliminar/modificar tarjetas de otro account.
@@ -119,7 +123,9 @@ class StripeGateway:
         db.add(rec)
         db.commit()
         db.refresh(rec)
-        logger.info("Stripe Customer creado account=%s customer_id=%s", account_id, customer.id)
+        logger.info(
+            "Stripe Customer creado account=%s customer_id=%s", account_id, customer.id
+        )
         return rec.external_customer_id
 
     # ── Setup Intent ──────────────────────────────────────────────────────────
@@ -182,7 +188,9 @@ class StripeGateway:
             raise HTTPException(400, "El plan no tiene precio configurado")
 
         period = datetime.now(timezone.utc).strftime("%Y%m")
-        idem = self._idem_key("pi", str(account.id), str(plan_id), billing_cycle.upper(), period)
+        idem = self._idem_key(
+            "pi", str(account.id), str(plan_id), billing_cycle.upper(), period
+        )
 
         # Clave de idempotencia hacia Stripe (puede diferir de `idem` si hay que reemitir PI).
         stripe_pi_idempotency_key = idem
@@ -193,10 +201,14 @@ class StripeGateway:
         existing = db.query(Payment).filter(Payment.idempotency_key == idem).first()
         if existing:
             if existing.payment_status == PaymentStatus.SUCCESS.value:
-                raise HTTPException(409, "Este pago ya fue procesado exitosamente este período")
+                raise HTTPException(
+                    409, "Este pago ya fue procesado exitosamente este período"
+                )
             if existing.gateway_payment_id:
                 try:
-                    prior_pi = stripe.PaymentIntent.retrieve(existing.gateway_payment_id)
+                    prior_pi = stripe.PaymentIntent.retrieve(
+                        existing.gateway_payment_id
+                    )
                     if prior_pi.status != "canceled":
                         return self._pi_response(prior_pi, existing, plan)
                     # Mismo `idem` en Stripe devolvería otra vez este PI cancelado → nueva clave + actualizar fila.
@@ -235,7 +247,9 @@ class StripeGateway:
                 except stripe.error.InvalidRequestError:
                     pass  # ya cancelado o en estado no cancelable
                 except stripe.error.StripeError as exc:
-                    logger.warning("No se pudo cancelar PI %s: %s", p.gateway_payment_id, exc)
+                    logger.warning(
+                        "No se pudo cancelar PI %s: %s", p.gateway_payment_id, exc
+                    )
             p.payment_status = PaymentStatus.CANCELED.value
             if p.invoice_id:
                 inv = db.query(Invoice).filter(Invoice.id == p.invoice_id).first()
@@ -289,9 +303,7 @@ class StripeGateway:
 
         # Mismo PI en Stripe pero fila BD sin nuestra idempotencia (o ENUM gateway) → igual hay colisión única en `gateway_payment_id`.
         conflict_db = (
-            db.query(Payment)
-            .filter(Payment.gateway_payment_id == pi.id)
-            .first()
+            db.query(Payment).filter(Payment.gateway_payment_id == pi.id).first()
         )
         if conflict_db is not None and conflict_db is not payment_row_to_refresh:
             if conflict_db.account_id != account.id:
@@ -304,7 +316,9 @@ class StripeGateway:
                     "Conflicto al registrar el pago. Refresca e intenta de nuevo o contacta soporte.",
                 )
             if conflict_db.payment_status == PaymentStatus.SUCCESS.value:
-                raise HTTPException(409, "Este pago ya fue procesado exitosamente este período")
+                raise HTTPException(
+                    409, "Este pago ya fue procesado exitosamente este período"
+                )
             if conflict_db.idempotency_key != idem:
                 conflict_db.idempotency_key = idem
             db.commit()
@@ -374,14 +388,16 @@ class StripeGateway:
         except IntegrityError as exc:
             db.rollback()
             orig_txt = str(exc.orig) if exc.orig else ""
-            if "idx_pay_gateway_id" not in orig_txt and "gateway_payment_id" not in orig_txt:
+            if (
+                "idx_pay_gateway_id" not in orig_txt
+                and "gateway_payment_id" not in orig_txt
+            ):
                 raise HTTPException(
-                    500, "No se pudo registrar el intento de pago. Intenta en un momento."
+                    500,
+                    "No se pudo registrar el intento de pago. Intenta en un momento.",
                 ) from exc
             reused = (
-                db.query(Payment)
-                .filter(Payment.gateway_payment_id == pi.id)
-                .first()
+                db.query(Payment).filter(Payment.gateway_payment_id == pi.id).first()
             )
             if (
                 reused
@@ -403,13 +419,13 @@ class StripeGateway:
     @staticmethod
     def _pi_response(pi: stripe.PaymentIntent, payment: Payment, plan: Plan) -> dict:
         return {
-            "client_token":    pi.client_secret,
-            "gateway":         GATEWAY,
-            "payment_id":      str(payment.id),
-            "amount_mxn":      float(payment.amount),
+            "client_token": pi.client_secret,
+            "gateway": GATEWAY,
+            "payment_id": str(payment.id),
+            "amount_mxn": float(payment.amount),
             "amount_with_iva": round(float(payment.amount) * 1.16, 2),
-            "plan_name":       plan.name,
-            "plan_code":       plan.code,
+            "plan_name": plan.name,
+            "plan_code": plan.code,
         }
 
     # ── Payment Methods ───────────────────────────────────────────────────────
@@ -428,7 +444,9 @@ class StripeGateway:
         )
         return [self._serialize_pm(pm) for pm in pms]
 
-    def detach_payment_method(self, db: Session, organization_id: UUID, external_token: str) -> None:
+    def detach_payment_method(
+        self, db: Session, organization_id: UUID, external_token: str
+    ) -> None:
         account = self._get_account(db, organization_id)
         pm = self._assert_pm_ownership(db, external_token, account.id)
 
@@ -443,8 +461,13 @@ class StripeGateway:
                 .count()
             )
             if count <= 1:
-                raise HTTPException(400, "No puedes eliminar el único método de pago. Agrega otro primero.")
-            raise HTTPException(400, "Asigna otro método como predeterminado antes de eliminar éste.")
+                raise HTTPException(
+                    400,
+                    "No puedes eliminar el único método de pago. Agrega otro primero.",
+                )
+            raise HTTPException(
+                400, "Asigna otro método como predeterminado antes de eliminar éste."
+            )
 
         try:
             stripe.PaymentMethod.detach(external_token)
@@ -456,7 +479,9 @@ class StripeGateway:
         db.commit()
         logger.info("PM eliminado account=%s token=%s", account.id, external_token)
 
-    def set_default_payment_method(self, db: Session, organization_id: UUID, external_token: str) -> None:
+    def set_default_payment_method(
+        self, db: Session, organization_id: UUID, external_token: str
+    ) -> None:
         account = self._get_account(db, organization_id)
         new_default = self._assert_pm_ownership(db, external_token, account.id)
 
@@ -486,7 +511,9 @@ class StripeGateway:
                     invoice_settings={"default_payment_method": external_token},
                 )
         except stripe.error.StripeError as e:
-            logger.warning("No se pudo actualizar default en Stripe Customer: %s", e.user_message)
+            logger.warning(
+                "No se pudo actualizar default en Stripe Customer: %s", e.user_message
+            )
 
         new_default.is_default = True
         new_default.updated_at = now
@@ -507,11 +534,13 @@ class StripeGateway:
             logger.error("Webhook parse error: %s", e)
             raise HTTPException(400, "Payload de webhook malformado")
 
-        event_id: str   = event["id"]
+        event_id: str = event["id"]
         event_type: str = event["type"]
 
         if db.get(PaymentGatewayEvent, (GATEWAY, event_id)):
-            logger.info("Evento duplicado ignorado: gateway=%s id=%s", GATEWAY, event_id)
+            logger.info(
+                "Evento duplicado ignorado: gateway=%s id=%s", GATEWAY, event_id
+            )
             return
 
         rec = PaymentGatewayEvent(
@@ -520,8 +549,8 @@ class StripeGateway:
             event_type=event_type,
             event_status=GatewayEventStatus.PROCESSED,
             payload={
-                "type":     event_type,
-                "created":  event.get("created"),
+                "type": event_type,
+                "created": event.get("created"),
                 "livemode": event.get("livemode"),
             },
         )
@@ -543,7 +572,8 @@ class StripeGateway:
                 case "invoice.payment_failed":
                     logger.warning(
                         "Cobro automático fallido: sub=%s customer=%s",
-                        obj.get("subscription"), obj.get("customer"),
+                        obj.get("subscription"),
+                        obj.get("customer"),
                     )
                 case _:
                     rec.event_status = GatewayEventStatus.SKIPPED
@@ -561,7 +591,7 @@ class StripeGateway:
 
     def get_client_config(self) -> dict:
         return {
-            "gateway":         GATEWAY,
+            "gateway": GATEWAY,
             "publishable_key": settings.STRIPE_PUBLISHABLE_KEY,
         }
 
@@ -587,9 +617,11 @@ class StripeGateway:
 
         # Dedup por external_token (mismo objeto PM)
         if (
-                db.query(PaymentMethod)
-                        .filter(PaymentMethod.gateway == GATEWAY, PaymentMethod.external_token == pm_id)
-                        .first()
+            db.query(PaymentMethod)
+            .filter(
+                PaymentMethod.gateway == GATEWAY, PaymentMethod.external_token == pm_id
+            )
+            .first()
         ):
             return
 
@@ -606,14 +638,14 @@ class StripeGateway:
         # Dedup por fingerprint (misma tarjeta, distinto pm_xxx)
         fingerprint = card.get("fingerprint")
         if fingerprint and (
-                db.query(PaymentMethod)
-                        .filter(
-                    PaymentMethod.account_id == cust.account_id,
-                    PaymentMethod.gateway == GATEWAY,
-                    PaymentMethod.fingerprint == fingerprint,
-                    PaymentMethod.is_active,
-                )
-                        .first()
+            db.query(PaymentMethod)
+            .filter(
+                PaymentMethod.account_id == cust.account_id,
+                PaymentMethod.gateway == GATEWAY,
+                PaymentMethod.fingerprint == fingerprint,
+                PaymentMethod.is_active,
+            )
+            .first()
         ):
             # Desadjuntar el PM duplicado de Stripe para no acumular basura
             try:
@@ -622,7 +654,9 @@ class StripeGateway:
                 pass
             logger.info(
                 "PM duplicado rechazado y desadjuntado pm=%s fingerprint=%s account=%s",
-                pm_id, fingerprint, cust.account_id,
+                pm_id,
+                fingerprint,
+                cust.account_id,
             )
             return
 
@@ -652,11 +686,15 @@ class StripeGateway:
         db.add(pm)
         logger.info(
             "PM guardado gateway=%s account=%s brand=%s last4=%s fingerprint=%s",
-            GATEWAY, cust.account_id, card.get("brand"), card.get("last4"), fingerprint,
+            GATEWAY,
+            cust.account_id,
+            card.get("brand"),
+            card.get("last4"),
+            fingerprint,
         )
 
     def _on_payment_succeeded(self, db: Session, pi: dict) -> None:
-        pi_id    = pi.get("id")
+        pi_id = pi.get("id")
         metadata = pi.get("metadata", {})
 
         payment = db.query(Payment).filter(Payment.gateway_payment_id == pi_id).first()
@@ -664,11 +702,11 @@ class StripeGateway:
             return
 
         now = datetime.now(timezone.utc)
-        payment.payment_status      = PaymentStatus.SUCCESS.value
-        payment.succeeded_at        = now
+        payment.payment_status = PaymentStatus.SUCCESS.value
+        payment.succeeded_at = now
         payment.payment_method_type = self._extract_brand(pi)
-        payment.provider_response   = {
-            "id":     pi_id,
+        payment.provider_response = {
+            "id": pi_id,
             "status": pi.get("status"),
             "amount": pi.get("amount"),
         }
@@ -676,29 +714,33 @@ class StripeGateway:
         invoice = db.query(Invoice).filter(Invoice.id == payment.invoice_id).first()
         if invoice:
             invoice.invoice_status = InvoiceStatus.PAID.value
-            invoice.paid_at        = now
+            invoice.paid_at = now
 
-        org_id        = metadata.get("organization_id")
-        plan_id       = metadata.get("plan_id")
+        org_id = metadata.get("organization_id")
+        plan_id = metadata.get("plan_id")
         billing_cycle = metadata.get("billing_cycle", BillingCycle.MONTHLY.value)
 
         if org_id and plan_id:
             try:
-                self._activate_subscription(db, UUID(org_id), UUID(plan_id), billing_cycle)
+                self._activate_subscription(
+                    db, UUID(org_id), UUID(plan_id), billing_cycle
+                )
             except Exception as e:
                 logger.error("Error activando suscripción: %s", e)
 
         logger.info("Pago exitoso payment=%s pi=%s", payment.id, pi_id)
 
     def _on_payment_failed(self, db: Session, pi: dict) -> None:
-        payment = db.query(Payment).filter(Payment.gateway_payment_id == pi.get("id")).first()
+        payment = (
+            db.query(Payment).filter(Payment.gateway_payment_id == pi.get("id")).first()
+        )
         if not payment or payment.payment_status != PaymentStatus.PENDING.value:
             return
 
         error = pi.get("last_payment_error", {}) or {}
-        payment.payment_status  = PaymentStatus.FAILED.value
-        payment.failed_at       = datetime.now(timezone.utc)
-        payment.failure_code    = error.get("code")
+        payment.payment_status = PaymentStatus.FAILED.value
+        payment.failed_at = datetime.now(timezone.utc)
+        payment.failure_code = error.get("code")
         payment.failure_message = error.get("message")
         logger.info("Pago fallido payment=%s", payment.id)
 
@@ -711,10 +753,10 @@ class StripeGateway:
         if not record:
             return
         status_map = {
-            "active":   SubscriptionStatus.ACTIVE.value,
+            "active": SubscriptionStatus.ACTIVE.value,
             "canceled": SubscriptionStatus.CANCELLED.value,
             "past_due": SubscriptionStatus.ACTIVE.value,
-            "unpaid":   SubscriptionStatus.CANCELLED.value,
+            "unpaid": SubscriptionStatus.CANCELLED.value,
         }
         s = sub.get("status", "")
         if s in status_map:
@@ -729,25 +771,27 @@ class StripeGateway:
             .first()
         )
         if record:
-            record.status       = SubscriptionStatus.CANCELLED.value
+            record.status = SubscriptionStatus.CANCELLED.value
             record.cancelled_at = datetime.now(timezone.utc)
 
     def _activate_subscription(
         self, db: Session, organization_id: UUID, plan_id: UUID, billing_cycle: str
     ) -> None:
-        now     = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
         expires = now + (
             timedelta(days=365)
             if billing_cycle.upper() == BillingCycle.YEARLY.value
             else timedelta(days=30)
         )
-        existing = subscription_query.get_primary_active_subscription(db, organization_id)
+        existing = subscription_query.get_primary_active_subscription(
+            db, organization_id
+        )
         if existing:
-            existing.status               = SubscriptionStatus.ACTIVE.value
-            existing.expires_at           = expires
+            existing.status = SubscriptionStatus.ACTIVE.value
+            existing.expires_at = expires
             existing.current_period_start = now
-            existing.current_period_end   = expires
-            existing.updated_at           = now
+            existing.current_period_end = expires
+            existing.updated_at = now
         else:
             sub = Subscription(
                 plan_id=plan_id,
@@ -770,18 +814,18 @@ class StripeGateway:
             or (pm.exp_year == now.year and (pm.exp_month or 0) < now.month)
         )
         return {
-            "id":             str(pm.id),
-            "gateway":        pm.gateway,
+            "id": str(pm.id),
+            "gateway": pm.gateway,
             "external_token": pm.external_token,
-            "type":           pm.method_type,
-            "brand":          pm.brand,
-            "last4":          pm.last4,
-            "exp_month":      pm.exp_month,
-            "exp_year":       pm.exp_year,
-            "is_default":     pm.is_default,
-            "is_expired":     expired,
-            "metadata":       pm.extra_data,
-            "created_at":     pm.created_at.isoformat(),
+            "type": pm.method_type,
+            "brand": pm.brand,
+            "last4": pm.last4,
+            "exp_month": pm.exp_month,
+            "exp_year": pm.exp_year,
+            "is_default": pm.is_default,
+            "is_expired": expired,
+            "metadata": pm.extra_data,
+            "created_at": pm.created_at.isoformat(),
         }
 
     @staticmethod

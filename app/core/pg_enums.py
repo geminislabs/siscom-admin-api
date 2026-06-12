@@ -13,34 +13,60 @@ USO:
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 
 payment_gateway_pg = PgEnum(
-    "stripe", "conekta", "mercadopago", "paypal", "manual",
+    "stripe",
+    "conekta",
+    "mercadopago",
+    "paypal",
+    "manual",
     name="payment_gateway",
     create_type=False,
 )
 
 payment_method_type_pg = PgEnum(
-    "card", "cash_voucher", "bank_transfer", "bank_redirect",
-    "wallet", "installments", "real_time", "loyalty_points",
-    "gift_card", "crypto", "manual",
+    "card",
+    "cash_voucher",
+    "bank_transfer",
+    "bank_redirect",
+    "wallet",
+    "installments",
+    "real_time",
+    "loyalty_points",
+    "gift_card",
+    "crypto",
+    "manual",
     name="payment_method_type",
     create_type=False,
 )
 
 payment_status_pg = PgEnum(
-    "PENDING", "REQUIRES_ACTION", "PROCESSING", "SUCCESS",
-    "FAILED", "CANCELED", "DISPUTED", "REFUNDED", "PARTIALLY_REFUNDED",
+    "PENDING",
+    "REQUIRES_ACTION",
+    "PROCESSING",
+    "SUCCESS",
+    "FAILED",
+    "CANCELED",
+    "DISPUTED",
+    "REFUNDED",
+    "PARTIALLY_REFUNDED",
     name="payment_status",
     create_type=False,
 )
 
 invoice_status_pg = PgEnum(
-    "DRAFT", "OPEN", "PAID", "PAST_DUE", "VOID", "UNCOLLECTIBLE",
+    "DRAFT",
+    "OPEN",
+    "PAID",
+    "PAST_DUE",
+    "VOID",
+    "UNCOLLECTIBLE",
     name="invoice_status",
     create_type=False,
 )
 
 gateway_event_status_pg = PgEnum(
-    "processed", "failed", "skipped",
+    "processed",
+    "failed",
+    "skipped",
     name="gateway_event_status",
     create_type=False,
 )
