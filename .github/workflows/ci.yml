@@ -37,6 +37,19 @@ jobs:
         run: black --check app/ tests/
 
       - name: Run tests
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_NAME: test
+          COGNITO_REGION: us-east-1
+          COGNITO_USER_POOL_ID: us-east-1_testpool
+          COGNITO_CLIENT_ID: test-client-id
+          COGNITO_CLIENT_SECRET: test-client-secret
+          SES_FROM_EMAIL: test@example.com
+          FRONTEND_URL: http://localhost:3000
+          PASETO_SECRET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
 
       - name: Build Docker image
