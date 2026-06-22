@@ -166,8 +166,8 @@ aws ec2 associate-iam-instance-profile \
 Si usas IAM Role, puedes comentar estas líneas en el `.env`:
 
 ```bash
-# AWS_ACCESS_KEY_ID=AKIAXZEFH6GHACJR23W4
-# AWS_SECRET_ACCESS_KEY=xxxxx
+# AWS_ACCESS_KEY_ID=AKIAEXAMPLEKEY
+# AWS_SECRET_ACCESS_KEY=your-secret-access-key
 ```
 
 ---

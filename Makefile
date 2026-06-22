@@ -1,4 +1,4 @@
-.PHONY: help install lint format test build run stop clean deploy-test
+.PHONY: help install lint format format-check test test-cov build run stop clean deploy-test validate scan-secrets audit-deps
 
 help:  ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -7,13 +7,13 @@ install:  ## Instala las dependencias
 	pip install -r requirements.txt
 
 lint:  ## Ejecuta el linter (Ruff)
-	ruff check app/
+	ruff check app/ tests/
 
 format:  ## Formatea el código con Black
-	black app/
+	black app/ tests/
 
 format-check:  ## Verifica el formato sin modificar archivos
-	black --check app/
+	black --check app/ tests/
 
 test:  ## Ejecuta los tests
 	pytest tests/ -v
@@ -79,6 +79,15 @@ migrations-history:  ## Muestra el historial de migraciones
 
 all-checks: format-check lint test  ## Ejecuta todas las verificaciones (formato, lint, tests)
 	@echo "✅ Todas las verificaciones pasaron correctamente"
+
+validate: format-check lint test build  ## Pipeline local equivalente a CI quality
+	@echo "✅ validate OK"
+
+scan-secrets:  ## Escaneo Gitleaks
+	bash scripts/gitleaks-scan.sh
+
+audit-deps:  ## Auditoría pip-audit
+	bash scripts/pip-audit-scan.sh
 
 verify-github-config:  ## Verifica qué variables y secrets de GitHub faltan configurar
 	./scripts/verify_github_config.sh

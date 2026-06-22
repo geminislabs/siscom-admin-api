@@ -264,8 +264,10 @@ def test_assign_and_unassign_units_for_rule(
     assert unit_ids == {str(unit_1.id), str(unit_2.id)}
 
     unassign_payload = {"unit_ids": [str(unit_1.id)]}
-    unassign_response = authenticated_client.delete(
-        f"/api/v1/alert_rules/{rule_id}/units", json=unassign_payload
+    unassign_response = authenticated_client.request(
+        "DELETE",
+        f"/api/v1/alert_rules/{rule_id}/units",
+        json=unassign_payload,
     )
     assert unassign_response.status_code == status.HTTP_200_OK
 
@@ -401,7 +403,8 @@ def test_alert_rule_write_endpoints_publish_kafka_events(
     )
     assert assign_response.status_code == status.HTTP_200_OK
 
-    unassign_response = authenticated_client.delete(
+    unassign_response = authenticated_client.request(
+        "DELETE",
         f"/api/v1/alert_rules/{rule_id}/units",
         json={"unit_ids": [str(unit_2.id)]},
     )

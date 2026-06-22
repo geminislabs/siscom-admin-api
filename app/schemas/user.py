@@ -139,7 +139,10 @@ class UserAcceptInvitation(BaseModel):
 
     class Config:
         json_schema_extra = {
-            "example": {"token": "abc123-def456-ghi789", "password": "MiPassword123!"}
+            "example": {
+                "token": "example-invitation-token",
+                "password": "MiPassword123!",
+            }
         }
 
 
@@ -259,7 +262,7 @@ class ChangePasswordRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "old_password": "MiPwdAnterior123",
+                "old_password": "PreviousPassword1",
                 "new_password": "NuevoPwdFuerte456!",
             }
         }
@@ -304,7 +307,7 @@ class ConfirmEmailRequest(BaseModel):
     token: str = Field(..., description="Token de verificación de email")
 
     class Config:
-        json_schema_extra = {"example": {"token": "abc123-def456-ghi789"}}
+        json_schema_extra = {"example": {"token": "example-email-token"}}
 
 
 class ConfirmEmailResponse(BaseModel):

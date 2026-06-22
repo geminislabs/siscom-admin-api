@@ -47,6 +47,7 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
 .tox/
 
 # Logs
@@ -59,6 +60,7 @@ Thumbs.db
 
 # Docker
 *.pid
+.cache/
 
 # Alembic
 # Uncomment if you don't want to track migrations

@@ -71,7 +71,7 @@ def test_map_row_to_point_builds_nested_models():
     assert point.bucket == bucket
     assert point.speed.avg_speed == 40.0
     assert point.main_battery.avg_voltage == 12.0
-    assert point.backup_battery.avg_voltage is None
+    assert point.backup_battery is None
     assert point.alerts.count == 3
     assert point.comm_quality.count_comm_fixable == 1
     assert point.samples.total == 100

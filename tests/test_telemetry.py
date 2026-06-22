@@ -18,7 +18,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi import status
-from fastapi.testclient import TestClient
 
 from app.api.deps import (
     get_current_organization_id,
@@ -44,16 +43,16 @@ from app.schemas.telemetry import (
 # ---------------------------------------------------------------------------
 
 
-def _make_user(is_master: bool = True) -> User:
+def _make_user(is_master: bool = True):
     org_id = uuid4()
-    return User(
-        id=uuid4(),
-        organization_id=org_id,
-        cognito_sub="test-sub",
-        email="test@test.com",
-        full_name="Test User",
-        is_master=is_master,
-    )
+    user = MagicMock(spec=User)
+    user.id = uuid4()
+    user.organization_id = org_id
+    user.cognito_sub = "test-sub"
+    user.email = "test@test.com"
+    user.full_name = "Test User"
+    user.is_master = is_master
+    return user
 
 
 NOW = datetime(2026, 4, 21, 10, 0, 0, tzinfo=timezone.utc)
@@ -104,8 +103,8 @@ def regular_user():
 
 
 @pytest.fixture
-def api_client(master_user):
-    """TestClient con auth de usuario master y DB mockeada."""
+def api_client(client, master_user):
+    """Reutiliza el TestClient compartido con auth master y DB mockeada."""
     db_mock = MagicMock()
 
     def override_get_db():
@@ -118,10 +117,7 @@ def api_client(master_user):
     )
     app.dependency_overrides[get_current_user_id] = lambda: master_user.id
 
-    with TestClient(app) as c:
-        yield c
-
-    app.dependency_overrides.clear()
+    yield client
 
 
 # ===========================================================================
