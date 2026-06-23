@@ -220,7 +220,8 @@ def _query_single_hour(
     if not metric_cols:
         return []
 
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             bucket,
             {metric_cols}
@@ -230,7 +231,8 @@ def _query_single_hour(
           AND bucket < :to_ts
         GROUP BY bucket
         ORDER BY bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
@@ -252,7 +254,8 @@ def _query_single_day(
     if not metric_cols:
         return []
 
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             date_trunc('day', bucket) AS bucket,
             {metric_cols}
@@ -262,7 +265,8 @@ def _query_single_day(
           AND bucket < :to_ts
         GROUP BY date_trunc('day', bucket)
         ORDER BY bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
@@ -284,7 +288,8 @@ def _query_single_hour_intelligence(
     if not metric_cols:
         return []
 
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             bucket,
             {metric_cols}
@@ -294,7 +299,8 @@ def _query_single_hour_intelligence(
           AND bucket < :to_ts
         GROUP BY bucket
         ORDER BY bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
@@ -316,7 +322,8 @@ def _query_single_day_intelligence(
     if not metric_cols:
         return []
 
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             date_trunc('day', bucket) AS bucket,
             {metric_cols}
@@ -326,7 +333,8 @@ def _query_single_day_intelligence(
           AND bucket < :to_ts
         GROUP BY date_trunc('day', bucket)
         ORDER BY bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
@@ -354,7 +362,8 @@ def _query_multi_hour(
         return {d: [] for d in device_ids}
 
     # Usar ANY con array de PostgreSQL para IN eficiente
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             device_id,
             bucket,
@@ -365,7 +374,8 @@ def _query_multi_hour(
           AND bucket < :to_ts
                 GROUP BY device_id, bucket
         ORDER BY device_id ASC, bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
@@ -402,7 +412,8 @@ def _query_multi_hour_intelligence(
     if not metric_cols:
         return {d: [] for d in device_ids}
 
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             device_id,
             bucket,
@@ -413,7 +424,8 @@ def _query_multi_hour_intelligence(
           AND bucket < :to_ts
         GROUP BY device_id, bucket
         ORDER BY device_id ASC, bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
@@ -435,7 +447,8 @@ def _query_multi_day(
     if not metric_cols:
         return {d: [] for d in device_ids}
 
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             device_id,
             date_trunc('day', bucket) AS bucket,
@@ -446,7 +459,8 @@ def _query_multi_day(
           AND bucket < :to_ts
         GROUP BY device_id, date_trunc('day', bucket)
         ORDER BY device_id ASC, bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
@@ -468,7 +482,8 @@ def _query_multi_day_intelligence(
     if not metric_cols:
         return {d: [] for d in device_ids}
 
-    sql = text(f"""
+    sql = text(
+        f"""
         SELECT
             device_id,
             date_trunc('day', bucket) AS bucket,
@@ -479,7 +494,8 @@ def _query_multi_day_intelligence(
           AND bucket < :to_ts
         GROUP BY device_id, date_trunc('day', bucket)
         ORDER BY device_id ASC, bucket ASC
-        """)
+        """
+    )
 
     rows = db.execute(
         sql,
