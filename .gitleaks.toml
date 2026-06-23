@@ -1,0 +1,25 @@
+title = "siscom-admin-api"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Build artifacts, vendor paths, and docs with intentional placeholder tokens"
+paths = [
+	'''(?:^|/)\.venv/''',
+	'''(?:^|/)\.cache/''',
+	'''(?:^|/)htmlcov/''',
+	'''(?:^|/)docs/''',
+	'''(?:^|/)README\.md$''',
+	'''(?:^|/)API_DOCUMENTATION\.md$''',
+	'''(?:^|/)CONFIGURAR_AWS_SES\.md$''',
+	'''(?:^|/)scripts/testing/''',
+	'''(?:^|/)\.env(?:\..*)?$''',
+]
+regexes = [
+	'''example\.com''',
+	'''localhost''',
+	'''127\.0\.0\.1''',
+	'''test@test\.com''',
+	'''test_key''',
+]

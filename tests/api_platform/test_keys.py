@@ -14,6 +14,8 @@ from app.api.v1.endpoints.api_platform.services.keys import (
     _generate_api_key,
 )
 
+PRODUCT_CODE = "nexus-tracker"
+
 # ---------------------------------------------------------------------------
 # Key generation helpers
 # ---------------------------------------------------------------------------
@@ -36,16 +38,16 @@ def test_generate_api_key_uniqueness():
 # ---------------------------------------------------------------------------
 
 
-def _make_saved_key(org_id, product_id, name) -> ApiKey:
-    key = ApiKey(
-        id=uuid4(),
-        organization_id=org_id,
-        product_id=product_id,
-        name=name,
-        key_hash="fakehash",
-        prefix="orion_live_xxxx",
-        status="ACTIVE",
-    )
+def _make_saved_key(org_id, product_id, name):
+    key = MagicMock(spec=ApiKey)
+    key.id = uuid4()
+    key.organization_id = org_id
+    key.product_id = product_id
+    key.name = name
+    key.key_hash = "fakehash"
+    key.prefix = "orion_live_xxxx"
+    key.status = "ACTIVE"
+    key.revoked_at = None
     return key
 
 
@@ -53,13 +55,19 @@ def test_create_api_key_returns_model_and_full_key():
     db = MagicMock()
     org_id = uuid4()
     product_id = uuid4()
-    data = ApiKeyCreate(product_id=product_id, name="test key")
+    data = ApiKeyCreate(product_code=PRODUCT_CODE, name="test key")
 
     saved = _make_saved_key(org_id, product_id, "test key")
 
-    with patch(
-        "app.api.v1.endpoints.api_platform.services.keys.ApiKeyRepository.create",
-        return_value=saved,
+    with (
+        patch(
+            "app.api.v1.endpoints.api_platform.services.keys.ApiKeyRepository.get_product_id_by_code",
+            return_value=product_id,
+        ),
+        patch(
+            "app.api.v1.endpoints.api_platform.services.keys.ApiKeyRepository.create",
+            return_value=saved,
+        ),
     ):
         result_key, full_key = ApiKeyService.create(db, org_id, data)
 
@@ -73,7 +81,7 @@ def test_create_api_key_never_stores_plaintext():
     db = MagicMock()
     org_id = uuid4()
     product_id = uuid4()
-    data = ApiKeyCreate(product_id=product_id, name="secure key")
+    data = ApiKeyCreate(product_code=PRODUCT_CODE, name="secure key")
 
     captured = {}
 
@@ -82,9 +90,15 @@ def test_create_api_key_never_stores_plaintext():
         key.id = uuid4()
         return key
 
-    with patch(
-        "app.api.v1.endpoints.api_platform.services.keys.ApiKeyRepository.create",
-        side_effect=fake_create,
+    with (
+        patch(
+            "app.api.v1.endpoints.api_platform.services.keys.ApiKeyRepository.get_product_id_by_code",
+            return_value=product_id,
+        ),
+        patch(
+            "app.api.v1.endpoints.api_platform.services.keys.ApiKeyRepository.create",
+            side_effect=fake_create,
+        ),
     ):
         _, full_key = ApiKeyService.create(db, org_id, data)
 

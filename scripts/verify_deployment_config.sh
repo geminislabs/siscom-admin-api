@@ -47,7 +47,7 @@ check_file "requirements.txt"
 echo ""
 
 echo "=== 2. Verificando Dockerfile ==="
-check_file_content "Dockerfile" "python:3.11" "Usa Python 3.11"
+check_file_content "Dockerfile" "python:3.12" "Usa Python 3.12"
 check_file_content "Dockerfile" "EXPOSE 8000" "Expone puerto 8000"
 check_file_content "Dockerfile" "uvicorn" "Comando uvicorn configurado"
 echo ""

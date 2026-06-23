@@ -1,17 +1,18 @@
-name: CI - Tests and Linting
+name: CI
 
 on:
   pull_request:
-    branches:
-      - master
-      - develop
+    branches: [master, develop]
   push:
-    branches:
-      - develop
+    branches: [master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
-  lint-and-test:
-    name: Lint and Test
+  quality:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,57 +22,68 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: '3.12'
+          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
 
-      - name: Run Ruff (linter)
-        run: |
-          echo "🔍 Ejecutando Ruff..."
-          ruff check app/ || true
+      - name: Run Ruff
+        run: ruff check app/ tests/
 
-      - name: Run Black (formatter check)
-        run: |
-          echo "🎨 Verificando formato con Black..."
-          black --check app/ || true
+      - name: Run Black
+        run: black --check app/ tests/
 
       - name: Run tests
-        run: |
-          echo "🧪 Ejecutando tests..."
-          pytest tests/ -v --cov=app --cov-report=term-missing || true
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_USER: test
+          DB_PASSWORD: test
+          DB_NAME: test
+          COGNITO_REGION: us-east-1
+          COGNITO_USER_POOL_ID: us-east-1_testpool
+          COGNITO_CLIENT_ID: test-client-id
+          COGNITO_CLIENT_SECRET: test-client-secret
+          SES_FROM_EMAIL: test@example.com
+          FRONTEND_URL: http://localhost:3000
+          PASETO_SECRET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
 
       - name: Build Docker image
-        run: |
-          echo "🐋 Construyendo imagen Docker..."
-          docker build -t siscom-admin-api:test .
+        run: docker build -t siscom-admin-api:ci .
 
-      - name: Test Docker image
-        run: |
-          echo "🧪 Probando imagen Docker..."
-          docker run --name test-container -d -p 8000:8000 \
-            -e DB_HOST=localhost \
-            -e DB_PORT=5432 \
-            -e DB_USER=test \
-            -e DB_PASSWORD=test \
-            -e DB_NAME=test \
-            -e AWS_ACCESS_KEY_ID=test \
-            -e AWS_SECRET_ACCESS_KEY=test \
-            -e COGNITO_REGION=us-east-1 \
-            -e COGNITO_USER_POOL_ID=test \
-            -e COGNITO_CLIENT_ID=test \
-            -e COGNITO_CLIENT_SECRET=test \
-            -e SES_FROM_EMAIL=test@test.com \
-            -e FRONTEND_URL=http://localhost:3000 \
-            -e CONTACT_EMAIL=test@test.com \
-            -e RECAPTCHA_SECRET_KEY=test_key \
-            siscom-admin-api:test || true
+  security:
+    runs-on: ubuntu-latest
 
-          sleep 5
-          docker logs test-container
-          docker stop test-container || true
-          docker rm test-container || true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Gitleaks secret scan
+        run: bash scripts/gitleaks-scan.sh
+
+      - name: Semgrep static analysis
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/python
+            p/secrets
+
+      - name: pip-audit dependency scan
+        run: bash scripts/pip-audit-scan.sh

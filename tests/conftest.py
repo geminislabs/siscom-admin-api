@@ -11,6 +11,8 @@ from sqlalchemy.sql.schema import ColumnDefault
 from sqlmodel import SQLModel
 
 from app.api.deps import (
+    AuthResult,
+    get_auth_for_gac_admin,
     get_current_organization_id,
     get_current_user_full,
     get_current_user_id,
@@ -24,15 +26,57 @@ from app.models.plan import Plan
 from app.models.unit import Unit
 from app.models.user import User
 
-# Base de datos SQLite en memoria para tests
+# Base de datos SQLite en memoria para tests (engine aislado por fixture)
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+_METADATA_PATCH_STATE = {"applied": False, "saved": None}
+
+
+def _register_all_table_models() -> None:
+    """Registra todos los modelos SQLModel antes de parchear metadata para SQLite."""
+    import app.models  # noqa: F401
+    from app.api.v1.endpoints.api_platform.models import (  # noqa: F401
+        api_alert,
+        api_key,
+        api_limit,
+        api_log,
+        api_throttle,
+        api_usage,
+    )
+
+
+def _ensure_sqlite_metadata() -> None:
+    """Parchea metadata una vez por sesión para evitar drift entre tests unitarios y DB."""
+    if _METADATA_PATCH_STATE["applied"]:
+        return
+    _register_all_table_models()
+    _METADATA_PATCH_STATE["saved"] = _patch_metadata(SQLModel.metadata)
+    _METADATA_PATCH_STATE["applied"] = True
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _sqlite_test_metadata():
+    _ensure_sqlite_metadata()
+    yield
+    saved = _METADATA_PATCH_STATE["saved"]
+    if saved is not None:
+        _restore_metadata(SQLModel.metadata, saved)
+        _METADATA_PATCH_STATE["applied"] = False
+        _METADATA_PATCH_STATE["saved"] = None
+
+
+def _create_test_engine():
+    return create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _clear_dependency_overrides():
+    yield
+    app.dependency_overrides.clear()
 
 
 class _SQLiteUUID(TypeDecorator):
@@ -105,6 +149,7 @@ def _patch_metadata(metadata) -> dict:
                 if column.default is None:
                     callable_default = _python_default_for(sd_text)
                     if callable_default:
+                        col_save["default"] = column.default
                         column.default = ColumnDefault(callable_default)
 
             for pg_type, sqlite_type in _PG_TYPE_REPLACEMENTS.items():
@@ -135,6 +180,8 @@ def _restore_metadata(metadata, saved: dict) -> None:
             if key in saved:
                 if "server_default" in saved[key]:
                     column.server_default = saved[key]["server_default"]
+                if "default" in saved[key]:
+                    column.default = saved[key]["default"]
                 if "type" in saved[key]:
                     column.type = saved[key]["type"]
 
@@ -144,20 +191,22 @@ def db_session():
     """
     Crea una nueva sesión de base de datos para cada test.
     """
-    saved = _patch_metadata(SQLModel.metadata)
+    _ensure_sqlite_metadata()
+    test_engine = _create_test_engine()
     try:
-        SQLModel.metadata.create_all(bind=engine)
+        SQLModel.metadata.create_all(bind=test_engine)
     except Exception:
-        _restore_metadata(SQLModel.metadata, saved)
+        test_engine.dispose()
         raise
 
-    session = TestingSessionLocal()
+    session_factory = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+    session = session_factory()
     try:
         yield session
     finally:
         session.close()
-        SQLModel.metadata.drop_all(bind=engine)
-        _restore_metadata(SQLModel.metadata, saved)
+        SQLModel.metadata.drop_all(bind=test_engine)
+        test_engine.dispose()
 
 
 @pytest.fixture(scope="function")
@@ -318,11 +367,20 @@ def authenticated_client(client, test_organization_data, test_user_data):
     def override_get_current_user_id():
         return test_user_data.id
 
+    def override_get_auth_for_gac_admin():
+        return AuthResult(
+            auth_type="cognito",
+            payload={"sub": test_user_data.cognito_sub},
+            user_id=test_user_data.id,
+            organization_id=test_organization_data.id,
+        )
+
     app.dependency_overrides[get_current_organization_id] = (
         override_get_current_organization_id
     )
     app.dependency_overrides[get_current_user_full] = override_get_current_user_full
     app.dependency_overrides[get_current_user_id] = override_get_current_user_id
+    app.dependency_overrides[get_auth_for_gac_admin] = override_get_auth_for_gac_admin
 
     yield client
 

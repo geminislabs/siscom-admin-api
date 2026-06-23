@@ -49,7 +49,7 @@ show_help() {
     echo "Ejemplos:"
     echo "  $0 change-password usuario@example.com OldPwd123! NewPwd456!"
     echo "  $0 resend-verification usuario@example.com"
-    echo "  $0 confirm-email abc123-def456-ghi789"
+    echo "  $0 confirm-email example-email-token"
     echo "  $0 full-verification-flow usuario@example.com"
     echo ""
 }

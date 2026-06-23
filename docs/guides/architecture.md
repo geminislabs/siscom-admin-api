@@ -15,7 +15,7 @@ SISCOM Admin API es una aplicación FastAPI que implementa un sistema **SaaS B2B
 | Tecnología | Versión | Propósito |
 |------------|---------|-----------|
 | **FastAPI** | 0.109+ | Framework web de alto rendimiento |
-| **Python** | 3.11+ | Lenguaje de programación |
+| **Python** | 3.12+ | Lenguaje de programación |
 | **SQLAlchemy 2.x** | 2.0+ | ORM para base de datos |
 | **SQLModel** | Latest | Modelos híbridos Pydantic+SQLAlchemy |
 | **Pydantic** | 2.0+ | Validación de datos |
@@ -659,7 +659,7 @@ def test_activate_service_endpoint(client, auth_token):
 ### Docker
 
 ```dockerfile
-FROM python:3.11-slim
+FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt

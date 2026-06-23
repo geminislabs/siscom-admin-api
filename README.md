@@ -51,7 +51,7 @@ SISCOM Admin API es una API REST que implementa un sistema completo de gestión 
 
 - Docker 20.10+
 - Docker Compose 2.0+
-- Python 3.11+ (para desarrollo local)
+- Python 3.12+ (para desarrollo local)
 
 ## Instalación
 
