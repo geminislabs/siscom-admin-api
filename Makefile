@@ -1,4 +1,4 @@
-.PHONY: help install lint format format-check test test-cov build run stop clean deploy-test validate scan-secrets audit-deps
+.PHONY: help install lint format format-check test test-cov build run stop clean deploy-test validate scan-secrets audit-deps scan-osv
 
 help:  ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -18,7 +18,7 @@ format-check:  ## Verifica el formato sin modificar archivos
 test:  ## Ejecuta los tests
 	pytest tests/ -v
 
-test-cov:  ## Ejecuta los tests con coverage
+test-cov:  ## Ejecuta los tests con coverage (umbrales en pyproject.toml)
 	pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=html
 
 build:  ## Construye la imagen Docker
@@ -89,6 +89,8 @@ scan-secrets:  ## Escaneo Gitleaks
 audit-deps:  ## Auditoría pip-audit
 	bash scripts/pip-audit-scan.sh
 
+scan-osv:  ## Escaneo OSV-Scanner (requirements.txt)
+	bash scripts/osv-scan.sh
+
 verify-github-config:  ## Verifica qué variables y secrets de GitHub faltan configurar
 	./scripts/verify_github_config.sh
-

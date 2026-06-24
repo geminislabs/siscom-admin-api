@@ -36,7 +36,7 @@ jobs:
       - name: Run Black
         run: black --check app/ tests/
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
@@ -51,6 +51,14 @@ jobs:
           FRONTEND_URL: http://localhost:3000
           PASETO_SECRET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 14
 
       - name: Build Docker image
         run: docker build -t siscom-admin-api:ci .
@@ -87,3 +95,6 @@ jobs:
 
       - name: pip-audit dependency scan
         run: bash scripts/pip-audit-scan.sh
+
+      - name: OSV dependency scan
+        run: bash scripts/osv-scan.sh

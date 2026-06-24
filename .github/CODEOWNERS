@@ -1,0 +1,24 @@
+# Default reviewers — replace @geminislabs/engineering with your GitHub team slug
+* @geminislabs/engineering
+
+# Authentication and access control
+/app/core/security.py @geminislabs/engineering
+/app/api/deps.py @geminislabs/engineering
+
+# Internal GAC/PASETO API
+/app/api/v1/endpoints/internal/ @geminislabs/engineering
+/app/utils/paseto_token.py @geminislabs/engineering
+
+# Payments and billing
+/app/services/gateways/ @geminislabs/engineering
+/app/api/v1/endpoints/stripe_billing.py @geminislabs/engineering
+/app/api/v1/endpoints/billing.py @geminislabs/engineering
+
+# Messaging (Kafka)
+/app/services/messaging/ @geminislabs/engineering
+
+# CI/CD and release
+/.github/workflows/ @geminislabs/engineering
+/.github/dependabot.yml @geminislabs/engineering
+/scripts/ @geminislabs/engineering
+/Dockerfile @geminislabs/engineering

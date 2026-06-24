@@ -60,6 +60,8 @@ Opcional:
 ```bash
 make scan-secrets
 make audit-deps
+make scan-osv
+make test-cov    # incluye umbral de cobertura (ver docs/GOVERNANCE.md)
 pre-commit run --all-files
 ```
 

@@ -1,0 +1,16 @@
+# OSV-Scanner config for requirements.txt (repo root).
+# Docs: https://google.github.io/osv-scanner/configuration/
+
+# pip is not a runtime dependency. OSV can false-match pip-api / pip_audit tooling
+# as package "pip" with an ancient version when scanning requirements.txt.
+[[PackageOverrides]]
+name = "pip"
+ecosystem = "PyPI"
+vulnerability.ignore = true
+reason = "pip is not pinned in requirements.txt; false positive from pip-* tooling packages"
+
+# Transitive via python-jose (JWT/Cognito). No fixed release; maintainers consider
+# Minerva timing attacks out of scope. Tracked risk; pip-audit does not flag this ID.
+[[IgnoredVulns]]
+id = "GHSA-wj6h-64fc-37mp"
+reason = "ecdsa via python-jose; no fix available (CVE-2024-23342); accepted transitive risk"
