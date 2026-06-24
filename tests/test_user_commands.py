@@ -1,6 +1,5 @@
 from uuid import uuid4
 
-import pytest
 from fastapi import status
 
 from app.api.v1.endpoints import user_commands as user_commands_endpoint
@@ -10,10 +9,6 @@ from app.models.unified_sim_profile import UnifiedSimProfile
 from app.models.unit import Unit
 from app.models.unit_device import UnitDevice
 from app.services.kore import KoreAuthResponse, KoreSmsResponse
-
-_JSONB_SQLITE_SKIP = pytest.mark.skip(
-    reason="Command metadata JSONB .astext queries require PostgreSQL (PR-2)"
-)
 
 
 def test_user_command_requires_master(authenticated_client, test_user_data, db_session):
@@ -283,7 +278,6 @@ def test_engine_resume_rejects_suntech_st449(
     assert "No se pudo formar el comando" in response.json()["detail"]
 
 
-@_JSONB_SQLITE_SKIP
 def test_list_user_commands_by_unit_only_returns_user_commands_source(
     authenticated_client, db_session, test_organization_data, test_user_data
 ):
@@ -344,7 +338,6 @@ def test_list_user_commands_by_unit_only_returns_user_commands_source(
     assert body["commands"][0]["command_metadata"]["source_id"] == "user_commands"
 
 
-@_JSONB_SQLITE_SKIP
 def test_sync_user_command_rejects_non_user_command_source(
     authenticated_client, db_session, test_organization_data, test_user_data
 ):

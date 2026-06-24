@@ -16,10 +16,6 @@ from app.services.billing import (
     confirm_payment,
 )
 
-pytestmark = pytest.mark.skip(
-    reason="Legacy billing tests: Device model uses device_id/organization_id (align in PR-2)"
-)
-
 
 def test_confirm_payment_success_updates_payment_device_and_service():
     pid = uuid4()

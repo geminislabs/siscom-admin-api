@@ -1,10 +1,16 @@
+"""Pytest configuration and shared fixtures."""
+
+from tests.bootstrap_env import bootstrap_test_runtime
+
+bootstrap_test_runtime()
+
 import uuid as _uuid_module
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import JSON, Text, TypeDecorator, create_engine
+from sqlalchemy import Text, TypeDecorator, create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql.schema import ColumnDefault
@@ -99,11 +105,10 @@ class _SQLiteUUID(TypeDecorator):
 
 _PG_TYPE_REPLACEMENTS = {}
 try:
-    from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET, JSONB
+    from sqlalchemy.dialects.postgresql import ARRAY, CIDR, INET
     from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
     _PG_TYPE_REPLACEMENTS = {
-        JSONB: JSON(),
         PG_UUID: _SQLiteUUID(),
         ARRAY: Text(),
         INET: Text(),

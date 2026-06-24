@@ -65,7 +65,9 @@ def confirm_payment(
         db.add(device_service)
 
     # Actualizar device.active = True
-    device = db.query(Device).filter(Device.id == device_service.device_id).first()
+    device = (
+        db.query(Device).filter(Device.device_id == device_service.device_id).first()
+    )
     if device:
         device.active = True
         db.add(device)
@@ -118,7 +120,9 @@ def check_expired_services(db: Session) -> int:
 
         # Si no hay otros servicios activos, marcar device.active = False
         if not other_active:
-            device = db.query(Device).filter(Device.id == service.device_id).first()
+            device = (
+                db.query(Device).filter(Device.device_id == service.device_id).first()
+            )
             if device:
                 device.active = False
                 db.add(device)
@@ -183,7 +187,11 @@ def cancel_device_service(
 
     # Si no hay otros servicios activos, marcar device.active = False
     if not other_active:
-        device = db.query(Device).filter(Device.id == device_service.device_id).first()
+        device = (
+            db.query(Device)
+            .filter(Device.device_id == device_service.device_id)
+            .first()
+        )
         if device:
             device.active = False
             db.add(device)

@@ -6,7 +6,7 @@ import pytest
 from fastapi import status
 
 pytestmark = pytest.mark.skip(
-    reason="Orders API/schema drift pendiente de alinear con SQLite fixtures (PR-2)"
+    reason="Orders API requires invoice_id on payments; align fixtures in follow-up PR"
 )
 
 
