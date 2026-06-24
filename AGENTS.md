@@ -27,7 +27,7 @@ app/services/           # lógica de negocio
 app/models/             # SQLModel
 app/schemas/            # Pydantic DTOs
 app/db/migrations/      # Alembic
-tests/                  # pytest (SQLite in-memory en conftest)
+tests/                  # pytest (SQLite in-memory; JSONB compile hook in sqlite_dialect.py)
 docs/                   # guías y API docs
 ```
 

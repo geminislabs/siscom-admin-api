@@ -50,6 +50,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Ignorar imports no usados en __init__.py
+"tests/conftest.py" = ["E402"]  # bootstrap env before app imports
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
