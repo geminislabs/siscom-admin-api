@@ -52,6 +52,9 @@ Opcional: `make scan-secrets`, `make audit-deps`, `make scan-osv`, `pre-commit r
 
 - Branch protection y política de CI: `docs/GOVERNANCE.md`
 - CODEOWNERS y Dependabot: `.github/`
+- Decisiones de arquitectura: `docs/architecture/adr/`
+- Modelo de amenazas: `docs/security/threat-model.md`
+- Entorno reproducible: `.devcontainer/`
 
 ## Módulos sensibles
 

@@ -22,6 +22,8 @@ Cada ADR sigue esta estructura:
 | ID | Título | Estado | Fecha |
 |----|--------|--------|-------|
 | [ADR-001](./001-account-organization-user-model.md) | Migración al Modelo Account / Organization / User | Aceptado | 2024-12-29 |
+| [ADR-002](./002-engineering-governance-baseline.md) | Línea base de gobernanza de ingeniería | Aceptado | 2026-06-24 |
+| [ADR-003](./003-zero-cost-ci-security.md) | Tooling de seguridad en CI sin costo | Aceptado | 2026-06-24 |
 
 ## Crear un nuevo ADR
 
@@ -36,9 +38,9 @@ Cada ADR sigue esta estructura:
 ```markdown
 # ADR-NNN: [Título descriptivo]
 
-**Estado:** Propuesto  
-**Fecha:** YYYY-MM-DD  
-**Autores:** [Nombres]  
+**Estado:** Propuesto
+**Fecha:** YYYY-MM-DD
+**Autores:** [Nombres]
 **Revisores:** [Nombres]
 
 ## Contexto
@@ -87,4 +89,3 @@ Cada ADR sigue esta estructura:
 - **Nombres de archivo**: Usar kebab-case en minúsculas
 - **Estado**: Actualizar cuando cambie el estado de la decisión
 - **Inmutabilidad**: No modificar ADRs aceptados; crear uno nuevo que lo reemplace si es necesario
-

@@ -12,6 +12,8 @@ bash scripts/setup.sh
 cp .env.example .env   # ajustar variables
 ```
 
+> Opcional: abre el repo en el **DevContainer** (`.devcontainer/`) para un entorno Python 3.12 listo (ejecuta `scripts/setup.sh` automáticamente). Postgres y Kafka son servicios externos; apunta tu `.env` a ellos.
+
 ## Flujo de trabajo
 
 ### 1. Rama base
