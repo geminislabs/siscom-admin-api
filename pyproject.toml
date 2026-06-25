@@ -52,9 +52,18 @@ ignore = [
 "__init__.py" = ["F401"]  # Ignorar imports no usados en __init__.py
 "tests/conftest.py" = ["E402"]  # bootstrap env before app imports
 
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/db/migrations/*",
+]
+
+[tool.coverage.report]
+fail_under = 65
+show_missing = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
 addopts = "-v --tb=short --cov=app --cov-report=html"
-

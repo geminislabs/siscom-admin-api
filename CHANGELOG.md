@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
-- `scripts/gitleaks-scan.sh`, `scripts/pip-audit-scan.sh`, `scripts/setup.sh`
+- Quality gates (PR-3): `CODEOWNERS`, `dependabot.yml`, `docs/GOVERNANCE.md`, OSV-Scanner, `osv-scanner.toml`
+- Coverage floor (65% on `app/`) via `pyproject.toml`
+- `scripts/gitleaks-scan.sh`, `scripts/pip-audit-scan.sh`, `scripts/osv-scan.sh`, `scripts/setup.sh`
 - `.pre-commit-config.yaml` (Ruff, Black, hygiene hooks)
 - `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/RELEASE.md`
 - `.editorconfig`, `.python-version`, `.gitleaks.toml`
@@ -38,4 +40,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Gitleaks + Semgrep + pip-audit in CI `security` job
+- Gitleaks + Semgrep + pip-audit + OSV-Scanner in CI `security` job

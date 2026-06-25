@@ -46,7 +46,12 @@ make validate
 
 Equivalente: `make lint`, `make format-check`, `make test`, `docker build`.
 
-Opcional: `make scan-secrets`, `make audit-deps`, `pre-commit run --all-files`.
+Opcional: `make scan-secrets`, `make audit-deps`, `make scan-osv`, `pre-commit run --all-files`.
+
+## Gobernanza
+
+- Branch protection y política de CI: `docs/GOVERNANCE.md`
+- CODEOWNERS y Dependabot: `.github/`
 
 ## Módulos sensibles
 
