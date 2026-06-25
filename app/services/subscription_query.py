@@ -24,7 +24,6 @@ NOTA: El campo `active_subscription_id` en `organizations` es LEGACY y NO se usa
 fuente de verdad. El estado activo siempre se calcula dinámicamente.
 """
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -32,6 +31,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Query, Session
 
 from app.models.subscription import Subscription, SubscriptionStatus
+from app.utils.datetime import utcnow
 
 
 def _build_active_subscriptions_query(
@@ -50,7 +50,7 @@ def _build_active_subscriptions_query(
     Returns:
         Query configurada para filtrar suscripciones activas
     """
-    now = datetime.utcnow()
+    now = utcnow()
 
     return (
         db.query(Subscription)

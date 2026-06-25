@@ -17,6 +17,7 @@ from app.schemas.geofence import (
     GeofenceUpdate,
 )
 from app.services.messaging.kafka_producer import GeofencesKafkaProducer
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def _build_geofence_out(db: Session, geofence: Geofence) -> GeofenceOut:
 
 
 def _to_utc_iso_z(value: datetime | None) -> str:
-    dt = value or datetime.utcnow()
+    dt = value or utcnow()
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt.isoformat() + "Z"
@@ -61,7 +62,7 @@ def _build_upsert_event_payload(db: Session, geofence: Geofence) -> dict:
         "event_id": str(uuid4()),
         "event_type": "UPSERT",
         "entity": "geofence",
-        "timestamp": _to_utc_iso_z(datetime.utcnow()),
+        "timestamp": _to_utc_iso_z(utcnow()),
         "organization_id": str(geofence_out.organization_id),
         "data": {
             "id": str(geofence_out.id),
@@ -81,7 +82,7 @@ def _build_delete_event_payload(geofence_id: UUID, organization_id: UUID) -> dic
         "event_id": str(uuid4()),
         "event_type": "DELETE",
         "entity": "geofence",
-        "timestamp": _to_utc_iso_z(datetime.utcnow()),
+        "timestamp": _to_utc_iso_z(utcnow()),
         "organization_id": str(organization_id),
         "data": {
             "id": str(geofence_id),
@@ -254,7 +255,7 @@ def update_geofence(
             for h3_index in _unique_h3_indexes(h3_indexes):
                 db.add(GeofenceCell(geofence_id=geofence.id, h3_index=h3_index))
 
-        geofence.updated_at = datetime.utcnow()
+        geofence.updated_at = utcnow()
         db.add(geofence)
         db.commit()
         db.refresh(geofence)
@@ -291,7 +292,7 @@ def delete_geofence(
     )
 
     geofence.is_active = False
-    geofence.updated_at = datetime.utcnow()
+    geofence.updated_at = utcnow()
 
     db.add(geofence)
     db.commit()

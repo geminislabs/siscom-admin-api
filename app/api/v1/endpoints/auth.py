@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import logging
 import random
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import boto3
 from botocore.exceptions import ClientError
@@ -48,6 +48,7 @@ from app.services.notifications import (
     send_password_reset_email,
     send_verification_email,
 )
+from app.utils.datetime import utcnow
 from app.utils.paseto_token import generate_service_token
 from app.utils.security import generate_temporary_password, generate_verification_token
 
@@ -436,7 +437,7 @@ def login_user(credentials: UserLogin, db: Session = Depends(get_db)):
             )
 
     # 4️⃣ Actualizar el last_login_at del usuario
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = utcnow()
     db.commit()
     db.refresh(user)
 
@@ -488,7 +489,7 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
             type=TokenType.PASSWORD_RESET,
             user_id=user.id,
             email=user.email,
-            expires_at=datetime.utcnow() + timedelta(hours=1),  # Expira en 1 hora
+            expires_at=utcnow() + timedelta(hours=1),  # Expira en 1 hora
             used=False,
         )
         db.add(token_record)
@@ -567,7 +568,7 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
         )
 
     # 3️⃣ Verificar que el código no haya expirado
-    if token_record.expires_at < datetime.utcnow():
+    if token_record.expires_at < utcnow():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El código de verificación ha expirado. Por favor, solicita uno nuevo.",
@@ -844,7 +845,7 @@ def resend_verification(
         user_id=user.id,
         email=user.email,
         password_temp=password_temp,  # Reutilizado para masters, None para usuarios normales
-        expires_at=datetime.utcnow() + timedelta(hours=24),  # Expira en 24 horas
+        expires_at=utcnow() + timedelta(hours=24),  # Expira en 24 horas
         used=False,
     )
     db.add(token_record)
@@ -921,7 +922,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
         )
 
     # 2️⃣ Verificar que el token no haya expirado
-    if token_record.expires_at < datetime.utcnow():
+    if token_record.expires_at < utcnow():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El token de verificación ha expirado. Por favor, solicita uno nuevo.",

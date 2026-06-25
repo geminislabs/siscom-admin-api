@@ -22,7 +22,6 @@ en una sola llamada.
 """
 
 import logging
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -49,6 +48,7 @@ from app.schemas.plan import (
     ProductsListOut,
     ProductUpdate,
 )
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ def _sync_plan_capabilities(
             value_int=cap_input.value_int,
             value_bool=cap_input.value_bool,
             value_text=cap_input.value_text,
-            created_at=datetime.utcnow(),
+            created_at=utcnow(),
         )
         db.add(plan_cap)
 
@@ -386,7 +386,7 @@ def update_plan(
         for field, value in update_data.items():
             setattr(plan, field, value)
 
-        plan.updated_at = datetime.utcnow()
+        plan.updated_at = utcnow()
 
         # Sincronizar capabilities si se enviaron
         if capabilities is not None:
@@ -562,7 +562,7 @@ def add_plan_capability(
             value_int=data.value_int,
             value_bool=data.value_bool,
             value_text=data.value_text,
-            created_at=datetime.utcnow(),
+            created_at=utcnow(),
         )
         db.add(plan_cap)
         db.commit()

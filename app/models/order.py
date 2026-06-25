@@ -8,6 +8,8 @@ from sqlalchemy import Column, DateTime, ForeignKey, String, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.order_item import OrderItem
     from app.models.organization import Organization
@@ -57,7 +59,7 @@ class Order(SQLModel, table=True):
     )
 
     created_at: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
+        sa_column=Column(DateTime, default=utcnow, nullable=False)
     )
 
     # Relationships

@@ -27,6 +27,8 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.device import Device
     from app.models.plan import Plan
@@ -120,7 +122,7 @@ class DeviceService(SQLModel, table=True):
         )
     )
     activated_at: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
+        sa_column=Column(DateTime, default=utcnow, nullable=False)
     )
     expires_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime, nullable=True)
@@ -140,7 +142,7 @@ class DeviceService(SQLModel, table=True):
     )
 
     created_at: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
+        sa_column=Column(DateTime, default=utcnow, nullable=False)
     )
 
     # Relationships

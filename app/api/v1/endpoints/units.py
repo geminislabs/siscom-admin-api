@@ -37,6 +37,7 @@ from app.schemas.vehicle_profile import (
     VehicleProfileOut,
     VehicleProfileUpdate,
 )
+from app.utils.datetime import utcnow
 from app.utils.paseto_token import generate_location_share_token
 
 router = APIRouter()
@@ -322,7 +323,7 @@ def create_unit(
 
     # Asignar dispositivo opcional
     if device:
-        now = datetime.utcnow()
+        now = utcnow()
 
         new_assignment = UnitDevice(
             unit_id=new_unit.id,
@@ -471,7 +472,7 @@ def delete_unit(
         )
 
     # Marcar como eliminada
-    unit.deleted_at = datetime.utcnow()
+    unit.deleted_at = utcnow()
     db.add(unit)
     db.commit()
 
@@ -606,7 +607,7 @@ def assign_device_to_unit(
 
     if current_assignment:
         # Desasignar dispositivo anterior
-        current_assignment.unassigned_at = datetime.utcnow()
+        current_assignment.unassigned_at = utcnow()
         db.add(current_assignment)
 
         # Actualizar estado del dispositivo anterior
@@ -646,7 +647,7 @@ def assign_device_to_unit(
             detail="El dispositivo ya está asignado a otra unidad activa",
         )
 
-    now = datetime.utcnow()
+    now = utcnow()
 
     # Reutilizar una asignación histórica si ya existe para esta unidad-dispositivo
     new_assignment = (
@@ -835,7 +836,7 @@ def update_unit_profile(
         if field in update_data:
             setattr(unit_profile, field, update_data[field])
 
-    unit_profile.updated_at = datetime.utcnow()
+    unit_profile.updated_at = utcnow()
     db.add(unit_profile)
     db.flush()
 
@@ -861,7 +862,7 @@ def update_unit_profile(
                 # Actualizar existente
                 for field, value in vehicle_data.items():
                     setattr(vehicle_profile, field, value)
-                vehicle_profile.updated_at = datetime.utcnow()
+                vehicle_profile.updated_at = utcnow()
             else:
                 # Crear nuevo (upsert)
                 vehicle_profile = VehicleProfile(
@@ -1016,7 +1017,7 @@ def update_vehicle_profile(
     for field, value in update_data.items():
         setattr(vehicle_profile, field, value)
 
-    vehicle_profile.updated_at = datetime.utcnow()
+    vehicle_profile.updated_at = utcnow()
     db.add(vehicle_profile)
     db.commit()
     db.refresh(vehicle_profile)

@@ -1,4 +1,3 @@
-from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -13,7 +12,7 @@ from app.models.device_service import (
 )
 from app.models.payment import Payment, PaymentStatus
 from app.models.plan import Plan
-from app.utils.datetime import calculate_expiration
+from app.utils.datetime import calculate_expiration, utcnow
 
 
 def activate_device_service(
@@ -103,7 +102,7 @@ def activate_device_service(
     payment_status = (
         PaymentStatus.SUCCESS if simulate_immediate_payment else PaymentStatus.PENDING
     )
-    paid_at = datetime.utcnow() if simulate_immediate_payment else None
+    paid_at = utcnow() if simulate_immediate_payment else None
 
     payment = Payment(
         client_id=client_id,
@@ -113,7 +112,7 @@ def activate_device_service(
         status=payment_status.value,
         paid_at=paid_at,
         transaction_ref=(
-            f"txn_{device_id}_{datetime.utcnow().timestamp()}"
+            f"txn_{device_id}_{utcnow().timestamp()}"
             if simulate_immediate_payment
             else None
         ),
@@ -134,7 +133,7 @@ def activate_device_service(
         plan_id=plan_id,
         subscription_type=subscription_type,
         status=device_service_status.value,
-        activated_at=datetime.utcnow(),
+        activated_at=utcnow(),
         expires_at=expires_at,
         auto_renew=True,
         payment_id=payment.id,

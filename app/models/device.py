@@ -7,6 +7,8 @@ from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.device_service import DeviceService
     from app.models.organization import Organization
@@ -76,7 +78,7 @@ class Device(SQLModel, table=True):
         sa_column=Column(
             TIMESTAMP(timezone=True),
             server_default=text("now()"),
-            onupdate=datetime.utcnow,
+            onupdate=utcnow,
             nullable=False,
         )
     )

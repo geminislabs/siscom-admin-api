@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -13,6 +12,7 @@ from app.models.organization import Organization
 from app.models.plan import Plan
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.services.subscription_query import get_primary_active_subscription
+from app.utils.datetime import utcnow
 
 INACTIVE_SUMMARY = {
     "nexus_service_status": "inactive",
@@ -84,7 +84,7 @@ def get_accounts_nexus_status_map(
     if not account_ids:
         return {}
 
-    now = datetime.utcnow()
+    now = utcnow()
     rows = (
         db.query(Subscription, Plan, Organization)
         .join(Organization, Subscription.organization_id == Organization.id)

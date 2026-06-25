@@ -19,6 +19,8 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Text, tex
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.plan import Plan
@@ -198,4 +200,4 @@ class OrganizationCapability(SQLModel, table=True):
         """Verifica si el override ha expirado."""
         if self.expires_at is None:
             return False
-        return datetime.utcnow() > self.expires_at
+        return utcnow() > self.expires_at

@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -18,6 +17,7 @@ from app.schemas.sim_sync import (
     SimOut,
 )
 from app.services.kore import KoreAuthError, KoreServiceError, kore_service
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -167,7 +167,7 @@ def assign_sim_to_device(
 
     # Asignar la SIM al dispositivo
     sim_card.device_id = request.device_id
-    sim_card.updated_at = datetime.utcnow()
+    sim_card.updated_at = utcnow()
 
     db.commit()
 
@@ -206,7 +206,7 @@ def unassign_sim_from_device(
 
     previous_device_id = sim_card.device_id
     sim_card.device_id = None
-    sim_card.updated_at = datetime.utcnow()
+    sim_card.updated_at = utcnow()
 
     db.commit()
 
@@ -345,7 +345,7 @@ async def sync_kore_sims(
             updated_fields = True
 
         if updated_fields:
-            sim_card.updated_at = datetime.utcnow()
+            sim_card.updated_at = utcnow()
             if not sim_card_created_now:
                 sim_cards_updated += 1
 
@@ -359,7 +359,7 @@ async def sync_kore_sims(
                 kore_profile.kore_account_id = account_sid
                 profile_changed = True
             if profile_changed:
-                kore_profile.updated_at = datetime.utcnow()
+                kore_profile.updated_at = utcnow()
                 kore_profiles_updated += 1
         else:
             kore_profile = SimKoreProfile(

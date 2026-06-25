@@ -1,5 +1,17 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+
+def utcnow() -> datetime:
+    """
+    Devuelve el instante UTC actual como datetime *naive* (sin tzinfo).
+
+    Equivalente a ``datetime.utcnow()`` pero sin el ``DeprecationWarning``
+    introducido en Python 3.12. Se mantiene naive a propósito para preservar
+    el comportamiento histórico de comparaciones, serialización y persistencia
+    en columnas ``TIMESTAMP WITHOUT TIME ZONE`` del esquema actual.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def add_days(base_date: Optional[datetime] = None, days: int = 0) -> datetime:
@@ -8,7 +20,7 @@ def add_days(base_date: Optional[datetime] = None, days: int = 0) -> datetime:
     Si no se proporciona fecha base, usa la fecha actual.
     """
     if base_date is None:
-        base_date = datetime.utcnow()
+        base_date = utcnow()
     return base_date + timedelta(days=days)
 
 
@@ -18,7 +30,7 @@ def add_months(base_date: Optional[datetime] = None, months: int = 1) -> datetim
     Si no se proporciona fecha base, usa la fecha actual.
     """
     if base_date is None:
-        base_date = datetime.utcnow()
+        base_date = utcnow()
     return base_date + timedelta(days=30 * months)
 
 
@@ -28,7 +40,7 @@ def add_years(base_date: Optional[datetime] = None, years: int = 1) -> datetime:
     Si no se proporciona fecha base, usa la fecha actual.
     """
     if base_date is None:
-        base_date = datetime.utcnow()
+        base_date = utcnow()
     return base_date + timedelta(days=365 * years)
 
 
@@ -41,7 +53,7 @@ def calculate_expiration(
     YEARLY: 365 días
     """
     if base_date is None:
-        base_date = datetime.utcnow()
+        base_date = utcnow()
 
     if subscription_type == "MONTHLY":
         return add_days(base_date, 30)

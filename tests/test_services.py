@@ -11,6 +11,8 @@ from datetime import datetime
 import pytest
 from fastapi import status
 
+from app.utils.datetime import utcnow
+
 pytestmark = pytest.mark.skip(
     reason="Legacy DeviceService API tests pending device_id model alignment (PR-2)"
 )
@@ -44,7 +46,7 @@ def test_activate_device_service_monthly(
 
     # Verificar expires_at (debe estar ~30 días en el futuro)
     expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
-    now = datetime.utcnow()
+    now = utcnow()
     days_diff = (expires_at - now).days
     assert (
         28 <= days_diff <= 32
@@ -77,7 +79,7 @@ def test_activate_device_service_yearly(
 
     # Verificar expires_at (debe estar ~365 días en el futuro)
     expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
-    now = datetime.utcnow()
+    now = utcnow()
     days_diff = (expires_at - now).days
     assert (
         363 <= days_diff <= 367

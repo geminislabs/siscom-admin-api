@@ -17,7 +17,6 @@ ENDPOINTS:
 """
 
 import logging
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,6 +31,7 @@ from app.schemas.organization import (
     OrganizationOut,
     OrganizationUpdate,
 )
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,7 @@ def update_organization(
     if "timezone" in update_data:
         organization.timezone = update_data["timezone"]
 
-    organization.updated_at = datetime.utcnow()
+    organization.updated_at = utcnow()
 
     db.commit()
     db.refresh(organization)

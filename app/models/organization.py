@@ -29,6 +29,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.account import Account
     from app.models.capability import OrganizationCapability
@@ -144,7 +146,7 @@ class Organization(SQLModel, table=True):
         """
         from app.models.subscription import SubscriptionStatus
 
-        now = datetime.utcnow()
+        now = utcnow()
         return [
             sub
             for sub in self.subscriptions

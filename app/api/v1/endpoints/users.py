@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List
 from uuid import UUID
 
@@ -22,6 +22,7 @@ from app.schemas.user import (
     UserOut,
 )
 from app.services.notifications import send_invitation_email
+from app.utils.datetime import utcnow
 from app.utils.security import generate_verification_token
 
 router = APIRouter()
@@ -102,7 +103,7 @@ def invite_user(
             TokenConfirmacion.email == data.email,
             TokenConfirmacion.type == TokenType.INVITATION,
             ~TokenConfirmacion.used,
-            TokenConfirmacion.expires_at > datetime.utcnow(),
+            TokenConfirmacion.expires_at > utcnow(),
         )
         .first()
     )
@@ -114,7 +115,7 @@ def invite_user(
 
     # 4️⃣ Generar token de invitación
     invitation_token = generate_verification_token()
-    expires_at = datetime.utcnow() + timedelta(days=3)
+    expires_at = utcnow() + timedelta(days=3)
 
     token_record = TokenConfirmacion(
         token=invitation_token,
@@ -185,7 +186,7 @@ def accept_invitation(
         )
 
     # 3️⃣ Validar que el token no esté expirado
-    if token_record.expires_at < datetime.utcnow():
+    if token_record.expires_at < utcnow():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Token de invitación expirado.",
@@ -403,7 +404,7 @@ def resend_invitation(
 
     # 6️⃣ Generar nueva invitación
     new_token = generate_verification_token()
-    expires_at = datetime.utcnow() + timedelta(days=3)
+    expires_at = utcnow() + timedelta(days=3)
 
     new_invitation = TokenConfirmacion(
         token=new_token,

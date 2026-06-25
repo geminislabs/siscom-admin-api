@@ -20,13 +20,14 @@ from app.schemas.user_device import (
 )
 from app.services.messaging.kafka_producer import UserDevicesKafkaProducer
 from app.services.sns import get_or_recreate_endpoint
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
 def _to_utc_iso_z(value: datetime | None) -> str:
-    dt = value or datetime.utcnow()
+    dt = value or utcnow()
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt.isoformat() + "Z"
