@@ -61,8 +61,7 @@ def test_confirm_payment_success_updates_payment_device_and_service():
     session.query.side_effect = query_side_effect
 
     freeze = datetime(2026, 1, 15, 12, 0, 0)
-    with patch("app.services.billing.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = freeze
+    with patch("app.services.billing.utcnow", return_value=freeze):
         out = confirm_payment(session, pid, ds_id)
 
     assert out is payment
@@ -175,8 +174,7 @@ def test_check_expired_services_marks_expired_and_disables_device():
     session = MagicMock()
     session.query.side_effect = query_side_effect
 
-    with patch("app.services.billing.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = now
+    with patch("app.services.billing.utcnow", return_value=now):
         count = check_expired_services(session)
 
     assert count == 1
@@ -194,8 +192,7 @@ def test_check_expired_services_returns_zero_without_commit():
     session = MagicMock()
     session.query.return_value = expired_query
 
-    with patch("app.services.billing.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = fixed
+    with patch("app.services.billing.utcnow", return_value=fixed):
         assert check_expired_services(session) == 0
 
     session.commit.assert_not_called()
@@ -233,8 +230,7 @@ def test_cancel_device_service_sets_cancelled_and_disables_device():
     session.query.side_effect = query_side_effect
 
     freeze = datetime(2026, 2, 1, 8, 0, 0)
-    with patch("app.services.billing.datetime") as mock_dt:
-        mock_dt.utcnow.return_value = freeze
+    with patch("app.services.billing.utcnow", return_value=freeze):
         out = cancel_device_service(session, ds_id, client_id)
 
     assert out is ds

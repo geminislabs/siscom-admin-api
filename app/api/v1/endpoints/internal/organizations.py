@@ -12,7 +12,6 @@ Account = Raíz comercial (billing, facturación)
 Organization = Raíz operativa (permisos, uso diario)
 """
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -30,6 +29,7 @@ from app.schemas.organization import (
     OrganizationUpdate,
 )
 from app.services.account_nexus_status import get_organization_nexus_status
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -226,7 +226,7 @@ def update_organization_metadata(
         if field in update_data:
             setattr(organization, field, update_data[field])
 
-    organization.updated_at = datetime.utcnow()
+    organization.updated_at = utcnow()
     db.commit()
     db.refresh(organization)
     return organization

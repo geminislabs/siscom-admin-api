@@ -30,8 +30,7 @@ def test_add_days_zero_returns_same_instant():
 
 def test_add_days_uses_utc_now_when_no_base():
     fixed = datetime(2024, 1, 1, 12, 0, 0)
-    with patch("app.utils.datetime.datetime") as mock_datetime:
-        mock_datetime.utcnow.return_value = fixed
+    with patch("app.utils.datetime.utcnow", return_value=fixed):
         assert add_days(days=7) == fixed + timedelta(days=7)
 
 
@@ -41,8 +40,7 @@ def test_add_months_uses_thirty_days_per_month():
 
 def test_add_months_uses_utc_now_when_no_base():
     fixed = datetime(2024, 6, 1, 0, 0, 0)
-    with patch("app.utils.datetime.datetime") as mock_datetime:
-        mock_datetime.utcnow.return_value = fixed
+    with patch("app.utils.datetime.utcnow", return_value=fixed):
         assert add_months(months=1) == fixed + timedelta(days=30)
 
 
@@ -52,8 +50,7 @@ def test_add_years_uses_three_hundred_sixty_five_days_per_year():
 
 def test_add_years_uses_utc_now_when_no_base():
     fixed = datetime(2023, 12, 31, 23, 59, 59)
-    with patch("app.utils.datetime.datetime") as mock_datetime:
-        mock_datetime.utcnow.return_value = fixed
+    with patch("app.utils.datetime.utcnow", return_value=fixed):
         assert add_years(years=1) == fixed + timedelta(days=365)
 
 
@@ -67,15 +64,13 @@ def test_calculate_expiration_yearly_equals_three_hundred_sixty_five_days_from_b
 
 def test_calculate_expiration_monthly_uses_utc_now_when_no_base():
     fixed = datetime(2025, 2, 1, 9, 0, 0)
-    with patch("app.utils.datetime.datetime") as mock_datetime:
-        mock_datetime.utcnow.return_value = fixed
+    with patch("app.utils.datetime.utcnow", return_value=fixed):
         assert calculate_expiration("MONTHLY") == fixed + timedelta(days=30)
 
 
 def test_calculate_expiration_yearly_uses_utc_now_when_no_base():
     fixed = datetime(2025, 2, 1, 9, 0, 0)
-    with patch("app.utils.datetime.datetime") as mock_datetime:
-        mock_datetime.utcnow.return_value = fixed
+    with patch("app.utils.datetime.utcnow", return_value=fixed):
         assert calculate_expiration("YEARLY") == fixed + timedelta(days=365)
 
 

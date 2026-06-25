@@ -7,6 +7,8 @@ from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     pass
 
@@ -76,7 +78,7 @@ class Command(SQLModel, table=True):
         sa_column=Column(
             TIMESTAMP(timezone=True),
             server_default=text("now()"),
-            onupdate=datetime.utcnow,
+            onupdate=utcnow,
             nullable=False,
         )
     )

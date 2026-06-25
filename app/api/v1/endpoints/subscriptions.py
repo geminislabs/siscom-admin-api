@@ -15,7 +15,6 @@ Las suscripciones pertenecen a ORGANIZATIONS (raíz operativa).
 Los pagos pertenecen a ACCOUNTS (raíz comercial).
 """
 
-from datetime import datetime
 from typing import List
 from uuid import UUID
 
@@ -36,6 +35,7 @@ from app.schemas.subscription import (
     SubscriptionsListOut,
     SubscriptionWithPlanOut,
 )
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -56,7 +56,7 @@ def list_subscriptions(
     - Suscripciones activas (ACTIVE, TRIAL)
     - Opcionalmente, suscripciones históricas (CANCELLED, EXPIRED)
     """
-    now = datetime.utcnow()
+    now = utcnow()
 
     query = db.query(Subscription).filter(
         Subscription.organization_id == organization_id
@@ -133,7 +133,7 @@ def list_active_subscriptions(
     - status = ACTIVE o TRIAL
     - expires_at > now() o expires_at es NULL
     """
-    now = datetime.utcnow()
+    now = utcnow()
 
     subscriptions = (
         db.query(Subscription)
@@ -193,7 +193,7 @@ def get_subscription(
     """
     Obtiene los detalles de una suscripción específica.
     """
-    now = datetime.utcnow()
+    now = utcnow()
 
     subscription = (
         db.query(Subscription)
@@ -282,7 +282,7 @@ def cancel_subscription(
             detail="La suscripción ya está cancelada",
         )
 
-    now = datetime.utcnow()
+    now = utcnow()
     subscription.cancelled_at = now
     subscription.auto_renew = False
 

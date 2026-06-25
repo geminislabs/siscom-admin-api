@@ -8,6 +8,8 @@ from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.order import Order
 
@@ -50,7 +52,7 @@ class OrderItem(SQLModel, table=True):
     total_price: Decimal = Field(sa_column=Column(String, nullable=False))
 
     created_at: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
+        sa_column=Column(DateTime, default=utcnow, nullable=False)
     )
 
     # Relationships

@@ -1,4 +1,3 @@
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -7,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.device import Device
 from app.models.device_service import DeviceService, DeviceServiceStatus
 from app.models.payment import Payment, PaymentStatus
+from app.utils.datetime import utcnow
 
 
 def confirm_payment(
@@ -55,7 +55,7 @@ def confirm_payment(
 
     # Actualizar el pago a SUCCESS
     payment.status = PaymentStatus.SUCCESS.value
-    payment.paid_at = datetime.utcnow()
+    payment.paid_at = utcnow()
     db.add(payment)
 
     # Si el servicio estaba en PENDING, activarlo
@@ -89,7 +89,7 @@ def check_expired_services(db: Session) -> int:
     Returns:
         Cantidad de servicios marcados como expirados
     """
-    now = datetime.utcnow()
+    now = utcnow()
 
     # Buscar servicios ACTIVE que ya expiraron y no tienen auto_renew
     expired_services = (
@@ -171,7 +171,7 @@ def cancel_device_service(
 
     # Marcar como cancelado
     device_service.status = DeviceServiceStatus.CANCELLED.value
-    device_service.cancelled_at = datetime.utcnow()
+    device_service.cancelled_at = utcnow()
     db.add(device_service)
 
     # Verificar si hay otros servicios activos para el mismo dispositivo

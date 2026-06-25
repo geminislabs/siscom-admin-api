@@ -28,6 +28,7 @@ from app.schemas.device import (
     DeviceWithProfileOut,
     SimKoreProfileOut,
 )
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -564,7 +565,7 @@ def update_device(
                 sim_card.iccid = iccid
             if carrier is not None:
                 sim_card.carrier = carrier
-            sim_card.updated_at = datetime.utcnow()
+            sim_card.updated_at = utcnow()
         else:
             # Crear nueva sim_card solo si tenemos iccid
             if iccid is not None:
@@ -603,7 +604,7 @@ def update_device(
             kore_profile.kore_sim_id = sim_profile_data["kore_sim_id"]
             if "kore_account_id" in sim_profile_data:
                 kore_profile.kore_account_id = sim_profile_data["kore_account_id"]
-            kore_profile.updated_at = datetime.utcnow()
+            kore_profile.updated_at = utcnow()
         else:
             # Crear nuevo
             kore_profile = SimKoreProfile(
@@ -617,7 +618,7 @@ def update_device(
     for key, value in update_data.items():
         setattr(device, key, value)
 
-    device.updated_at = datetime.utcnow()
+    device.updated_at = utcnow()
 
     db.commit()
     db.refresh(device)
@@ -738,19 +739,19 @@ def update_device_status(
 
         if existing_assignment:
             # Desasignar de la unidad anterior
-            existing_assignment.unassigned_at = datetime.utcnow()
+            existing_assignment.unassigned_at = utcnow()
             db.add(existing_assignment)
 
         # Crear nueva asignación en unit_devices
         unit_device = UnitDevice(
             unit_id=status_update.unit_id,
             device_id=device.device_id,
-            assigned_at=datetime.utcnow(),
+            assigned_at=utcnow(),
         )
         db.add(unit_device)
 
         device.status = "asignado"
-        device.last_assignment_at = datetime.utcnow()
+        device.last_assignment_at = utcnow()
 
         event_details = f"Dispositivo asignado a unidad {unit.name}"
 
@@ -767,7 +768,7 @@ def update_device_status(
         )
 
         if active_assignment:
-            active_assignment.unassigned_at = datetime.utcnow()
+            active_assignment.unassigned_at = utcnow()
             db.add(active_assignment)
 
         # Quitar organización
@@ -792,18 +793,30 @@ def update_device_status(
     if status_update.notes:
         event_details += f" - {status_update.notes}"
 
+    # El tipo de evento coincide con el estado destino cuando existe un evento
+    # dedicado. 'inactivo' no tiene evento propio en el catálogo, por lo que se
+    # registra como cambio de estado genérico ('estado_cambiado').
+    status_event_types = {
+        "preparado",
+        "enviado",
+        "entregado",
+        "asignado",
+        "devuelto",
+    }
+    event_type = new_status if new_status in status_event_types else "estado_cambiado"
+
     # Registrar evento
     create_device_event(
         db=db,
         device_id=device.device_id,
-        event_type=new_status,  # El tipo de evento coincide con el nuevo estado
+        event_type=event_type,
         old_status=old_status,
         new_status=new_status,
         performed_by=user_id,
         event_details=event_details,
     )
 
-    device.updated_at = datetime.utcnow()
+    device.updated_at = utcnow()
 
     db.commit()
     db.refresh(device)
@@ -840,11 +853,11 @@ def add_device_note(
 
     # Agregar a las notas del dispositivo
     if device.notes:
-        device.notes += f"\n\n{datetime.utcnow().isoformat()}: {note}"
+        device.notes += f"\n\n{utcnow().isoformat()}: {note}"
     else:
-        device.notes = f"{datetime.utcnow().isoformat()}: {note}"
+        device.notes = f"{utcnow().isoformat()}: {note}"
 
-    device.updated_at = datetime.utcnow()
+    device.updated_at = utcnow()
 
     db.commit()
     db.refresh(device)

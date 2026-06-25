@@ -8,6 +8,8 @@ from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.user import User
 
@@ -34,7 +36,7 @@ class TokenConfirmacion(SQLModel, table=True):
     expires_at: datetime = Field(
         sa_column=Column(
             DateTime,
-            default=lambda: datetime.utcnow() + timedelta(hours=1),
+            default=lambda: utcnow() + timedelta(hours=1),
             nullable=False,
         )
     )

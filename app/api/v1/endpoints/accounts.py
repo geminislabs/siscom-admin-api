@@ -25,7 +25,6 @@ Los nombres NO son identidad. Los UUID sí.
 """
 
 import logging
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -47,6 +46,7 @@ from app.schemas.account import (
     AccountUpdateResponse,
 )
 from app.schemas.organization import OrganizationOut
+from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -184,8 +184,8 @@ def update_account(
         user_org.billing_email = update_data["billing_email"]
 
     # Actualizar timestamp
-    account.updated_at = datetime.utcnow()
-    user_org.updated_at = datetime.utcnow()
+    account.updated_at = utcnow()
+    user_org.updated_at = utcnow()
 
     db.commit()
     db.refresh(account)

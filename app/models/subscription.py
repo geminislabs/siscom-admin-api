@@ -21,6 +21,8 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Text, tex
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Index, Relationship, SQLModel
 
+from app.utils.datetime import utcnow
+
 if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.plan import Plan
@@ -165,7 +167,7 @@ class Subscription(SQLModel, table=True):
         """Verifica si la suscripción está activa."""
         if self.status not in [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL]:
             return False
-        if self.expires_at and self.expires_at < datetime.utcnow():
+        if self.expires_at and self.expires_at < utcnow():
             return False
         return True
 
@@ -173,5 +175,5 @@ class Subscription(SQLModel, table=True):
         """Retorna días hasta la expiración, o None si no expira."""
         if not self.expires_at:
             return None
-        delta = self.expires_at - datetime.utcnow()
+        delta = self.expires_at - utcnow()
         return max(0, delta.days)

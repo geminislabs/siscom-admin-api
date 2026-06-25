@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 from fastapi import status
@@ -14,6 +14,7 @@ from app.models.organization import Organization
 from app.models.unit import Unit
 from app.models.user import User
 from app.models.user_unit import UserUnit
+from app.utils.datetime import utcnow
 
 
 def _create_unit(db_session, organization_id, name):
@@ -99,8 +100,8 @@ def test_get_alerts_filtered_by_unit(authenticated_client, db_session, test_user
     unit_1 = _create_unit(db_session, test_user_data.organization_id, "Unidad 1")
     unit_2 = _create_unit(db_session, test_user_data.organization_id, "Unidad 2")
 
-    older = datetime.utcnow() - timedelta(minutes=10)
-    newer = datetime.utcnow()
+    older = utcnow() - timedelta(minutes=10)
+    newer = utcnow()
 
     alert_1 = Alert(
         organization_id=test_user_data.organization_id,
@@ -174,7 +175,7 @@ def test_get_alerts_returns_empty_when_org_inactive(
         source_id="evt-1",
         type="ignition_off",
         payload={"event": "Engine OFF"},
-        occurred_at=datetime.utcnow(),
+        occurred_at=utcnow(),
     )
     db_session.add(alert)
     db_session.commit()
@@ -202,7 +203,7 @@ def test_get_alerts_without_unit_id_returns_latest_20_for_org(
     unit_1 = _create_unit(db_session, test_user_data.organization_id, "Unidad 1")
     unit_2 = _create_unit(db_session, test_user_data.organization_id, "Unidad 2")
 
-    base_time = datetime.utcnow() - timedelta(minutes=50)
+    base_time = utcnow() - timedelta(minutes=50)
 
     # Crear 30 alertas en la organización autenticada para dos unidades.
     for i in range(30):
@@ -288,7 +289,7 @@ def test_get_alerts_without_unit_id_returns_latest_20_for_user_units(
     )
     _assign_user_unit(db_session, restricted_user.id, unit_allowed.id)
 
-    base_time = datetime.utcnow() - timedelta(minutes=60)
+    base_time = utcnow() - timedelta(minutes=60)
     for i in range(30):
         _create_alert(
             db_session,
@@ -364,7 +365,7 @@ def test_get_alerts_returns_empty_for_non_master_without_assigned_units(
         test_user_data.organization_id,
         unit.id,
         "evt-no-access",
-        datetime.utcnow(),
+        utcnow(),
     )
     db_session.commit()
 

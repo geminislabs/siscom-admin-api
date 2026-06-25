@@ -24,6 +24,7 @@ from app.schemas.alert_rule import (
     AlertRuleUpdate,
 )
 from app.services.messaging.kafka_producer import RulesKafkaProducer
+from app.utils.datetime import utcnow
 from app.utils.json_normalization import generate_fingerprint, normalize_json
 
 router = APIRouter()
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def _to_utc_iso_z(value: datetime | None) -> str:
-    dt = value or datetime.utcnow()
+    dt = value or utcnow()
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
     return dt.isoformat() + "Z"
@@ -361,7 +362,7 @@ def update_alert_rule(
         for unit_id in valid_unit_ids:
             db.add(AlertRuleUnit(rule_id=rule.id, unit_id=unit_id))
 
-    rule.updated_at = datetime.utcnow()
+    rule.updated_at = utcnow()
 
     db.add(rule)
     try:
@@ -401,7 +402,7 @@ def delete_alert_rule(
 ):
     rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
 
-    deleted_at = datetime.utcnow()
+    deleted_at = utcnow()
     rule.updated_at = deleted_at
     kafka_payload = _build_delete_event_payload(rule)
 
@@ -456,7 +457,7 @@ def assign_units_to_rule(
         if unit_id not in existing_ids:
             db.add(AlertRuleUnit(rule_id=rule.id, unit_id=unit_id))
 
-    rule.updated_at = datetime.utcnow()
+    rule.updated_at = utcnow()
     db.add(rule)
     db.commit()
 
@@ -488,7 +489,7 @@ def unassign_units_from_rule(
         AlertRuleUnit.unit_id.in_(target_ids),
     ).delete(synchronize_session=False)
 
-    rule.updated_at = datetime.utcnow()
+    rule.updated_at = utcnow()
     db.add(rule)
     db.commit()
 

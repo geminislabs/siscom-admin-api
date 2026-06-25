@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models.capability import Capability, OrganizationCapability, PlanCapability
 from app.services.subscription_query import get_active_plan_id as _get_active_plan_id
+from app.utils.datetime import utcnow
 
 
 @dataclass
@@ -123,7 +124,7 @@ class CapabilityService:
         Returns:
             ResolvedCapability con el valor y metadatos
         """
-        _now = datetime.utcnow()
+        _now = utcnow()
 
         # 1. Buscar la definición de la capability
         capability = (

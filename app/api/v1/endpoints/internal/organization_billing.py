@@ -39,6 +39,7 @@ from app.schemas.subscription import (
 )
 from app.services.gateways import registry
 from app.services.subscription_query import get_primary_active_subscription
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -106,7 +107,7 @@ def list_organization_subscriptions(
     limit: int = Query(20, ge=1, le=100),
 ):
     _organization_or_404(db, organization_id)
-    now = datetime.utcnow()
+    now = utcnow()
 
     query = db.query(Subscription).filter(
         Subscription.organization_id == organization_id
@@ -153,7 +154,7 @@ def get_organization_subscription(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Suscripción no encontrada",
         )
-    return _subscription_row_to_out(db, subscription, datetime.utcnow())
+    return _subscription_row_to_out(db, subscription, utcnow())
 
 
 @router.post(
@@ -187,7 +188,7 @@ def cancel_organization_subscription(
             detail="La suscripción ya está cancelada",
         )
 
-    now = datetime.utcnow()
+    now = utcnow()
     subscription.cancelled_at = now
     subscription.auto_renew = False
     if request.cancel_immediately:

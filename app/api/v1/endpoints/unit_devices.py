@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import List
 from uuid import UUID
 
@@ -12,6 +11,7 @@ from app.models.device import Device, DeviceEvent
 from app.models.unit import Unit
 from app.models.unit_device import UnitDevice
 from app.schemas.unit_device import UnitDeviceCreate, UnitDeviceDetail, UnitDeviceOut
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -154,7 +154,7 @@ def create_unit_device(
         )
 
     # Reutilizar una asignación histórica si ya existe para esta unidad-dispositivo
-    now = datetime.utcnow()
+    now = utcnow()
     unit_device = (
         db.query(UnitDevice)
         .filter(
@@ -310,7 +310,7 @@ def delete_unit_device(
         )
 
     # Desasignar
-    assignment.unassigned_at = datetime.utcnow()
+    assignment.unassigned_at = utcnow()
     db.add(assignment)
 
     # Actualizar estado del dispositivo
