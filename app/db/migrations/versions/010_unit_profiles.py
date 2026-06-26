@@ -1,7 +1,7 @@
 """Add unit_profile and vehicle_profile tables
 
 Revision ID: 010_unit_profiles
-Revises: 009_preparado_status
+Revises: 009_add_preparado
 Create Date: 2025-11-28
 
 Cambios principales:
@@ -14,10 +14,9 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-
 # revision identifiers, used by Alembic.
 revision = "010_unit_profiles"
-down_revision = "009_preparado_status"
+down_revision = "009_add_preparado"
 branch_labels = None
 depends_on = None
 
@@ -111,4 +110,3 @@ def downgrade() -> None:
     # Eliminar tablas en orden inverso
     op.drop_table("vehicle_profile")
     op.drop_table("unit_profile")
-

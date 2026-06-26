@@ -56,6 +56,7 @@ from app.api.v1.endpoints import (
     sims,
     stripe_billing,
     subscriptions,
+    teams,
     telemetry,
     trips,
     unit_devices,
@@ -149,6 +150,9 @@ api_router.include_router(user_units.router, prefix="/user-units", tags=["user-u
 api_router.include_router(
     device_events.router, prefix="/device-events", tags=["device-events"]
 )
+
+# Teams
+api_router.include_router(teams.router, prefix="/teams", tags=["teams"])
 
 # Servicios (legacy, considerar usar subscriptions)
 api_router.include_router(services.router, prefix="/services", tags=["services"])

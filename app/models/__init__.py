@@ -82,6 +82,9 @@ from app.models.sim_card import SimCard
 from app.models.sim_kore_profile import SimKoreProfile
 from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
 
+# Teams
+from app.models.team import Team, TeamMember, TeamVisibilityRule
+
 # Tokens
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 
@@ -143,6 +146,10 @@ __all__ = [
     "MobilityDevice",
     "UserDevice",
     "UserUnit",
+    # Teams
+    "Team",
+    "TeamMember",
+    "TeamVisibilityRule",
     # Payments & Orders
     "Payment",
     "PaymentStatus",
