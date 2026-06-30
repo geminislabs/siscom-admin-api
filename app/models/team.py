@@ -1,5 +1,5 @@
 """
-Modelos para Teams, Members y Visibility Rules.
+Modelos para Teams, Members, Visibility Rules y Emergency Events.
 
 Esquema: team (PostgreSQL)
 """
@@ -293,3 +293,61 @@ class TeamInvite(SQLModel, table=True):
     )
 
     team: Optional[Team] = Relationship(back_populates="invites")
+
+
+class EmergencyEvent(SQLModel, table=True):
+    """Evento de emergencia activado por un usuario dentro de un team."""
+
+    __tablename__ = "emergency_events"
+    __table_args__ = (
+        Index("idx_emergency_events_team_status", "team_id", "status"),
+        {"schema": "team"},
+    )
+
+    id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        )
+    )
+    team_id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("team.teams.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+    )
+    triggered_by_user_id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("users.id"),
+            nullable=False,
+        )
+    )
+    emergency_type: str = Field(sa_column=Column(Text, nullable=False))
+    status: str = Field(
+        default="ACTIVE",
+        sa_column=Column(Text, nullable=False, server_default=text("'ACTIVE'")),
+    )
+    started_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(
+            TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=text("now()"),
+        ),
+    )
+    ended_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(TIMESTAMP(timezone=True), nullable=True),
+    )
+    event_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(
+            "metadata",
+            JSONB,
+            nullable=False,
+            server_default=text("'{}'::jsonb"),
+        ),
+    )
