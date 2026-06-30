@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
-from sqlalchemy import Boolean, Column, ForeignKey, Index, Text, text
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Relationship, SQLModel
@@ -96,6 +96,7 @@ class Team(SQLModel, table=True):
 
     members: list["TeamMember"] = Relationship(back_populates="team")
     visibility_rules: list["TeamVisibilityRule"] = Relationship(back_populates="team")
+    invites: list["TeamInvite"] = Relationship(back_populates="team")
 
 
 class TeamMember(SQLModel, table=True):
@@ -221,3 +222,74 @@ class TeamVisibilityRule(SQLModel, table=True):
     )
 
     team: Optional[Team] = Relationship(back_populates="visibility_rules")
+
+
+class TeamInvite(SQLModel, table=True):
+    """Invitación a un team por QR, link, email o teléfono."""
+
+    __tablename__ = "invites"
+    __table_args__ = (
+        Index("idx_team_invites_team", "team_id"),
+        Index("idx_team_invites_token_hash", "token_hash"),
+        Index("idx_team_invites_active", "team_id", "is_active"),
+        {"schema": "team"},
+    )
+
+    id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            primary_key=True,
+            server_default=text("gen_random_uuid()"),
+        )
+    )
+    team_id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("team.teams.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+    )
+    created_by_user_id: UUID = Field(
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+    )
+    invite_method: str = Field(sa_column=Column(Text, nullable=False))
+    invited_role: str = Field(sa_column=Column(Text, nullable=False))
+    token_hash: str = Field(sa_column=Column(Text, nullable=False))
+    expires_at: datetime = Field(
+        sa_column=Column(TIMESTAMP(timezone=True), nullable=False)
+    )
+    max_uses: int = Field(
+        default=1,
+        sa_column=Column(Integer, nullable=False, server_default=text("1")),
+    )
+    used_count: int = Field(
+        default=0,
+        sa_column=Column(Integer, nullable=False, server_default=text("0")),
+    )
+    is_active: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, nullable=False, server_default=text("true")),
+    )
+    invite_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(
+            "metadata",
+            JSONB,
+            nullable=False,
+            server_default=text("'{}'::jsonb"),
+        ),
+    )
+    created_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(
+            TIMESTAMP(timezone=True),
+            nullable=False,
+            server_default=text("now()"),
+        ),
+    )
+
+    team: Optional[Team] = Relationship(back_populates="invites")

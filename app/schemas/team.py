@@ -214,6 +214,19 @@ class VisibilityRuleUpdate(BaseModel):
     is_active: Optional[bool] = None
     metadata: Optional[dict[str, Any]] = None
 
+    @model_validator(mode="after")
+    def schedule_required_for_scheduled(self) -> "VisibilityRuleUpdate":
+        if self.access_mode == AccessMode.SCHEDULED and self.schedule is None:
+            raise ValueError("schedule es requerido cuando access_mode es SCHEDULED")
+        return self
+
+
+class VisibilityRuleStatusOut(BaseModel):
+    """Schema para respuestas de activar/desactivar regla."""
+
+    id: UUID
+    is_active: bool
+
 
 class VisibilityRuleOut(BaseModel):
     """Schema de salida para una regla de visibilidad."""
@@ -237,3 +250,79 @@ class TeamActivateRequest(BaseModel):
     """Request opcional para reactivar un team."""
 
     expires_at: Optional[datetime] = None
+
+
+class InviteMethod(str, Enum):
+    """Métodos de invitación válidos."""
+
+    QR = "QR"
+    LINK = "LINK"
+    EMAIL = "EMAIL"
+    PHONE = "PHONE"
+
+
+class TeamInviteCreate(BaseModel):
+    """Schema para crear una invitación."""
+
+    invite_method: InviteMethod
+    invited_role: TeamRole = Field(default=TeamRole.MEMBER)
+    expires_at: datetime
+    max_uses: int = Field(default=1, ge=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("expires_at")
+    @classmethod
+    def expires_at_must_be_future(cls, v: datetime) -> datetime:
+        if v <= utcnow():
+            raise ValueError("expires_at debe ser una fecha futura")
+        return v
+
+
+class TeamInviteOut(BaseModel):
+    """Schema de salida para una invitación (sin token)."""
+
+    id: UUID
+    team_id: UUID
+    invite_method: InviteMethod
+    invited_role: TeamRole
+    expires_at: datetime
+    max_uses: int
+    used_count: int
+    is_active: bool
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TeamInviteCreatedOut(TeamInviteOut):
+    """Schema de salida al crear invitación (incluye token una sola vez)."""
+
+    token: str
+    invite_url: str
+
+
+class TeamInviteRevokeOut(BaseModel):
+    """Schema para respuesta de revocar invitación."""
+
+    id: UUID
+    is_active: bool
+
+
+class InvitePublicOut(BaseModel):
+    """Información pública mínima de una invitación."""
+
+    team_id: UUID
+    team_name: str
+    team_type: TeamType
+    invited_role: TeamRole
+    expires_at: datetime
+
+
+class InviteAcceptOut(BaseModel):
+    """Schema de respuesta al aceptar una invitación."""
+
+    team_id: UUID
+    member_id: UUID
+    role: TeamRole

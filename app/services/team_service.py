@@ -23,6 +23,7 @@ from app.schemas.team import (
     TeamType,
     TeamUpdate,
     VisibilityRuleCreate,
+    VisibilityRuleUpdate,
 )
 from app.utils.datetime import utcnow
 
@@ -568,3 +569,74 @@ class TeamService:
         db.commit()
         db.refresh(rule)
         return rule
+
+    @staticmethod
+    def get_visibility_rule_or_404(
+        db: Session, team_id: UUID, rule_id: UUID
+    ) -> TeamVisibilityRule:
+        rule = (
+            db.query(TeamVisibilityRule)
+            .filter(
+                TeamVisibilityRule.id == rule_id,
+                TeamVisibilityRule.team_id == team_id,
+            )
+            .first()
+        )
+        if not rule:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Regla de visibilidad no encontrada",
+            )
+        return rule
+
+    @staticmethod
+    def update_visibility_rule(
+        db: Session,
+        rule: TeamVisibilityRule,
+        payload: VisibilityRuleUpdate,
+    ) -> TeamVisibilityRule:
+        from app.schemas.team import AccessMode
+
+        if payload.subject_role is not None:
+            rule.subject_role = payload.subject_role.value
+        if payload.viewer_role is not None:
+            rule.viewer_role = payload.viewer_role.value
+        if payload.access_mode is not None:
+            rule.access_mode = payload.access_mode.value
+            if payload.access_mode == AccessMode.ALWAYS:
+                rule.schedule = None
+        if payload.schedule is not None:
+            rule.schedule = payload.schedule.model_dump()
+        elif payload.access_mode == AccessMode.ALWAYS:
+            rule.schedule = None
+        if payload.is_active is not None:
+            rule.is_active = payload.is_active
+        if payload.metadata is not None:
+            rule.rule_metadata = payload.metadata
+
+        effective_mode = AccessMode(rule.access_mode)
+        if effective_mode == AccessMode.SCHEDULED and not rule.schedule:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="schedule es requerido cuando access_mode es SCHEDULED",
+            )
+
+        rule.updated_at = utcnow()
+        db.commit()
+        db.refresh(rule)
+        return rule
+
+    @staticmethod
+    def set_visibility_rule_active(
+        db: Session, rule: TeamVisibilityRule, is_active: bool
+    ) -> TeamVisibilityRule:
+        rule.is_active = is_active
+        rule.updated_at = utcnow()
+        db.commit()
+        db.refresh(rule)
+        return rule
+
+    @staticmethod
+    def delete_visibility_rule(db: Session, rule: TeamVisibilityRule) -> None:
+        db.delete(rule)
+        db.commit()
