@@ -273,9 +273,12 @@ class TeamInviteCreate(BaseModel):
     @field_validator("expires_at")
     @classmethod
     def expires_at_must_be_future(cls, v: datetime) -> datetime:
-        if v <= utcnow():
+        # Si el datetime tiene timezone, convertirlo a naive UTC para comparar
+        v_naive = v.replace(tzinfo=None) if v.tzinfo else v
+        if v_naive <= utcnow():
             raise ValueError("expires_at debe ser una fecha futura")
-        return v
+        # Retornar naive UTC (consistente con el resto del proyecto)
+        return v_naive
 
 
 class TeamInviteOut(BaseModel):

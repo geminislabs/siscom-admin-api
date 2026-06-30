@@ -375,7 +375,7 @@ def list_unassigned_devices(
     active_assignments_subquery = (
         db.query(UnitDevice.device_id)
         .filter(UnitDevice.unassigned_at.is_(None))
-        .subquery()
+        .scalar_subquery()
     )
 
     results = (

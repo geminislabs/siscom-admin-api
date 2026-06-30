@@ -492,7 +492,7 @@ class TestGetDeviceTelemetryEndpoint:
                 ("metrics", "speed"),
             ],
         )
-        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_range_exceeds_7_days_for_hour_returns_400(self, api_client):
         far_to = FROM_TS + timedelta(days=8)
@@ -524,7 +524,7 @@ class TestGetDeviceTelemetryEndpoint:
                 ("metrics", "temperatura"),
             ],
         )
-        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_get_accepts_new_intelligence_metrics(self, api_client):
         point = TelemetryPointOut(
@@ -659,7 +659,7 @@ class TestQueryTelemetryBatchEndpoint:
         body["from"] = iso(TO_TS)
         body["to"] = iso(FROM_TS)
         resp = api_client.post("/api/v1/telemetry/query", json=body)
-        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_unauthorized_device_returns_404(self, api_client):
         from fastapi import HTTPException
@@ -681,21 +681,21 @@ class TestQueryTelemetryBatchEndpoint:
         resp = api_client.post(
             "/api/v1/telemetry/query", json=self._body(device_ids=[])
         )
-        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_too_many_devices_returns_422(self, api_client):
         ids = [f"DEV-{i:03d}" for i in range(51)]
         resp = api_client.post(
             "/api/v1/telemetry/query", json=self._body(device_ids=ids)
         )
-        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_hour_range_exceeds_7_days_returns_422(self, api_client):
         far_to = FROM_TS + timedelta(days=8)
         body = self._body(granularity="hour")
         body["to"] = iso(far_to)
         resp = api_client.post("/api/v1/telemetry/query", json=body)
-        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_granularity_day_accepted_within_180_days(self, api_client):
         far_to = FROM_TS + timedelta(days=90)
