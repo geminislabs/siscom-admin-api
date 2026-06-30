@@ -18,6 +18,18 @@ class MobilityDeviceCreateIn(BaseModel):
     notification_device_id: Optional[UUID] = None
 
 
+class MobilityDeviceUpdateIn(BaseModel):
+    device_name: Optional[str] = None
+    app_version: Optional[str] = None
+    os_version: Optional[str] = None
+    notification_device_id: Optional[UUID] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+class MobilityDeviceNotificationDeviceIn(BaseModel):
+    notification_device_id: UUID
+
+
 class MobilityDeviceOut(BaseModel):
     id: UUID
     user_id: UUID

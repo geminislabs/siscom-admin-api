@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -9,7 +10,14 @@ from app.db.session import get_db
 from app.models.mobility_device import MobilityDevice
 from app.models.user import User
 from app.models.user_device import UserDevice
-from app.schemas.mobility_device import MobilityDeviceCreateIn, MobilityDeviceOut
+from app.schemas.common import DataResponse
+from app.schemas.mobility_device import (
+    MobilityDeviceCreateIn,
+    MobilityDeviceNotificationDeviceIn,
+    MobilityDeviceOut,
+    MobilityDeviceUpdateIn,
+)
+from app.services.mobility_device_service import MobilityDeviceService
 
 router = APIRouter()
 
@@ -149,3 +157,82 @@ def register_mobility_device(
         status.HTTP_201_CREATED if created_new else status.HTTP_200_OK
     )
     return _build_mobility_device_out(device)
+
+
+@router.get("/{device_id}", response_model=DataResponse[MobilityDeviceOut])
+def get_mobility_device(
+    device_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """Obtiene el detalle de un dispositivo de movilidad."""
+    device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
+    return DataResponse(data=_build_mobility_device_out(device))
+
+
+@router.patch("/{device_id}", response_model=DataResponse[MobilityDeviceOut])
+def update_mobility_device(
+    device_id: UUID,
+    payload: MobilityDeviceUpdateIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """Actualiza campos editables de un dispositivo de movilidad."""
+    device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
+    device = MobilityDeviceService.update_device(db, device, payload)
+    return DataResponse(data=_build_mobility_device_out(device))
+
+
+@router.post("/{device_id}/activate", response_model=DataResponse[MobilityDeviceOut])
+def activate_mobility_device(
+    device_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """Activa un dispositivo de movilidad (is_active = true)."""
+    device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
+    device = MobilityDeviceService.activate_device(db, device)
+    return DataResponse(data=_build_mobility_device_out(device))
+
+
+@router.post("/{device_id}/deactivate", response_model=DataResponse[MobilityDeviceOut])
+def deactivate_mobility_device(
+    device_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """Desactiva un dispositivo de movilidad (is_active = false)."""
+    device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
+    device = MobilityDeviceService.deactivate_device(db, device)
+    return DataResponse(data=_build_mobility_device_out(device))
+
+
+@router.put(
+    "/{device_id}/notification-device", response_model=DataResponse[MobilityDeviceOut]
+)
+def associate_notification_device(
+    device_id: UUID,
+    payload: MobilityDeviceNotificationDeviceIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """Asocia un dispositivo de notificaciones a un dispositivo de movilidad."""
+    device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
+    device = MobilityDeviceService.associate_notification_device(
+        db, device, payload.notification_device_id
+    )
+    return DataResponse(data=_build_mobility_device_out(device))
+
+
+@router.delete(
+    "/{device_id}/notification-device", status_code=status.HTTP_204_NO_CONTENT
+)
+def dissociate_notification_device(
+    device_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """Desasocia un dispositivo de notificaciones de un dispositivo de movilidad."""
+    device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
+    MobilityDeviceService.dissociate_notification_device(db, device)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
