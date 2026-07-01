@@ -12,13 +12,18 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_full, get_team_rules_kafka_producer
 from app.db.session import get_db
-from app.models.team import Team, TeamMember
+from app.models.team import Team, TeamInvite, TeamMember
 from app.models.user import User
 from app.schemas.common import DataResponse, PageMeta, PaginatedResponse
 from app.schemas.team import (
+    InviteMethod,
     MyPermissionsOut,
     TeamActivateRequest,
     TeamCreate,
+    TeamInviteCreate,
+    TeamInviteCreatedOut,
+    TeamInviteOut,
+    TeamInviteRevokeOut,
     TeamListItem,
     TeamMemberCreate,
     TeamMemberOut,
@@ -31,8 +36,11 @@ from app.schemas.team import (
     TeamUpdate,
     VisibilityRuleCreate,
     VisibilityRuleOut,
+    VisibilityRuleStatusOut,
+    VisibilityRuleUpdate,
 )
 from app.services.messaging.kafka_producer import TeamRulesKafkaProducer
+from app.services.team_invite_service import TeamInviteService, _build_invite_url
 from app.services.team_service import (
     ADMIN_OR_OWNER_ROLES,
     TeamService,
@@ -104,6 +112,32 @@ def _build_visibility_rule_out(rule) -> VisibilityRuleOut:
         metadata=rule.rule_metadata or {},
         created_at=rule.created_at,
         updated_at=rule.updated_at,
+    )
+
+
+def _build_invite_out(invite: TeamInvite) -> TeamInviteOut:
+    return TeamInviteOut(
+        id=invite.id,
+        team_id=invite.team_id,
+        invite_method=InviteMethod(invite.invite_method),
+        invited_role=TeamRole(invite.invited_role),
+        expires_at=invite.expires_at,
+        max_uses=invite.max_uses,
+        used_count=invite.used_count,
+        is_active=invite.is_active,
+        metadata=invite.invite_metadata or {},
+        created_at=invite.created_at,
+    )
+
+
+def _build_invite_created_out(
+    invite: TeamInvite, plain_token: str
+) -> TeamInviteCreatedOut:
+    base = _build_invite_out(invite)
+    return TeamInviteCreatedOut(
+        **base.model_dump(),
+        token=plain_token,
+        invite_url=_build_invite_url(plain_token),
     )
 
 
@@ -500,3 +534,195 @@ def create_visibility_rule(
     )
 
     return DataResponse(data=_build_visibility_rule_out(rule))
+
+
+@router.patch(
+    "/{team_id}/visibility-rules/{rule_id}",
+    response_model=DataResponse[VisibilityRuleOut],
+)
+def update_visibility_rule(
+    team_id: UUID,
+    rule_id: UUID,
+    payload: VisibilityRuleUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+    kafka_producer: TeamRulesKafkaProducer = Depends(get_team_rules_kafka_producer),
+):
+    """Actualiza una regla de visibilidad. Requiere OWNER o ADMIN."""
+    team = TeamService.get_team_or_404(db, team_id)
+    TeamService.require_role(db, team_id, current_user.id, ADMIN_OR_OWNER_ROLES)
+    rule = TeamService.get_visibility_rule_or_404(db, team_id, rule_id)
+
+    rule = TeamService.update_visibility_rule(db, rule, payload)
+
+    _publish_team_event(
+        kafka_producer,
+        "VISIBILITY_RULE_UPDATED",
+        team,
+        current_user.id,
+        {"rule_id": str(rule.id)},
+    )
+
+    return DataResponse(data=_build_visibility_rule_out(rule))
+
+
+@router.post(
+    "/{team_id}/visibility-rules/{rule_id}/activate",
+    response_model=DataResponse[VisibilityRuleStatusOut],
+)
+def activate_visibility_rule(
+    team_id: UUID,
+    rule_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+    kafka_producer: TeamRulesKafkaProducer = Depends(get_team_rules_kafka_producer),
+):
+    """Activa una regla de visibilidad."""
+    team = TeamService.get_team_or_404(db, team_id)
+    TeamService.require_role(db, team_id, current_user.id, ADMIN_OR_OWNER_ROLES)
+    rule = TeamService.get_visibility_rule_or_404(db, team_id, rule_id)
+
+    rule = TeamService.set_visibility_rule_active(db, rule, True)
+
+    _publish_team_event(
+        kafka_producer,
+        "VISIBILITY_RULE_UPDATED",
+        team,
+        current_user.id,
+        {"rule_id": str(rule.id), "is_active": True},
+    )
+
+    return DataResponse(data=VisibilityRuleStatusOut(id=rule.id, is_active=True))
+
+
+@router.post(
+    "/{team_id}/visibility-rules/{rule_id}/deactivate",
+    response_model=DataResponse[VisibilityRuleStatusOut],
+)
+def deactivate_visibility_rule(
+    team_id: UUID,
+    rule_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+    kafka_producer: TeamRulesKafkaProducer = Depends(get_team_rules_kafka_producer),
+):
+    """Desactiva una regla de visibilidad."""
+    team = TeamService.get_team_or_404(db, team_id)
+    TeamService.require_role(db, team_id, current_user.id, ADMIN_OR_OWNER_ROLES)
+    rule = TeamService.get_visibility_rule_or_404(db, team_id, rule_id)
+
+    rule = TeamService.set_visibility_rule_active(db, rule, False)
+
+    _publish_team_event(
+        kafka_producer,
+        "VISIBILITY_RULE_UPDATED",
+        team,
+        current_user.id,
+        {"rule_id": str(rule.id), "is_active": False},
+    )
+
+    return DataResponse(data=VisibilityRuleStatusOut(id=rule.id, is_active=False))
+
+
+@router.delete(
+    "/{team_id}/visibility-rules/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_visibility_rule(
+    team_id: UUID,
+    rule_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+    kafka_producer: TeamRulesKafkaProducer = Depends(get_team_rules_kafka_producer),
+):
+    """Elimina una regla de visibilidad."""
+    team = TeamService.get_team_or_404(db, team_id)
+    TeamService.require_role(db, team_id, current_user.id, ADMIN_OR_OWNER_ROLES)
+    rule = TeamService.get_visibility_rule_or_404(db, team_id, rule_id)
+
+    rule_id_str = str(rule.id)
+    TeamService.delete_visibility_rule(db, rule)
+
+    _publish_team_event(
+        kafka_producer,
+        "VISIBILITY_RULE_DELETED",
+        team,
+        current_user.id,
+        {"rule_id": rule_id_str},
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{team_id}/invites",
+    response_model=DataResponse[TeamInviteCreatedOut],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_invite(
+    team_id: UUID,
+    payload: TeamInviteCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+    kafka_producer: TeamRulesKafkaProducer = Depends(get_team_rules_kafka_producer),
+):
+    """Crea una invitación al team. Requiere OWNER o ADMIN."""
+    team = TeamService.get_team_or_404(db, team_id)
+    actor = TeamService.require_role(db, team_id, current_user.id, ADMIN_OR_OWNER_ROLES)
+
+    invite, plain_token = TeamInviteService.create_invite(
+        db, team, payload, current_user, TeamRole(actor.role)
+    )
+
+    _publish_team_event(
+        kafka_producer,
+        "TEAM_INVITE_CREATED",
+        team,
+        current_user.id,
+        {"invite_id": str(invite.id), "invited_role": invite.invited_role},
+    )
+
+    return DataResponse(data=_build_invite_created_out(invite, plain_token))
+
+
+@router.get("/{team_id}/invites", response_model=DataResponse[list[TeamInviteOut]])
+def list_invites(
+    team_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """Lista invitaciones de un team. Requiere OWNER o ADMIN."""
+    TeamService.get_team_or_404(db, team_id)
+    TeamService.require_role(db, team_id, current_user.id, ADMIN_OR_OWNER_ROLES)
+
+    invites = TeamInviteService.list_invites(db, team_id)
+    return DataResponse(data=[_build_invite_out(i) for i in invites])
+
+
+@router.post(
+    "/{team_id}/invites/{invite_id}/revoke",
+    response_model=DataResponse[TeamInviteRevokeOut],
+)
+def revoke_invite(
+    team_id: UUID,
+    invite_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+    kafka_producer: TeamRulesKafkaProducer = Depends(get_team_rules_kafka_producer),
+):
+    """Revoca una invitación."""
+    team = TeamService.get_team_or_404(db, team_id)
+    TeamService.require_role(db, team_id, current_user.id, ADMIN_OR_OWNER_ROLES)
+    invite = TeamInviteService.get_invite_or_404(db, team_id, invite_id)
+
+    invite = TeamInviteService.revoke_invite(db, invite)
+
+    _publish_team_event(
+        kafka_producer,
+        "TEAM_INVITE_REVOKED",
+        team,
+        current_user.id,
+        {"invite_id": str(invite.id)},
+    )
+
+    return DataResponse(data=TeamInviteRevokeOut(id=invite.id, is_active=False))

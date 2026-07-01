@@ -83,7 +83,7 @@ from app.models.sim_kore_profile import SimKoreProfile
 from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
 
 # Teams
-from app.models.team import Team, TeamMember, TeamVisibilityRule
+from app.models.team import Team, TeamInvite, TeamMember, TeamVisibilityRule
 
 # Tokens
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
@@ -148,6 +148,7 @@ __all__ = [
     "UserUnit",
     # Teams
     "Team",
+    "TeamInvite",
     "TeamMember",
     "TeamVisibilityRule",
     # Payments & Orders
