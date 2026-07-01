@@ -95,7 +95,7 @@ def _build_command_for_device(command_type: UserCommandType, device: Device) -> 
             return f"AT^CMD;{device.device_id};04;02"
 
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail=(
             "No se pudo formar el comando para el modelo del equipo. "
             f"Modelo actual: brand='{device.brand}', model='{device.model}'. "

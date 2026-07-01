@@ -94,7 +94,7 @@ def test_update_visibility_rule_scheduled_requires_schedule(
         f"/api/v1/teams/{team_id}/visibility-rules/{rule_id}",
         json={"access_mode": "SCHEDULED"},
     )
-    assert res.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert res.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_activate_visibility_rule(
@@ -334,4 +334,4 @@ def test_create_invite_validates_expires_at(
             "max_uses": 1,
         },
     )
-    assert res.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert res.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

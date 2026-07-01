@@ -106,7 +106,7 @@ def test_publish_mobility_location_requires_required_fields(client):
     }
 
     response = client.post("/api/v1/mobility/locations", json=payload)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_publish_mobility_location_returns_503_when_kafka_fails(client):
@@ -182,7 +182,7 @@ def test_publish_mobility_locations_batch_requires_locations(client):
     }
 
     response = client.post("/api/v1/mobility/locations/batch", json=payload)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_publish_mobility_locations_batch_returns_503_when_kafka_fails(client):

@@ -83,7 +83,13 @@ from app.models.sim_kore_profile import SimKoreProfile
 from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
 
 # Teams
-from app.models.team import Team, TeamInvite, TeamMember, TeamVisibilityRule
+from app.models.team import (
+    EmergencyEvent,
+    Team,
+    TeamInvite,
+    TeamMember,
+    TeamVisibilityRule,
+)
 
 # Tokens
 from app.models.token_confirmacion import TokenConfirmacion, TokenType

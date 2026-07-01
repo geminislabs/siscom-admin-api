@@ -19,7 +19,7 @@ def test_endpoint_with_invalid_token_returns_401(client):
     assert response.status_code in [
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_400_BAD_REQUEST,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
         status.HTTP_503_SERVICE_UNAVAILABLE,
     ]
 

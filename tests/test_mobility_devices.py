@@ -190,7 +190,7 @@ def test_register_mobility_device_invalid_device_type(authenticated_client):
     }
 
     response = authenticated_client.post("/api/v1/mobility/devices", json=payload)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_list_mobility_devices_returns_only_current_user_records(

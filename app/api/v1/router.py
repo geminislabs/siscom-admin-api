@@ -43,6 +43,7 @@ from app.api.v1.endpoints import (
     contact,
     device_events,
     devices,
+    emergency_events,
     geofences,
     mobility_devices,
     mobility_locations,
@@ -76,6 +77,7 @@ from app.api.v1.endpoints.internal import (
 from app.api.v1.endpoints.internal import organizations as internal_organizations
 from app.api.v1.endpoints.internal import plans as internal_plans
 from app.api.v1.endpoints.internal import products as internal_products
+from app.api.v1.endpoints.internal import teams as internal_teams
 
 api_router = APIRouter()
 
@@ -155,6 +157,12 @@ api_router.include_router(
 # Teams
 api_router.include_router(teams.router, prefix="/teams", tags=["teams"])
 api_router.include_router(team_invites.router, prefix="/invites", tags=["team-invites"])
+api_router.include_router(
+    emergency_events.router, prefix="/teams", tags=["emergency-events"]
+)
+
+# Internal admin endpoints
+api_router.include_router(internal_teams.router, tags=["internal"])
 
 # Servicios (legacy, considerar usar subscriptions)
 api_router.include_router(services.router, prefix="/services", tags=["services"])

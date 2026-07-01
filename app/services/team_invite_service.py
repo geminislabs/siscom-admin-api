@@ -121,7 +121,13 @@ class TeamInviteService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="INVITE_ALREADY_USED",
             )
-        if invite.expires_at <= now:
+        # Convertir a naive UTC si tiene timezone antes de comparar
+        expires_at_naive = (
+            invite.expires_at.replace(tzinfo=None)
+            if invite.expires_at.tzinfo
+            else invite.expires_at
+        )
+        if expires_at_naive <= now:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="INVITE_EXPIRED",

@@ -66,7 +66,7 @@ def test_user_command_returns_explicit_error_for_unsupported_device_model(
     }
 
     response = authenticated_client.post("/api/v1/user-commands", json=payload)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "No se pudo formar el comando" in response.json()["detail"]
 
 
@@ -274,7 +274,7 @@ def test_engine_resume_rejects_suntech_st449(
     }
 
     response = authenticated_client.post("/api/v1/user-commands", json=payload)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "No se pudo formar el comando" in response.json()["detail"]
 
 

@@ -73,7 +73,7 @@ def test_create_team_validates_name(
     """Test que name no puede estar vacío."""
     payload = {"name": "", "type": "FAMILY"}
     response = authenticated_client.post("/api/v1/teams", json=payload)
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_create_team_generates_default_visibility_rules(
@@ -562,7 +562,7 @@ def test_create_visibility_rule_scheduled_requires_schedule(
     response = authenticated_client.post(
         f"/api/v1/teams/{team_id}/visibility-rules", json=payload
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 def test_create_visibility_rule_with_schedule(
