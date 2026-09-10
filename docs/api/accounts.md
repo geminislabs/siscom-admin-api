@@ -31,10 +31,15 @@ Endpoints para gestión de la **raíz comercial** del cliente. Una cuenta (`Acco
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                        USER                                  │
-│  - email: DEBE ser único globalmente                        │
+│  - email: único POR MARCA (no globalmente) *                 │
 │  - Roles via OrganizationUser                               │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+\* Hasta la migración `028` el correo era único en todo el sistema. Ahora lo
+impone `UNIQUE (brand_account_id, email)`: la misma dirección puede pertenecer a
+dos personas distintas, una en cada marca. Ver
+[Identidad y marca](../architecture/identidad-y-marca.md).
 
 ### Regla de Oro
 

@@ -72,6 +72,14 @@ needs it in the next. So the previous code runs fine against the newer schema �
 it simply ignores what it does not know. In practice this step is the whole
 rollback.
 
+> **Exception on record: `028_identidad_esquema`** drops `users_email_key`, the
+> global uniqueness of `users.email`. Rolling *forward* is still safe for older
+> code — nothing breaks when a constraint is relaxed — but the **downgrade** is
+> conditional: it restores that constraint and aborts if two brands already
+> share an email. See `runbooks/desplegar-identidad.md`. When a release carries a
+> migration that removes a constraint, say so in the tag message: the rollback
+> note is no longer boilerplate.
+
 ### 2. Revert the schema — only if you really need to
 
 ⚠️ **Order matters.** Run this *before* deploying the older tag, because the

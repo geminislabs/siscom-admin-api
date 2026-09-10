@@ -6,6 +6,11 @@ Esta documentación soporta diagramas de contenedores y componentes C4.
 
 ---
 
+> **Transversal a `auth` y `users`:** el modelo de identidad por marca está
+> descrito en [Identidad y marca](../identidad-y-marca.md) — qué es
+> `external_id`, por qué no reemplaza a `cognito_sub` y qué significa que un
+> correo ya no sea único global.
+
 ## 📋 Índice de Módulos
 
 | Módulo | Descripción | Dependencias Principales |
@@ -98,7 +103,7 @@ Todos los módulos interactúan con PostgreSQL a través de SQLAlchemy/SQLModel.
 
 | Módulo | Tablas |
 |--------|--------|
-| auth | `users`, `tokens_confirmacion` |
+| auth | `users`, `tokens_confirmacion`, `tenant_domains` (resolución de marca) |
 | users | `users`, `tokens_confirmacion`, `organization_users` |
 | commands | `commands`, `devices`, `unified_sim_profiles` |
 | contact | (sin tablas propias, solo envío de email) |

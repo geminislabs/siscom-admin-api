@@ -85,6 +85,12 @@ Authorization: Bearer <access_token>
 
 #### Response 200 OK
 
+> **Sobre `cognito_sub` en las respuestas:** es el **sujeto del token** (el claim
+> `sub`), no el handle con el que el usuario se autentica. Ese handle vive en
+> `users.external_id` y **no se expone por la API**: es interno del proveedor de
+> identidad y opaco por contrato. Ver
+> [Identidad y marca](../architecture/identidad-y-marca.md).
+
 ```json
 [
   {

@@ -7,13 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Fase 3, rebanada A — el esquema de identidad** (`028_identidad_esquema`). Es la mitad *expand* del expand/contract: ningún modelo, endpoint ni servicio conoce todavía estas columnas, y el código que las usa sale en el release siguiente
+  - `users.external_id` (`NOT NULL`) — el handle opaco ante el proveedor: el `Username` de Cognito. Correo para los usuarios que ya existen, cuyo username es inmutable; UUID para los que cree la rebanada B. **No reemplaza a `cognito_sub`**: uno es con qué se autentica, el otro es qué sujeto afirma el token, que es lo que compara `deps.py`. Ninguno se deduce del otro
+  - `users.brand_account_id` (FK a `accounts`, `ON DELETE RESTRICT`) — la marca dueña de la credencial. **`NULL` no es «sin marca», es la marca por defecto**: la que se sirve a cualquier `Host` que no resuelva a un dominio verificado, y hoy son todos los usuarios. Rellenarlo con la raíz de la cuenta de cada quien sería la traducción mecánica y estaría mal — los ataría a una marca sin dominio por el que entrar, y rompería su login cuando `/auth/login` empiece a filtrar por marca
+  - `users.identity_provider`, `accounts.identity_provider` y `accounts.idp_config`, con `CHECK` sobre la lista de proveedores que el código sabe manejar. El enrutamiento va **por cuenta y no por variable de entorno**: si fuera global, mover a un partner enterprise a WorkOS obligaría a mover a todos (§5, regla 2). `idp_config` lleva configuración, nunca credenciales
+  - **Se quita `users_email_key`, la unicidad global de correo.** Es el único cambio no aditivo de la migración y el punto entero de la fase: dos personas distintas, una en cada marca, con el mismo correo. Que Cognito lo permite está verificado contra el pool productivo por ejecución, no deducido — la premisa contraria, sostenida un mes, era sobre lo que hace la aplicación y no sobre lo que impone el proveedor
+  - En su lugar, **dos índices únicos parciales** que se reparten la tabla: `(brand_account_id, email)` donde la marca está puesta y `(email)` donde es `NULL`. Uno solo dejaría a todo el padrón actual sin unicidad de correo, en silencio, porque en Postgres dos `NULL` nunca chocan. Se crean **antes** de quitar la restricción, así que no hay ni un instante sin cobertura. `NULLS NOT DISTINCT` haría lo mismo en un objeto, pero exige Postgres 15+ y la versión de producción no está verificada desde el repositorio
+  - **Un trigger sostiene la ventana entre los dos releases**: rellena `external_id` con el correo cuando el alta viene sin él, que es exactamente lo que el código viejo acaba de hacer contra Cognito. No pisa un valor explícito —la rebanada B escribe UUID y gana— y no sigue los cambios de correo, porque el username de Cognito es inmutable. Se borra en la migración *contract*
+  - [ADR-007](docs/architecture/adr/007-identidad-por-marca-y-handle-opaco.md) y `docs/runbooks/desplegar-identidad.md`. **El runbook tiene un paso previo que no es opcional**: comprobar contra el pool que el username de todo usuario existente sea su correo. Es cierto para los que creó esta aplicación, no necesariamente para los creados a mano desde la consola, y un handle equivocado no rompe el login hoy sino cuando salga la rebanada B
+  - `tests/test_identidad_esquema.py` (24 pruebas) sobre la base desechable con el esquema productivo, y no sobre `create_all()`: el harness normal seguiría creando la unicidad global de correo que esta migración quita, así que un test escrito ahí probaría lo contrario de lo que hay en producción
+  - **La reversión puede ser imposible, a propósito.** El `downgrade` repone `users_email_key`, y si para entonces dos marcas ya comparten un correo, aborta con el recuento en el mensaje en vez de dejar la base a medias. La ventana de reversión segura no llega hasta el release siguiente: llega hasta el primer correo duplicado
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
 > historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0` y
 > `1.29.1` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
-
 
 ### Changed
 

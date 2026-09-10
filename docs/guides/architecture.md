@@ -48,6 +48,14 @@ SISCOM Admin API es una aplicación FastAPI que implementa un sistema **SaaS B2B
 
 ## Arquitectura Multi-tenant
 
+> **Hay dos niveles de tenancy, y conviene no mezclarlos.** El de abajo —la
+> **organización**— es el que aísla los datos de un cliente y lleva años en
+> producción. Encima está la **marca**, añadida en 2026: varias marcas sobre un
+> mismo despliegue, cada una con su dominio y su propia identidad de usuarios.
+> La marca la resuelve el `Host` y determina **apariencia y credencial**; la
+> organización la determina el usuario autenticado y delimita **los datos**.
+> Ver [Identidad y marca](../architecture/identidad-y-marca.md).
+
 ### Concepto de Organización
 
 En este sistema, una **Organización** (tabla `clients`) representa una entidad de negocio que contrata servicios. Cada organización tiene sus datos completamente aislados.
@@ -67,6 +75,31 @@ En este sistema, una **Organización** (tabla `clients`) representa una entidad 
 │       ↓                                                         │
 │   TODAS las consultas filtradas por organization_id             │
 │                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Concepto de Marca
+
+Una marca es una `Account` con dominio propio verificado (`tenant_domains`). El
+árbol de reventa vive en `accounts.parent_account_id` con el camino
+materializado en `accounts.account_path`, de modo que «todo lo que cuelga de
+esta cuenta» es una comparación indexada:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     RESOLUCIÓN DE MARCA                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   Host: meromero.com                                            │
+│       ↓                                                         │
+│   tenant_domains (status = VERIFIED)                            │
+│       ↓                                                         │
+│   Account de la marca                                           │
+│       ↓                                                         │
+│   Logo, colores, textos legales · y la marca contra la que se   │
+│   busca la credencial: UNIQUE (brand_account_id, email)         │
+│                                                                 │
+│   ⚠ El Host resuelve APARIENCIA. Nunca autoriza.                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -254,6 +287,11 @@ Eliminar password_temp permanentemente
 ```
 
 ### 3. Login
+
+> A partir de la Fase 3 rebanada B, el primer paso será resolver la marca por
+> `Host` y buscar la credencial por `(brand_account_id, email)`, para autenticar
+> con el `external_id` que devuelva esa fila. El esquema ya lo soporta; el flujo
+> de abajo es el actual.
 
 ```
 POST /api/v1/auth/login

@@ -5,6 +5,12 @@
 Gestión de usuarios de la organización.
 Permite listar usuarios, obtener perfil, invitar nuevos usuarios y gestionar invitaciones.
 
+> **La identidad de un usuario está cambiando.** Desde la migración `028` (Fase 3
+> rebanada A) la credencial pertenece a una **marca**, `users.email` ya no es
+> único global y el username de Cognito vive en `users.external_id`. Los flujos
+> de abajo todavía no lo usan. Leer [Identidad y marca](../identidad-y-marca.md)
+> antes de tocar altas, invitaciones o búsquedas por correo.
+
 ---
 
 ## 👤 Actor
@@ -112,6 +118,24 @@ Permite listar usuarios, obtener perfil, invitar nuevos usuarios y gestionar inv
 7. Envía email con nuevo link
 8. Retorna confirmación con nueva fecha de expiración
 ```
+
+---
+
+## 🏷️ Lo que cambia con la identidad por marca
+
+- **«Verificar que el email no esté registrado»** (pasos 2 de invitar y reenviar,
+  y 4 de aceptar) es hoy una consulta global. Cuando exista más de una marca
+  tendrá que acotarse a la del invitante: el mismo correo puede estar registrado
+  en otra marca y eso no impide nada aquí.
+- **Al crear el usuario en Cognito**, la rebanada B pasará un **UUID como
+  username** y guardará ese valor en `users.external_id`. Hoy se pasa el correo,
+  y por eso los usuarios existentes conservan el correo como handle: los
+  usernames de Cognito son inmutables.
+- **`brand_account_id` se hereda igual que `organization_id`**: de quien invita.
+  `NULL` significa la marca por defecto, no la ausencia de marca.
+- La unicidad que impone la base es `(brand_account_id, email)`, así que un alta
+  duplicada dentro de la misma marca falla con `IntegrityError` aunque la
+  comprobación previa se olvide. Es red, no sustituto del mensaje de error claro.
 
 ---
 
