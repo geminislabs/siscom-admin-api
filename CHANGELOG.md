@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- `PATCH /devices/{id}/status` acepta el token PASETO de GAC (`service=gac`, `role=GAC_ADMIN`), no solo Cognito. GAC no tiene usuario Cognito en este servicio: sin este cambio, mover un dispositivo por la puerta que valida transiciones, escribe `unit_devices` y publica Kafka devolvía 401. `performed_by` queda nulo cuando autentica el servicio, y el evento anota el rol.
-
 ### Added
 
 - **Fase 3, rebanada A — el esquema de identidad** (`028_identidad_esquema`). Es la mitad *expand* del expand/contract: ningún modelo, endpoint ni servicio conoce todavía estas columnas, y el código que las usa sale en el release siguiente
@@ -27,8 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
-> historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0` y `1.29.0`
-> sí se
+> historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0` y
+> `1.29.1` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
 ### Changed
@@ -86,6 +82,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
 
 
+
+
+## [1.29.1] - 2026-09-09
+
+**Migraciones.** Ninguna. La cabeza sigue en `027_tenancy_esquema`, que entró con `1.28.0`.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir
+en la base ni orden que respetar.
+
+### Fixed
+
+- `PATCH /devices/{id}/status` acepta el token PASETO de GAC (`service=gac`, `role=GAC_ADMIN`), no solo Cognito. GAC no tiene usuario Cognito en este servicio: sin este cambio, mover un dispositivo por la puerta que valida transiciones, escribe `unit_devices` y publica Kafka devolvía 401. `performed_by` queda nulo cuando autentica el servicio, y el evento anota el rol.
 
 
 ## [1.29.0] - 2026-09-08
