@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`PATCH /devices/{id}/status` gana un test con un PASETO de servicio firmado de verdad**, más su contraparte negativa (un token con otro rol recibe 401). El test que llegó con `1.29.1` sustituye la dependencia por un `AuthResult` fabricado a mano, así que comprueba qué hace el endpoint con el resultado pero **nunca pasa por `decode_service_token`**: con ese override puesto, cambiar `required_role` en `deps.py` no rompía ningún test y GAC volvía a comerse un 401 en producción. Comprobado rompiendo el rol a propósito — el test nuevo falla, el viejo sigue en verde
+
+### Changed
+
+- **`docs/RELEASE.md` describe el modelo de ramas, que hasta ahora no mencionaba `master` ni una vez.** `develop` es la troncal; `master` es el puntero a producción y se mueve con un **fast-forward desde `develop`**, no con un PR de release. Quedan escritas las dos formas que se probaron antes y por qué dolieron: etiquetar `develop` sin tocar `master` es lo que dejó la rama por defecto 27 commits atrás de producción durante el incidente de septiembre —con CodeQL mirando solo ahí—, y un PR por release cuesta dos rondas de CI, hace chocar el corte del changelog con las ramas de trabajo y deja en `master` un commit de merge que `develop` no tiene
+  - Se documenta el camino del **hotfix**: ramificar desde el tag anterior, no desde `develop`. El riesgo no son los conflictos sino arrastrar lo que ya está mergeado sin desplegar — el 9/09 la migración de identidad estuvo a un merge de salir dentro de una release cuya nota decía «migraciones: ninguna»
+  - Y una advertencia sobre `nota-de-migracion.py`: **lee el árbol de trabajo, no el tag**. Generarla desde una rama con migraciones sin liberar hace que anuncie migraciones que la release no lleva. Pasó ese mismo día
+- **`gac-web/docs/RELEASE.md`** gana el mismo paso de espejo y una sección de dependencias entre repos, con el caso del 9/09: `v1.7.4` exigía `siscom-admin-api v1.29.1` desplegada, y sacar la consola primero habría dado 401 en Asignación con un despliegue en verde
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
