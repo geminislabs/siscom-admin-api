@@ -11,16 +11,50 @@
 - `CHANGELOG.md` updated
 - GitHub Actions secrets/vars configured for deploy (EC2 SSH, DB, Cognito, Kafka, etc.)
 
+## Branch model
+
+Two branches, and each one means one thing:
+
+| Branch    | Meaning                                                                 |
+| --------- | ----------------------------------------------------------------------- |
+| `develop` | **The trunk.** Every change lands here through a PR. Always releasable.  |
+| `master`  | **A pointer to what is in production.** Never receives work directly.    |
+
+`master` is moved forward by a **fast-forward push from `develop`** at release
+time — not by a pull request. This matters and it is worth saying why, because
+the repository did it both of the other possible ways first and each one hurt:
+
+- **Tagging `develop` and never touching `master`** is what happened during the
+  September 2026 incident: `v1.27.0` and `v1.27.1` were cut straight from
+  `develop`, and `master` — the default branch, and the only one the CodeQL
+  default setup analysed — ended up **27 commits behind production**. A `/health`
+  information leak lived in production for two days without any scanner looking
+  at it.
+- **A `develop → master` pull request per release** works, but costs two PRs and
+  two full CI runs (~28 min) for every release, makes the changelog cut collide
+  with feature branches, and leaves a merge commit on `master` that `develop`
+  does not have — so the branches never actually converge.
+
+With the fast-forward, `master == develop` at release time, hash for hash, and
+"`master` is production" is true by construction rather than by discipline.
+
+> **If the fast-forward is rejected**, someone committed directly to `master`.
+> That is the point: it fails loudly instead of letting the branches drift.
+> Merge `master` into `develop`, then continue.
+
 ## Release sequence
 
-1. Sync `develop`:
+1. Sync `develop` and make sure CI is green on its head commit:
 
    ```bash
    git checkout develop
    git pull origin develop
+   gh run list --workflow=ci.yml --branch develop --limit 1
    ```
 
-2. Prepare changelog (and version notes if applicable):
+2. Cut the changelog — move the `[Unreleased]` entries under the new version
+   header, with the migration note (see below). This is a **plain commit on
+   `develop`, no PR**:
 
    ```bash
    git add CHANGELOG.md
@@ -28,14 +62,52 @@
    git push origin develop
    ```
 
-3. Create and push an annotated tag:
+   Wait for that push's CI before continuing: the commit you are about to tag is
+   the one CI must have validated.
+
+3. Fast-forward `master` to `develop`:
 
    ```bash
-   git tag -a vX.Y.Z -m "release: vX.Y.Z"
+   git push origin develop:master
+   ```
+
+4. Create and push the annotated tag. **The migration and rollback note goes in
+   the tag message** — it travels with the artifact, which is where you want it
+   at three in the morning:
+
+   ```bash
+   git tag -a vX.Y.Z -F nota.txt
    git push origin vX.Y.Z
    ```
 
-4. **Deploy workflow** (`.github/workflows/deploy.yml`) runs on tag push.
+5. **Deploy workflow** (`.github/workflows/deploy.yml`) runs on tag push.
+
+6. Verify against the log, not against hope:
+   - `Running upgrade <from> -> <to>` appears **exactly once**, or not at all if
+     the release carries no migrations. `Running upgrade -> 001` means alembic
+     did not recognise the current schema — stop.
+   - Migrations ran with the scoped credential (`siscom_migrator`), not `siscom`.
+   - `/health` reports the expected `schema_revision`.
+
+## Hotfixes
+
+The normal path is enough almost always: branch off `develop`, PR, merge,
+release. It works **as long as `develop` is releasable**, which is the whole
+premise of this model.
+
+When it is not — `develop` already has merged work you do not want to ship —
+branch from **the previous tag**, not from `develop`:
+
+```bash
+git checkout -b hotfix/lo-que-sea vX.Y.Z-previous
+# fix, then tag from this branch and deploy
+git checkout develop && git merge hotfix/lo-que-sea
+```
+
+The risk a hotfix runs is not a merge conflict. It is shipping whatever else is
+already sitting in `develop`, silently and in green. On 2026-09-09 the identity
+migration was one merge away from riding out inside a hotfix release whose note
+said "migrations: none".
 
 ## Migrations — every release must say what it carries
 
@@ -45,6 +117,11 @@ Before tagging, generate the migration and rollback note and paste it into the
 ```bash
 python scripts/nota-de-migracion.py vX.Y.Z-previous --md
 ```
+
+> **Run it on the branch you are cutting from.** The script reads the working
+> tree, not the tag: run it from a branch that carries unreleased migrations and
+> it will announce migrations the release does not contain. It happened on
+> 2026-09-09 — the note for a migration-free release claimed to carry `028`.
 
 It derives the answer from the repository — which revisions this release adds,
 and the exact `downgrade` target — so it cannot drift from reality. If the

@@ -447,6 +447,103 @@ def test_status_preparado_accepts_gac_service_token(
     assert "por servicio gac" in (event.event_details or "")
 
 
+def _sin_cognito(monkeypatch):
+    """Hace que `verify_cognito_token` rechace la credencial, como en produccion.
+
+    Un PASETO no es un JWT de Cognito: alli `verify_cognito_token` levanta 401 y
+    la dependencia cae al camino PASETO. No se deja llamar al de verdad porque
+    lo primero que hace es pedir las JWKS por red.
+    """
+    from fastapi import HTTPException
+
+    import app.api.deps as deps_mod
+
+    def rechaza(_token):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    monkeypatch.setattr(deps_mod, "verify_cognito_token", rechaza)
+
+
+def test_status_acepta_un_token_de_servicio_firmado(
+    authenticated_client,
+    test_device_data,
+    test_organization_data,
+    db_session,
+    monkeypatch,
+):
+    """El mismo caso que el test de arriba, pero con un PASETO firmado de verdad.
+
+    POR QUE HACEN FALTA LOS DOS. El de arriba sustituye la dependencia por un
+    `AuthResult` fabricado a mano, asi que comprueba lo que el endpoint hace con
+    el resultado —`performed_by` nulo, el rol en el evento— pero **nunca pasa por
+    `decode_service_token`**. Con el override puesto, cambiar `required_role` o
+    `required_service` en `deps.py` no rompe ningun test y GAC se vuelve a comer
+    un 401 en produccion, que es exactamente el fallo que este endpoint acaba de
+    arreglar.
+
+    Este quita el override y manda el token en la cabecera, que es lo que hace
+    gac-web.
+    """
+    from app.api.deps import get_auth_for_gac_admin
+    from app.main import app
+    from app.models.device import DeviceEvent
+    from app.utils.paseto_token import generate_service_token
+
+    app.dependency_overrides.pop(get_auth_for_gac_admin, None)
+    _sin_cognito(monkeypatch)
+
+    token, _expira = generate_service_token("gac", "GAC_ADMIN")
+
+    response = authenticated_client.patch(
+        f"/api/v1/devices/{test_device_data.device_id}/status",
+        json={"new_status": "preparado", "client_id": str(test_organization_data.id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["client_id"] == str(test_organization_data.id)
+
+    evento = (
+        db_session.query(DeviceEvent)
+        .filter(
+            DeviceEvent.device_id == test_device_data.device_id,
+            DeviceEvent.event_type == "preparado",
+        )
+        .order_by(DeviceEvent.created_at.desc())
+        .first()
+    )
+    assert evento is not None
+    assert evento.performed_by is None
+    assert "por servicio gac" in (evento.event_details or "")
+
+
+def test_status_rechaza_un_token_de_servicio_con_otro_rol(
+    authenticated_client, test_device_data, test_organization_data, monkeypatch
+):
+    """Firmado con la clave buena, pero con un rol que no es GAC_ADMIN: 401.
+
+    Es la otra mitad del test anterior. Sin este, un `required_role` puesto a
+    `None` por descuido abriria el endpoint a cualquier token de servicio
+    —incluido el de otro consumidor interno— y toda la bateria seguiria verde.
+    """
+    from app.api.deps import get_auth_for_gac_admin
+    from app.main import app
+    from app.utils.paseto_token import generate_service_token
+
+    app.dependency_overrides.pop(get_auth_for_gac_admin, None)
+    _sin_cognito(monkeypatch)
+
+    token, _expira = generate_service_token("gac", "NEXUS_LECTOR")
+
+    response = authenticated_client.patch(
+        f"/api/v1/devices/{test_device_data.device_id}/status",
+        json={"new_status": "preparado", "client_id": str(test_organization_data.id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
 # ============================================
 # Tests de Eventos
 # ============================================
