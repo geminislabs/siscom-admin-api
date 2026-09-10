@@ -27,7 +27,7 @@ app/services/           # lógica de negocio
 app/models/             # SQLModel
 app/schemas/            # Pydantic DTOs
 app/db/migrations/      # Alembic
-tests/                  # pytest (SQLite in-memory; JSONB compile hook in sqlite_dialect.py)
+tests/                  # pytest contra PostgreSQL real (ver docs §20); base desechable en esquema_desechable.py
 docs/                   # guías y API docs
 ```
 
@@ -53,12 +53,15 @@ Opcional: `make scan-secrets`, `make audit-deps`, `make scan-osv`, `pre-commit r
 - Branch protection y política de CI: `docs/GOVERNANCE.md`
 - CODEOWNERS y Dependabot: `.github/`
 - Decisiones de arquitectura: `docs/architecture/adr/`
+- Identidad, marca y multi-tenancy: `docs/architecture/identidad-y-marca.md`
+- Despliegue de migraciones: `docs/runbooks/`
 - Modelo de amenazas: `docs/security/threat-model.md`
 - Entorno reproducible: `.devcontainer/`
 
 ## Módulos sensibles
 
 - `app/core/security.py`, `app/api/deps.py` — auth Cognito y RBAC
+- `app/api/v1/endpoints/auth.py` — login e identidad por marca (leer antes `docs/architecture/identidad-y-marca.md`)
 - `app/api/v1/endpoints/internal/` — API PASETO para GAC
 - `app/services/gateways/stripe_gateway.py` — pagos
 - `app/services/messaging/kafka_producer.py` — eventos Kafka

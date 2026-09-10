@@ -7,6 +7,7 @@ Plataforma **SaaS B2B multi-tenant** para gestión de flotas GPS/IoT.
 SISCOM Admin API es una API REST que implementa un sistema completo de gestión de flotas con las siguientes características:
 
 - **Multi-tenant**: Cada organización tiene sus datos completamente aislados
+- **White-label (en construcción)**: varias marcas sobre el mismo despliegue, cada una con su dominio, su tema y su propia identidad de usuarios — ver [Identidad y marca](docs/architecture/identidad-y-marca.md)
 - **Autenticación Dual**: AWS Cognito (usuarios) + PASETO (servicios internos)
 - **Roles Organizacionales**: owner, admin, billing, member
 - **Suscripciones Múltiples**: Una organización puede tener varias suscripciones
@@ -179,6 +180,8 @@ Una vez que la API esté corriendo:
 - **[Arquitectura del Sistema](docs/guides/architecture.md)** - Diseño técnico
 - **[Inicio Rápido](docs/guides/quickstart.md)** - Configuración inicial
 - **[Configuración de Cognito](docs/guides/cognito-setup.md)** - Setup de AWS Cognito
+- **[Identidad y marca](docs/architecture/identidad-y-marca.md)** - Identidad multi-marca: `external_id`, unicidad de correo por marca, resolución por `Host`
+- **[Decisiones de arquitectura (ADR)](docs/architecture/adr/README.md)** y **[runbooks de despliegue](docs/runbooks/)**
 
 ### Documentación por Endpoint
 
@@ -312,8 +315,12 @@ WHERE status = 'ACTIVE';
 ### Multi-tenancy
 
 - Todos los datos están aislados por `organization_id` (`client_id`)
-- El `organization_id` se extrae del token de Cognito mediante `cognito_sub`
+- El `organization_id` se extrae del token de Cognito mediante `cognito_sub` — que
+  es el **sujeto del token**, no el `external_id` con el que se autentica
 - Todos los endpoints validan automáticamente el ownership
+- **Por encima está la marca**: el `Host` resuelve qué marca sirve la petición
+  (apariencia y contra qué credencial se busca) y **nunca** autoriza. El correo es
+  único por marca, no globalmente
 
 ### Sistema de Capabilities
 

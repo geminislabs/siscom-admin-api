@@ -1,7 +1,13 @@
 # ADR-001: Migración al Modelo Account / Organization / User
 
-**Estado:** Aceptado  
+**Estado:** Aceptado — reemplazado en parte por [ADR-007](007-identidad-por-marca-y-handle-opaco.md)  
 **Fecha:** 2024-12-29  
+
+> La fila «`user.email` único global ✅ Requerido» de la tabla de validaciones
+> **ya no es cierta** desde la migración `028` (8/09/2026): el correo es único
+> **por marca**. El resto del ADR sigue vigente. El cuerpo se deja como estaba
+> por la regla de inmutabilidad del [README](README.md) de este directorio.
+
 **Autores:** Equipo de Desarrollo  
 **Revisores:** -
 
@@ -266,10 +272,10 @@ app/api/v1/
 
 ## Referencias
 
-- [Modelo organizacional](../guides/organizational-model.md)
-- [Guía de migración V1](../MIGRATION_GUIDE_V1.md)
-- [Documentación de API - Accounts](../api/accounts.md)
-- [Documentación de API - Accounts](../api/accounts.md)
+- [Modelo organizacional](../../guides/organizational-model.md)
+- [Guía de migración V1](../../MIGRATION_GUIDE_V1.md)
+- [Documentación de API - Accounts](../../api/accounts.md)
+- [Documentación de API - Accounts](../../api/accounts.md)
 
 ## Registro de cambios
 

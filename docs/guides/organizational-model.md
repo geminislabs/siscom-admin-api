@@ -10,6 +10,59 @@ Este documento define el modelo conceptual de negocio de SISCOM Admin API como u
 
 ## Conceptos Fundamentales
 
+### 0. Marca (una `Account` del árbol de cuentas)
+
+> **Añadido en las Fases 2 y 3 (septiembre de 2026).** El esquema ya lo soporta;
+> el código lo está adoptando por partes. Detalle en
+> [Identidad y marca](../architecture/identidad-y-marca.md).
+
+El sistema pasa de un operador a **varias marcas sobre el mismo despliegue**.
+Una marca es una `Account` con dominio propio verificado: sus clientes entran
+por `su-dominio.com`, ven su logo y sus textos legales, y no saben que
+comparten instalación con nadie.
+
+```
+Geminis (marca por defecto)          Mero Mero (marca con dominio)
+        │                                     │
+        │  nexus.geminislabs.com              │  meromero.com
+        ▼                                     ▼
+   Organizaciones y usuarios            Empresa 1 ... Empresa N
+                                        (cada una con sus organizaciones)
+```
+
+Tres reglas que gobiernan todo lo demás:
+
+1. **El tenant es la `Account`**, no una entidad nueva. El árbol de reventa vive
+   en `accounts.parent_account_id` + `accounts.account_path`
+   (`uuid[]`, ver [ADR-006](../architecture/adr/006-camino-materializado-en-uuid.md)).
+2. **El dominio determina la marca; la identidad determina los datos.** Son dos
+   resoluciones independientes. El `Host` resuelve apariencia y **nunca**
+   autoriza: los datos que ve un usuario los delimita su subárbol
+   (`account_path @> ARRAY[:cuenta]`).
+3. **La credencial pertenece a una marca.** `users.brand_account_id`, con
+   `UNIQUE (brand_account_id, email)`. El mismo correo puede existir en dos
+   marcas y ser dos personas distintas.
+
+#### Consecuencia directa: el correo ya no identifica a nadie por sí solo
+
+`users.email` **dejó de ser único global** con la migración `028`. Toda búsqueda
+de credencial por correo lleva marca:
+
+```python
+db.query(User).filter(
+    User.email == email,
+    User.brand_account_id == marca_id,   # .is_(None) para la marca por defecto
+).first()
+```
+
+Los límites comerciales de una marca —cuántos dominios, cuántas subcuentas, si
+puede revender— viven en `account_capabilities`, un nivel por encima de
+`organization_capabilities`, y se resuelven con **techo descendente**: ningún
+descendiente puede recibir más de lo que su ancestro le concedió. Eso es lo que
+hace delegable la reventa.
+
+---
+
 ### 1. Organización (tabla `clients`)
 
 Una **Organización** es la entidad de negocio principal. Representa una empresa, compañía o entidad que contrata los servicios de SISCOM.

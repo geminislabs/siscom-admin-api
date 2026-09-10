@@ -22,6 +22,17 @@ Bienvenido a la documentación completa de la API administrativa de SISCOM - una
 
 - **[Modelo Organizacional](guides/organizational-model.md)** - 📌 **LECTURA OBLIGATORIA** - Modelo conceptual completo
 - **[Arquitectura del Sistema](guides/architecture.md)** - Diseño técnico y estructura del proyecto
+- **[Identidad y marca](architecture/identidad-y-marca.md)** - 📌 Cómo se identifica a un usuario cuando el mismo despliegue atiende a varias marcas
+- **[Decisiones de arquitectura (ADR)](architecture/adr/README.md)** - Registro de decisiones con su contexto y sus alternativas descartadas
+- **[Módulos (C4)](architecture/modules/README.md)** - Qué consume cada módulo y cómo interactúa
+
+### Runbooks de despliegue
+
+| Runbook | Cuándo se usa |
+|---------|---------------|
+| **[Desplegar identidad (`028`)](runbooks/desplegar-identidad.md)** | Fase 3 rebanada A. **Tiene un paso previo obligatorio** contra el pool de Cognito, y su reversión es condicional |
+| **[Desplegar tenancy (`027`)](runbooks/desplegar-tenancy.md)** | Fase 2 rebanada A. Árbol de cuentas, dominios y branding |
+| **[Reconciliar historial de alembic](runbooks/reconciliar-historial-alembic.md)** | Cuando el esquema real y la cadena de migraciones no coinciden |
 
 ---
 
@@ -681,7 +692,10 @@ alembic upgrade head
 - Los límites se resuelven: `org_override ?? plan_capability ?? default`
 - Un dispositivo solo puede tener UN servicio ACTIVE simultáneamente
 - Los seriales e IMEIs deben ser únicos en todo el sistema
-- Los emails deben ser únicos por organización
+- **Los emails son únicos por marca, no por organización ni globalmente.** Lo
+  impone `UNIQUE (brand_account_id, email)` desde la migración `028`; antes eran
+  únicos en todo el sistema. Dos personas distintas, una en cada marca, pueden
+  compartir correo — ver [Identidad y marca](architecture/identidad-y-marca.md)
 
 ### Mejores Prácticas
 
@@ -693,6 +707,21 @@ alembic upgrade head
 ---
 
 ## 🔄 Actualizaciones
+
+### Septiembre 2026 — White-label (Fases 2 y 3)
+
+- ✅ **Árbol de cuentas** (`parent_account_id`, `account_path`), `account_capabilities`
+  con techo descendente, `tenant_domains`, `tenant_branding` y `GET /tenant-config`
+- ✅ **Identidad por marca** (esquema): `users.external_id`, `users.brand_account_id`,
+  `users.identity_provider`, enrutamiento de proveedor por cuenta. **`users.email`
+  deja de ser único global**
+- 📄 Documentación nueva: [Identidad y marca](architecture/identidad-y-marca.md),
+  [ADR-006](architecture/adr/006-camino-materializado-en-uuid.md),
+  [ADR-007](architecture/adr/007-identidad-por-marca-y-handle-opaco.md) y los
+  runbooks de despliegue
+- ⚠️ **Corregida la guía de Cognito**: el pool productivo no impone unicidad de
+  correo, y un pool nuevo no debe configurar el correo como *username* ni como
+  *alias attribute*
 
 ### Versión 2.3.0 (Enero 2026)
 
@@ -731,5 +760,5 @@ alembic upgrade head
 
 ---
 
-**Última actualización**: Enero 2026
+**Última actualización**: Septiembre 2026
 **Versión de documentación**: 2.3.0

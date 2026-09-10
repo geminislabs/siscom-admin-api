@@ -543,9 +543,18 @@ def test_el_downgrade_deja_accounts_como_estaba(engine):
     """Un downgrade que no revierte convierte el plan de rollback en una
     mentira, y esa mentira solo se descubre durante una liberacion que ya salio
     mal. Va el ultimo del modulo porque toca el esquema de verdad.
+
+    Baja primero hasta la 027 por nombre y no con un `-1` a secas: la cabeza ya
+    no es esta migracion —la 028 anadio dos columnas mas a `accounts`— y un
+    `-1` revertiria esa otra. Cada migracion nueva encima volveria a mover el
+    suelo de este test si no se dijera contra cual se compara.
     """
-    columnas_antes = _columnas_de_accounts(engine)
+    columnas_con_migraciones_posteriores = _columnas_de_accounts(engine)
     engine.dispose()  # un DROP COLUMN no espera a una conexion ociosa del pool
+
+    assert desechable.alembic(BASE, "downgrade", "027_tenancy_esquema") == 0
+    columnas_antes = _columnas_de_accounts(engine)
+    engine.dispose()
 
     assert desechable.alembic(BASE, "downgrade", "-1") == 0
     columnas = _columnas_de_accounts(engine)
@@ -566,7 +575,7 @@ def test_el_downgrade_deja_accounts_como_estaba(engine):
 
     engine.dispose()
     assert desechable.alembic(BASE, "upgrade", "head") == 0
-    assert _columnas_de_accounts(engine) == columnas_antes
+    assert _columnas_de_accounts(engine) == columnas_con_migraciones_posteriores
 
 
 def _columnas_de_accounts(engine) -> set:

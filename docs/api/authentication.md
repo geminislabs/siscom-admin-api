@@ -49,11 +49,26 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 ### Claims del JWT:
+
+> **Tres advertencias sobre estos claims**, las tres con consecuencias de
+> seguridad:
+>
+> - `sub` es el **sujeto del proveedor**, y es lo que la API usa para resolver al
+>   usuario (`users.cognito_sub`). No es `users.external_id` —el username con el
+>   que se autentica— ni `users.id`.
+> - `cognito:username` **no será siempre el correo**: en los usuarios creados a
+>   partir de la Fase 3 es un UUID. Ningún consumidor debe leerlo como si fuera
+>   una dirección de correo.
+> - Los claims `custom:*` de Cognito son **mutables desde las APIs de
+>   administración**: la API los revalida contra Postgres y nunca autoriza por lo
+>   que diga el token. Ver
+>   [Identidad y marca](../architecture/identidad-y-marca.md).
+
 ```json
 {
   "sub": "uuid-del-usuario",
   "email": "usuario@empresa.com",
-  "cognito:username": "usuario@empresa.com",
+  "cognito:username": "usuario@empresa.com",   // UUID en los usuarios nuevos
   "custom:organization_id": "uuid-org",
   "custom:client_id": "uuid-org",
   "token_use": "access",

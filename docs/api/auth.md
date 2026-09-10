@@ -62,7 +62,7 @@ Registra una nueva cuenta creando Account + Organization + User en una sola oper
 | Campo | Tipo | Obligatorio | Descripción |
 |-------|------|-------------|-------------|
 | `account_name` | string | ✅ | Nombre de la cuenta (puede repetirse) |
-| `email` | string | ✅ | Email del usuario master (debe ser único) |
+| `email` | string | ✅ | Email del usuario master. Único **dentro de su marca**, no en todo el sistema — ver la nota de identidad al final |
 | `password` | string | ✅ | Contraseña (min 8 caracteres) |
 | `name` | string | ❌ | Nombre completo del usuario (default: account_name) |
 | `organization_name` | string | ❌ | Nombre de la organización (default: "ORG " + account_name) |
@@ -814,7 +814,7 @@ El token JWT de Cognito contiene:
 ```
 Token JWT
     ↓
-Extraer cognito_sub
+Extraer cognito_sub   ← el claim `sub`, NO el external_id
     ↓
 Buscar User por cognito_sub
     ↓
@@ -850,3 +850,25 @@ Filtrar datos por organization_id
 
 **Última actualización**: Diciembre 2025  
 **Referencia**: [Modelo Organizacional](../guides/organizational-model.md)
+
+---
+
+## 🏷️ Nota de identidad — qué cambia con el white-label
+
+El contrato de estos endpoints **no ha cambiado todavía**: se sigue entrando con
+correo y contraseña, y las respuestas son las mismas. Lo que cambió es lo que
+hay debajo, y afecta a quien lea o escriba código sobre `users`:
+
+| Antes | Ahora (migración `028`) |
+|---|---|
+| `users.email` único en todo el sistema | Único **por marca**: `UNIQUE (brand_account_id, email)` |
+| El username de Cognito era el correo, y estaba implícito | Está explícito en `users.external_id`, y en los usuarios nuevos será un UUID |
+| Un solo proveedor de identidad, fijo | `accounts.identity_provider` enruta por cuenta |
+
+Lo que **no** cambia: el usuario nunca ve ni elige un username, y
+`cognito_sub` —el sujeto del token— sigue siendo lo que resuelve la identidad de
+una petición autenticada. `external_id` y `cognito_sub` son identificadores
+distintos del mismo usuario.
+
+Detalle: [Identidad y marca](../architecture/identidad-y-marca.md) ·
+[ADR-007](../architecture/adr/007-identidad-por-marca-y-handle-opaco.md)

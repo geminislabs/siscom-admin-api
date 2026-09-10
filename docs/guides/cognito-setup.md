@@ -4,6 +4,50 @@
 
 Esta guía explica cómo configurar AWS Cognito para usar con la API de SISCOM.
 
+> ### ⚠️ Corrección del 8 de septiembre de 2026 — leer antes del paso 2
+>
+> El paso 2 de esta guía decía **«User name requirements: Email address»**, y
+> durante un mes se leyó como si describiera el pool productivo. **No lo
+> describe.** El pool de producción tiene `UsernameAttributes: null` y
+> `AliasAttributes: null`: Cognito no impone unicidad de correo. La unicidad
+> existía únicamente porque la aplicación pasa el correo como `Username` en sus
+> `admin_create_user`.
+>
+> La diferencia no es académica: un pool creado *siguiendo la versión anterior
+> de esta guía* sí impondría unicidad global de correo, y eso **rompe el
+> white-label**, donde la misma persona debe poder existir bajo dos marcas. El
+> paso 2 queda corregido más abajo.
+>
+> Contexto y modelo de identidad completo:
+> [Identidad y marca](../architecture/identidad-y-marca.md).
+
+---
+
+## 0. El pool productivo
+
+| Dato | Valor |
+|---|---|
+| User Pool ID | `us-east-1_IhHXuqCU9` |
+| App client | `34au92r0ahpbo8njncek0uefk9` |
+| Región | `us-east-1` |
+| Creado | 2025-10-20 |
+| `UsernameAttributes` / `AliasAttributes` | `null` / `null` |
+| Flujo de auth | `ALLOW_USER_PASSWORD_AUTH` (el código usa `initiate_auth`, no `admin_initiate_auth`) |
+
+El de desarrollo es otro: `us-east-1_CdZDg3RZ4`.
+
+**Cómo se averigua cuál usa producción**, porque no se puede deducir: los
+secrets de GitHub son de solo escritura y no se leen. La única fuente que dice
+la verdad es el contenedor en marcha:
+
+```bash
+docker exec siscom-admin-api printenv COGNITO_USER_POOL_ID
+```
+
+Por su fecha de creación —posterior al 22 de noviembre de 2024— **no conserva el
+tramo heredado de 50 000 MAU gratuitos**. El tramo gratuito de Cognito es por
+cuenta de AWS, no por pool.
+
 ---
 
 ## 1. Crear User Pool
@@ -17,9 +61,25 @@ Esta guía explica cómo configurar AWS Cognito para usar con la API de SISCOM.
 
 ### Paso 2: Configurar Sign-in
 
-- **Sign-in options**: Email
-- **User name requirements**: Email address
+- **Sign-in options**: `User name` — **no** `Email`
+- **User name requirements**: ninguno. El correo va como **atributo normal**,
+  nunca como *username attribute* ni como *alias attribute*
 - Clic en "Next"
+
+> **Por qué, y no es un detalle de estilo.** Si el correo es *username* o
+> *alias*, Cognito impone unicidad de correo dentro del pool. Eso impide que la
+> misma persona tenga cuenta bajo dos marcas distintas, que es el requisito
+> central del white-label (§5 del documento de arquitectura,
+> [ADR-007](../architecture/adr/007-identidad-por-marca-y-handle-opaco.md)).
+>
+> La unicidad que sí queremos —un correo por marca— la impone Postgres con
+> `UNIQUE (brand_account_id, email)`, donde sí se puede expresar «por marca».
+> Cognito no sabe qué es una marca.
+>
+> El username de los usuarios nuevos es un **UUID**, y el usuario nunca lo ve ni
+> lo elige: sigue entrando con su correo y su contraseña. El login resuelve la
+> marca por `Host`, busca la credencial en Postgres y autentica con el
+> `external_id` que encontró allí.
 
 ### Paso 3: Configurar Seguridad
 
@@ -209,9 +269,16 @@ function validatePassword(password) {
 
 ### Atributos Estándar Utilizados
 
-- **email** (required): Email del usuario
+- **email** (required): Email del usuario. **Atributo normal, nunca alias** — ver
+  el paso 2
 - **name** (optional): Nombre completo
 - **email_verified**: Verificación de email
+
+> **Los atributos de Cognito no son fuente de verdad.** Son mutables desde las
+> APIs de administración, así que cualquier claim de cuenta, organización o
+> marca se revalida contra Postgres. Si se deja que Cognito sea la verdad, el
+> proveedor deja de ser intercambiable — que es justamente lo que la interfaz
+> `IdentityProvider` viene a garantizar.
 
 ### Atributos Personalizados (opcional)
 
@@ -378,13 +445,22 @@ exports.handler = async (event) => {
 
 ### Tier Gratuito
 
-- 50,000 MAU (Monthly Active Users) gratis
-- Incluye funciones básicas de MFA
+- **10 000 MAU** (Monthly Active Users) al mes en Lite y Essentials, **por cuenta
+  de AWS o por AWS organization — no por pool**. Crear pools de más no multiplica
+  el tramo gratuito, y tampoco lo consume: un pool vacío cuesta cero
+- Los pools creados **el 22 de noviembre de 2024 o antes** conservan un tramo
+  heredado de 50 000 MAU. El pool productivo es del 2025-10-20, así que **no lo
+  tiene**
+- El tier Plus no tiene tramo gratuito
 
 ### Costos Adicionales
 
-- $0.0055 por MAU para 50,001-100,000 usuarios
-- Ver precios actualizados en AWS Pricing
+- Essentials a partir del tramo gratuito: ~0,015 USD/MAU
+- Federados SAML/OIDC: 50 MAU gratis, con el mismo alcance por cuenta
+- Ver precios actualizados en AWS Pricing — esta tabla se escribió el 8/09/2026
+
+> El dato de «50 000 MAU gratis» que decía esta sección era el tramo heredado, y
+> aplicarlo al pool actual sobreestimaba lo gratuito por un factor de cinco.
 
 ---
 

@@ -40,6 +40,30 @@ Modelo de seguridad de alto nivel para la API administrativa (FastAPI). Compleme
 - **Riesgo:** token robado/replay → mitigar con expiración corta, HTTPS, validación de firma
 - **Riesgo:** escalamiento de privilegios → cada endpoint valida rol/propiedad del recurso
 
+#### Identidad por marca (migración `028`, Fase 3)
+
+`users.email` dejó de ser único global: lo es por marca
+(`UNIQUE (brand_account_id, email)`, con un índice parcial para la marca por
+defecto). Ver [Identidad y marca](../architecture/identidad-y-marca.md).
+
+- **Riesgo:** que una búsqueda de credencial por correo **sin marca** devuelva la
+  fila de otra marca → toda consulta de login/recuperación filtra por
+  `brand_account_id`; la base impone la unicidad, pero no elige por ti cuál de
+  dos filas es la correcta
+- **Riesgo:** tratar el `Host` como autorización → el `Host` resuelve marca
+  (apariencia y contra qué credencial se busca) y **nunca** concede acceso a
+  datos; el aislamiento sigue siendo `account_path` / `organization_id`
+- **Riesgo:** que Cognito se vuelva fuente de verdad → sus atributos custom son
+  mutables desde las APIs de administración; el claim de cuenta o de marca se
+  revalida siempre contra Postgres
+- **Riesgo:** enumeración de correos en la recuperación de contraseña → el mismo
+  correo puede existir en dos marcas y **son personas distintas**; la respuesta
+  genérica de `forgot-password` sigue siendo obligatoria, y el código de reseteo
+  se emite para la credencial de *esa* marca, no para el correo
+- **Riesgo:** un secreto en `accounts.idp_config` → esa columna lleva
+  configuración y referencias a Secrets Manager, nunca credenciales: acabaría en
+  respaldos, dumps de soporte y logs de consulta lenta
+
 ### Pagos (Stripe)
 
 - `app/services/gateways/` y `stripe_billing.py` manejan webhooks y cobros
@@ -65,6 +89,7 @@ Modelo de seguridad de alto nivel para la API administrativa (FastAPI). Compleme
 ## Sensitive modules (revisión extra)
 
 - `app/core/security.py`, `app/api/deps.py` — auth y RBAC
+- `app/api/v1/endpoints/auth.py` — login, altas en Cognito e identidad por marca
 - `app/api/v1/endpoints/internal/` — API PASETO para GAC
 - `app/utils/paseto_token.py` — emisión/validación de tokens internos
 - `app/services/gateways/` y `app/api/v1/endpoints/stripe_billing.py` — pagos

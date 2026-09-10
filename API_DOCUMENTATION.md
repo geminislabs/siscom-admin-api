@@ -432,7 +432,7 @@ Retorna token interno para integraciones servicio-a-servicio.
 | Campo | Obligatorio | Descripción |
 |-------|-------------|-------------|
 | `account_name` | ✅ | Nombre de la cuenta comercial |
-| `email` | ✅ | Email del usuario master (único global) |
+| `email` | ✅ | Email del usuario master (único **por marca** desde la migración `028`, no global — ver `docs/architecture/identidad-y-marca.md`) |
 | `password` | ✅ | Contraseña (min 8 caracteres) |
 | `name` | ❌ | Nombre del usuario (default: account_name) |
 | `organization_name` | ❌ | Nombre de la organización (default: "ORG " + account_name) |
