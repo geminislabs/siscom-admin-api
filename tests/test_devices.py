@@ -408,6 +408,45 @@ def test_status_change_to_inactivo(authenticated_client, test_device_data):
     assert data["status"] == "inactivo"
 
 
+def test_status_preparado_accepts_gac_service_token(
+    authenticated_client, test_device_data, test_organization_data, db_session
+):
+    """GAC habla con PASETO de servicio, no con Cognito. /status tiene que aceptarlo."""
+    from app.api.deps import AuthResult, get_auth_for_gac_admin
+    from app.main import app
+    from app.models.device import DeviceEvent
+
+    app.dependency_overrides[get_auth_for_gac_admin] = lambda: AuthResult(
+        auth_type="paseto",
+        payload={"service": "gac", "role": "GAC_ADMIN"},
+        service="gac",
+        role="GAC_ADMIN",
+    )
+
+    response = _set_status(
+        authenticated_client,
+        test_device_data.device_id,
+        "preparado",
+        client_id=str(test_organization_data.id),
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["status"] == "preparado"
+    assert response.json()["client_id"] == str(test_organization_data.id)
+
+    event = (
+        db_session.query(DeviceEvent)
+        .filter(
+            DeviceEvent.device_id == test_device_data.device_id,
+            DeviceEvent.event_type == "preparado",
+        )
+        .order_by(DeviceEvent.created_at.desc())
+        .first()
+    )
+    assert event is not None
+    assert event.performed_by is None
+    assert "por servicio gac" in (event.event_details or "")
+
+
 # ============================================
 # Tests de Eventos
 # ============================================

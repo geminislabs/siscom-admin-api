@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `PATCH /devices/{id}/status` acepta el token PASETO de GAC (`service=gac`, `role=GAC_ADMIN`), no solo Cognito. GAC no tiene usuario Cognito en este servicio: sin este cambio, mover un dispositivo por la puerta que valida transiciones, escribe `unit_devices` y publica Kafka devolvía 401. `performed_by` queda nulo cuando autentica el servicio, y el evento anota el rol.
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
