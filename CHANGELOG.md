@@ -7,13 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
-> nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
-> saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
-> historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0` y `1.29.0`
-> sí se
-> repartieron, derivadas de `git log <tag-anterior>..<tag>`.
-
 ### Added
 
 - **Fase 3, rebanada A — el esquema de identidad** (`028_identidad_esquema`). Es la mitad *expand* del expand/contract: ningún modelo, endpoint ni servicio conoce todavía estas columnas, y el código que las usa sale en el release siguiente
@@ -26,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - [ADR-007](docs/architecture/adr/007-identidad-por-marca-y-handle-opaco.md) y `docs/runbooks/desplegar-identidad.md`. **El runbook tiene un paso previo que no es opcional**: comprobar contra el pool que el username de todo usuario existente sea su correo. Es cierto para los que creó esta aplicación, no necesariamente para los creados a mano desde la consola, y un handle equivocado no rompe el login hoy sino cuando salga la rebanada B
   - `tests/test_identidad_esquema.py` (24 pruebas) sobre la base desechable con el esquema productivo, y no sobre `create_all()`: el harness normal seguiría creando la unicidad global de correo que esta migración quita, así que un test escrito ahí probaría lo contrario de lo que hay en producción
   - **La reversión puede ser imposible, a propósito.** El `downgrade` repone `users_email_key`, y si para entonces dos marcas ya comparten un correo, aborta con el recuento en el mensaje en vez de dejar la base a medias. La ventana de reversión segura no llega hasta el release siguiente: llega hasta el primer correo duplicado
+
+> **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
+> nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
+> saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
+> historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0` y `1.29.0`
+> sí se
+> repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
 ### Changed
 
