@@ -645,13 +645,17 @@ def update_device_status(
     device_id: str,
     status_update: DeviceStatusUpdate,
     db: Session = Depends(get_db),
-    user_id: UUID = Depends(get_current_user_id),
+    auth: AuthResult = Depends(get_auth_for_gac_admin),
     unit_devices_kafka_producer: UnitDevicesKafkaProducer = Depends(
         get_unit_devices_kafka_producer
     ),
 ):
     """
     Actualiza el estado del dispositivo siguiendo las reglas de negocio.
+
+    **Autenticación:**
+    - Token de Cognito: usuario autenticado del sistema
+    - Token PASETO: service="gac" y role="GAC_ADMIN"
 
     Reglas:
     - 'preparado': Requiere client_id, asigna el cliente al dispositivo
@@ -856,6 +860,10 @@ def update_device_status(
     }
     event_type = new_status if new_status in status_event_types else "estado_cambiado"
 
+    performed_by = auth.user_id if auth.auth_type == "cognito" else None
+    if auth.auth_type != "cognito":
+        event_details += f" (por servicio {auth.service} con rol {auth.role})"
+
     # Registrar evento
     create_device_event(
         db=db,
@@ -863,7 +871,7 @@ def update_device_status(
         event_type=event_type,
         old_status=old_status,
         new_status=new_status,
-        performed_by=user_id,
+        performed_by=performed_by,
         event_details=event_details,
     )
 
