@@ -40,7 +40,37 @@ falta. Ver ADR-007 §1.
 
 ---
 
-## Paso 1 — la comprobación previa, que no es opcional
+## Paso 1 — la comprobación contra el pool
+
+> ### ✅ Hecha el 9 de septiembre de 2026 — resultado y riesgo aceptado
+>
+> **25 usuarios en el pool. 24 con username idéntico a su correo, comparado de
+> forma exacta** (los usernames de Cognito distinguen mayúsculas, así que un
+> `Jesus@` contra un `jesus@` en la base habría pasado por bueno en una
+> comparación laxa). La premisa de la migración se cumple para **todas las
+> personas**.
+>
+> El único descuadre es **`usr-siscom-admin`, una cuenta de servicio sin
+> atributo `email`**. Queda **aceptado a sabiendas**: es interna, y si su
+> credencial dejara de funcionar cuando llegue la rebanada B se borra y se
+> crea otra. Comprobar si tiene fila en `users` exigía permisos que el usuario
+> de SSO no tiene, y no justifica el trámite.
+>
+> Si algún día hace falta cerrarlo: `admin-get-user` da su `sub`, y
+> `UPDATE users SET external_id = 'usr-siscom-admin' WHERE cognito_sub = '<sub>'`
+> lo corrige.
+
+**Esta comprobación no bloquea el despliegue** — decirlo importa, porque la
+primera versión de este runbook afirmaba lo contrario. La migración no puede
+empeorar nada: a un usuario cuyo username no sea su correo le escribe un handle
+equivocado, pero ese usuario **ya no puede entrar hoy**. `/auth/login`
+autentica pasando el correo como username (`auth.py:393`) y el pool no tiene el
+correo como *alias attribute*, así que Cognito no lo resuelve por ningún otro
+camino: **cualquiera que pueda entrar hoy tiene username == correo**.
+
+Lo que sí hay que hacer es correrla **antes de la rebanada B**, que es cuando
+el handle empieza a usarse de verdad, y corregir con un `UPDATE` lo que
+aparezca.
 
 La migración da por cierto que **el username de Cognito de todo usuario
 existente es su correo**. Es cierto para los que creó esta aplicación: sus
@@ -60,15 +90,17 @@ aws cognito-idp list-users \
   --query 'Users[].{u:Username,e:Attributes[?Name==`email`]|[0].Value}' \
   --output json > /tmp/pool-usuarios.json
 
-# los que no encajan: username distinto del correo, comparando en minúsculas
-jq -r '.[] | select((.u|ascii_downcase) != ((.e//"")|ascii_downcase))
-        | "\(.u)\t\(.e)"' /tmp/pool-usuarios.json
+# los que no encajan. Comparación EXACTA: los usernames de Cognito distinguen
+# mayúsculas, así que `Jesus@` y `jesus@` son dos usuarios distintos y una
+# comparación en minúsculas daría por bueno un handle que no existe.
+jq -r '.[] | select(.u != (.e // "")) | "\(.u)\t\(.e // "sin email")"' \
+  /tmp/pool-usuarios.json
 ```
 
 - **Sin salida** → adelante con el paso 2.
 - **Con salida** → anota cada par `username / correo`. Son los usuarios a los
-  que hay que corregirles el handle **después** de migrar, con el `UPDATE` del
-  paso 3. No bloquean el despliegue, pero sí la rebanada B.
+  que hay que corregirles el handle, con el `UPDATE` del paso 3. No bloquean el
+  despliegue, pero sí la rebanada B.
 
 La AWS CLI v2 pagina `list-users` sola. Si se usa v1, hay que iterar con
 `--pagination-token`.

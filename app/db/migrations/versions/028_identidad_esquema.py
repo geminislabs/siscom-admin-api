@@ -28,8 +28,15 @@ un mes, §5— sino sobre lo que hace esta aplicacion: los `admin_create_user` d
 `auth.py` pasan el correo como `Username`. Aun asi es una afirmacion sobre
 datos, y los datos pueden tener usuarios creados a mano desde la consola. El
 runbook `docs/runbooks/desplegar-identidad.md` trae la consulta que lo
-comprueba contra el pool **antes** de desplegar, y el UPDATE que corrige los
-que no encajen. Correrla no es opcional.
+comprueba contra el pool y el UPDATE que corrige los que no encajen.
+
+Corrida el 9/09/2026: de 25 usuarios del pool, **24 tienen el username
+identico a su correo, comparado de forma exacta**. El unico descuadre es
+`usr-siscom-admin`, una cuenta de servicio sin atributo email, aceptada a
+sabiendas. La comprobacion no bloquea el despliegue —quien pueda entrar hoy
+tiene username == correo, porque el login pasa el correo como username y el
+pool no lo tiene como alias attribute— pero tiene que estar cerrada antes de
+la rebanada B, que es cuando el handle empieza a usarse.
 
 QUE AÑADE
 =========
