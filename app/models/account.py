@@ -22,11 +22,11 @@ Los nombres pueden repetirse; la unicidad está en los UUIDs.
 
 import enum
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, ForeignKey, Text, text
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Text, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -90,6 +90,18 @@ class Account(SQLModel, table=True):
     """
 
     __tablename__ = "accounts"
+    __table_args__ = (
+        # Gemelas de los CHECK que creó la 028. Ampliar la lista de proveedores
+        # es tocar los dos sitios: aquí y `_PROVEEDORES` de la migración.
+        CheckConstraint(
+            "identity_provider IS NULL OR identity_provider IN ('cognito')",
+            name="ck_accounts_identity_provider",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(idp_config) = 'object'",
+            name="ck_accounts_idp_config_objeto",
+        ),
+    )
 
     id: UUID = Field(
         sa_column=Column(
@@ -123,6 +135,21 @@ class Account(SQLModel, table=True):
     account_path: List[UUID] = Field(
         default_factory=list,
         sa_column=Column(ARRAY(PGUUID(as_uuid=True)), nullable=False),
+    )
+    # ── Enrutamiento de identidad (migración 028) ────────────────────
+    # Por cuenta y no por variable de entorno: si el proveedor fuera global,
+    # mover a un partner enterprise a WorkOS obligaría a mover a todos.
+    # NULL = hereda el proveedor por defecto del despliegue.
+    identity_provider: Optional[str] = Field(
+        default=None, sa_column=Column(Text, nullable=True)
+    )
+    # Configuración de la conexión, **nunca credenciales**: lo que va aquí son
+    # identificadores y referencias a Secrets Manager. Un secreto en una
+    # columna jsonb acaba en cada respaldo, en cada dump de soporte y en cada
+    # log de consulta lenta.
+    idp_config: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
     created_at: datetime = Field(
         sa_column=Column(

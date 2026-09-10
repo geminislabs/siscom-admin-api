@@ -6,11 +6,19 @@ Módulo de autenticación y gestión de sesiones.
 Maneja login, logout, verificación de email, recuperación de contraseña y renovación de tokens.
 
 > **El modelo de identidad está cambiando.** El esquema ya soporta que un mismo
-> correo exista en dos marcas distintas (migración `028`, Fase 3 rebanada A);
-> los flujos de abajo **todavía no lo usan**. Antes de tocar este módulo, leer
-> [Identidad y marca](../identidad-y-marca.md) — sobre todo la distinción entre
-> `external_id` (el username con el que se autentica) y `cognito_sub` (el sujeto
-> que afirma el token), que no son el mismo identificador.
+> correo exista en dos marcas distintas (migración `028`, Fase 3 rebanada A) y
+> el código ya autentica con el handle de la fila (rebanada B1), pero **todavía
+> no resuelve la marca**: `/auth/login` sigue buscando por correo sin filtrar
+> por `brand_account_id`. Eso es la rebanada B3. Antes de tocar este módulo,
+> leer [Identidad y marca](../identidad-y-marca.md) — sobre todo la distinción
+> entre `external_id` (el username con el que se autentica) y `cognito_sub` (el
+> sujeto que afirma el token), que no son el mismo identificador.
+
+> **Este módulo ya no habla con Cognito.** Desde la rebanada B1 llama a un
+> `IdentityProvider` (`app/services/identity/`), que recibe por dependencia. El
+> cliente de boto3, el `SECRET_HASH` y la traducción de `ClientError` viven en
+> `app/services/identity/cognito.py`; la tabla de operaciones de abajo describe
+> lo que hace **ese adaptador**, no este módulo.
 
 ---
 
@@ -165,17 +173,22 @@ credencial por correo lleva marca, o es un bug esperando al primer partner.
 ### Login, antes y después
 
 ```
-HOY (código actual)                    REBANADA B
+HOY (rebanada B1)                      REBANADA B3
 ─────────────────────                  ──────────────────────────────────
 1. email + password                    1. email + password + Host
 2. User WHERE email = :email           2. Host → tenant_domains → marca
-3. Cognito initiate_auth(              3. User WHERE email = :email
-      USERNAME = email)                        AND brand_account_id = :marca
-4. last_login_at                       4. IdentityProvider de esa cuenta
-5. tokens + data token                 5. authenticate(external_id, password)
+3. idp.autenticar(                     3. User WHERE email = :email
+      handle = user.external_id)               AND brand_account_id = :marca
+4. last_login_at                       4. proveedor_para_cuenta(marca)
+5. tokens + data token                 5. autenticar(handle = external_id)
                                        6. selector de cuenta si hay varias
                                        7. tokens + data token
 ```
+
+El paso 3 de la izquierda ya usa el handle y no el correo: el día que un alta
+nazca con handle UUID (rebanada B2), este endpoint no cambia. Lo que falta es
+el paso 2 — resolver la marca — y con él el filtro por `brand_account_id` del
+paso 3.
 
 El paso 2 resuelve **apariencia y credencial**, nunca autorización: los datos
 que ve el usuario los determina su subárbol (`account_path`), no la cabecera
@@ -189,7 +202,13 @@ que ve el usuario los determina su subárbol (`account_path`), no la cabecera
 - `verify-email` y `resend-verification` usan tokens con expiración de 24h
 - Los códigos de password reset expiran en 1 hora
 - `forgot-password` siempre retorna el mismo mensaje por seguridad (no revela si el email existe)
-- El SECRET_HASH de Cognito se calcula con HMAC-SHA256
+- El SECRET_HASH de Cognito se calcula con HMAC-SHA256 **sobre el handle**, no
+  sobre el correo: firmarlo con el correo mientras se autentica con un UUID da
+  un `NotAuthorizedException` indistinguible de una contraseña mal escrita
+- `POST /auth/refresh` es el único flujo que sigue tomando el handle del cuerpo
+  de la petición (el campo `email`), porque es público y no hay fila que
+  consultar. La rebanada B2 lo rompe: un usuario con handle UUID no firmará el
+  SECRET_HASH con su correo
 - Los tokens PASETO se generan en `/auth/internal` para servicios
 
 ---

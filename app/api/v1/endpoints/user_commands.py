@@ -1,19 +1,13 @@
-import base64
-import hashlib
-import hmac
 import logging
 import re
 from typing import Any, Optional
 from uuid import UUID
 
-import boto3
 import httpx
-from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full
-from app.core.config import settings
+from app.api.deps import get_current_user_full, get_identity_provider
 from app.db.session import get_db
 from app.models.command import Command
 from app.models.device import Device
@@ -28,6 +22,13 @@ from app.schemas.command import (
     CommandSyncOut,
 )
 from app.schemas.user_command import UserCommandCreate, UserCommandType
+from app.services.identity import (
+    CredencialesInvalidas,
+    CredencialNoEncontrada,
+    CredencialSinConfirmar,
+    ErrorDeIdentidad,
+    IdentityProvider,
+)
 from app.services.kore import KoreAuthError, KoreSmsError, kore_service
 
 logger = logging.getLogger(__name__)
@@ -35,47 +36,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-cognito_client_kwargs = {"region_name": settings.COGNITO_REGION}
-if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-    cognito_client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-    cognito_client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-if getattr(settings, "COGNITO_ENDPOINT", None):
-    cognito_client_kwargs["endpoint_url"] = settings.COGNITO_ENDPOINT
-cognito = boto3.client("cognito-idp", **cognito_client_kwargs)
+def _validate_user_password(idp: IdentityProvider, user: User, password: str) -> bool:
+    """Si esa contraseña es la del usuario.
 
-
-def _get_secret_hash(username: str) -> str:
-    message = bytes(username + settings.COGNITO_CLIENT_ID, "utf-8")
-    secret = bytes(settings.COGNITO_CLIENT_SECRET, "utf-8")
-    dig = hmac.new(secret, msg=message, digestmod=hashlib.sha256).digest()
-    return base64.b64encode(dig).decode()
-
-
-def _validate_user_password(email: str, password: str) -> bool:
+    Es la confirmación de un `ENGINE_STOP`: apagar el motor de un vehículo en
+    marcha se pide dos veces, y la segunda con la contraseña. Un fallo del
+    proveedor no puede colarse como "sí" ni como "no": lo primero autorizaría
+    la orden sin credencial, lo segundo culparía al usuario de una caída.
+    """
     try:
-        auth_params = {
-            "USERNAME": email,
-            "PASSWORD": password,
-            "SECRET_HASH": _get_secret_hash(email),
-        }
-
-        response = cognito.initiate_auth(
-            ClientId=settings.COGNITO_CLIENT_ID,
-            AuthFlow="USER_PASSWORD_AUTH",
-            AuthParameters=auth_params,
-        )
-
-        return bool(response.get("AuthenticationResult"))
-    except ClientError as e:
-        error_code = e.response["Error"].get("Code")
-        if error_code in {
-            "NotAuthorizedException",
-            "UserNotFoundException",
-            "UserNotConfirmedException",
-        }:
-            return False
+        idp.autenticar(handle=user.external_id, password=password)
+        return True
+    except (
+        CredencialesInvalidas,
+        CredencialNoEncontrada,
+        CredencialSinConfirmar,
+    ):
+        return False
+    except ErrorDeIdentidad as e:
         logger.error(
-            f"[USER COMMANDS] Error validando credenciales en Cognito: {error_code}"
+            f"[USER COMMANDS] Error validando credenciales en Cognito: {e.codigo}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -134,6 +114,7 @@ async def create_user_command(
     command_in: UserCommandCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    idp: IdentityProvider = Depends(get_identity_provider),
 ):
     _require_master(current_user)
 
@@ -149,7 +130,8 @@ async def create_user_command(
                 detail="Debe confirmar accepted_risk=true para ENGINE_STOP",
             )
         if not _validate_user_password(
-            current_user.email,
+            idp,
+            current_user,
             command_in.confirmation.password,
         ):
             raise HTTPException(

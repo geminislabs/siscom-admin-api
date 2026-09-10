@@ -7,9 +7,12 @@ Permite listar usuarios, obtener perfil, invitar nuevos usuarios y gestionar inv
 
 > **La identidad de un usuario está cambiando.** Desde la migración `028` (Fase 3
 > rebanada A) la credencial pertenece a una **marca**, `users.email` ya no es
-> único global y el username de Cognito vive en `users.external_id`. Los flujos
-> de abajo todavía no lo usan. Leer [Identidad y marca](../identidad-y-marca.md)
-> antes de tocar altas, invitaciones o búsquedas por correo.
+> único global y el username de Cognito vive en `users.external_id`. Desde la
+> rebanada B1 el alta guarda ese handle en la fila y las llamadas al proveedor
+> pasan por `IdentityProvider` (`app/services/identity/`), pero **el handle
+> sigue siendo el correo y las búsquedas siguen sin marca**. Leer
+> [Identidad y marca](../identidad-y-marca.md) antes de tocar altas,
+> invitaciones o búsquedas por correo.
 
 ---
 
@@ -25,12 +28,16 @@ Permite listar usuarios, obtener perfil, invitar nuevos usuarios y gestionar inv
 
 ### 🔹 AWS Cognito (Identity Provider)
 
-| Endpoint/Operación | Método | Uso |
-|-------------------|--------|-----|
-| `AdminCreateUser` | POST | Crear usuario al aceptar invitación |
-| `AdminSetUserPassword` | POST | Establecer contraseña del nuevo usuario |
-| `AdminGetUser` | POST | Verificar si usuario existe |
-| `AdminUpdateUserAttributes` | POST | Marcar email como verificado |
+Este módulo ya no las llama directamente: desde la rebanada B1 pasa por
+`IdentityProvider`, y quien traduce a estas operaciones es
+`app/services/identity/cognito.py`.
+
+| Operación del proveedor | Operación de Cognito | Uso |
+|---|---|---|
+| `crear_credencial` | `AdminCreateUser` | Crear usuario al aceptar invitación |
+| `fijar_password` | `AdminSetUserPassword` | Establecer contraseña del nuevo usuario |
+| `sujeto_de` | `AdminGetUser` | Verificar si usuario existe |
+| `marcar_correo_verificado` | `AdminUpdateUserAttributes` | Marcar email como verificado |
 
 **Configuración requerida:**
 - `COGNITO_REGION`
@@ -127,10 +134,11 @@ Permite listar usuarios, obtener perfil, invitar nuevos usuarios y gestionar inv
   y 4 de aceptar) es hoy una consulta global. Cuando exista más de una marca
   tendrá que acotarse a la del invitante: el mismo correo puede estar registrado
   en otra marca y eso no impide nada aquí.
-- **Al crear el usuario en Cognito**, la rebanada B pasará un **UUID como
-  username** y guardará ese valor en `users.external_id`. Hoy se pasa el correo,
-  y por eso los usuarios existentes conservan el correo como handle: los
-  usernames de Cognito son inmutables.
+- **Al crear el usuario en Cognito**, la rebanada B2 pasará un **UUID como
+  username**. Hoy se pasa el correo, y por eso los usuarios existentes conservan
+  el correo como handle: los usernames de Cognito son inmutables. El alta ya
+  guarda el handle en `users.external_id`, así que el cambio es de una línea —
+  la variable `handle` de `accept_invitation`.
 - **`brand_account_id` se hereda igual que `organization_id`**: de quien invita.
   `NULL` significa la marca por defecto, no la ausencia de marca.
 - La unicidad que impone la base es `(brand_account_id, email)`, así que un alta

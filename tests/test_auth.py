@@ -1,17 +1,52 @@
 """
 Tests de autenticación.
 Verifica que los endpoints protegidos rechacen requests sin token válido.
+
+CÓMO SE SUSTITUYE EL PROVEEDOR DE IDENTIDAD
+===========================================
+Estos tests no parchean módulos: sustituyen la dependencia
+`get_identity_provider` por un doble. Antes parcheaban
+`app.api.v1.endpoints.auth.cognito`, el cliente de boto3 que vivía en ese
+módulo; desde la rebanada B1 el endpoint solo conoce la interfaz.
+
+Lo que Cognito exige en cada llamada —el `MessageAction`, el atributo `email`
+junto a `email_verified`, el `Permanent` de la contraseña— se comprueba en
+`tests/test_identidad_codigo.py`, contra el adaptador. Aquí se comprueba lo que
+es de este endpoint: a quién llama y con qué handle.
 """
 
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
+import pytest
 from fastapi import status
 
-from app.core.config import settings
+from app.api.deps import get_identity_provider
+from app.main import app as fastapi_app
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
+from app.services.identity import IdentityProvider, Sesion
 from app.utils.datetime import utcnow
+
+
+@pytest.fixture
+def idp_falso():
+    """Un `IdentityProvider` de mentira, puesto por `dependency_overrides`.
+
+    `spec=IdentityProvider` es lo que hace que el doble no acepte métodos que
+    la interfaz no tiene: un test que se quede escrito contra una firma vieja
+    falla en vez de pasar contra un mock complaciente.
+    """
+    doble = MagicMock(spec=IdentityProvider)
+    doble.autenticar.return_value = Sesion(
+        access_token="access",
+        id_token="id",
+        refresh_token="refresh",
+        expires_in=3600,
+    )
+    fastapi_app.dependency_overrides[get_identity_provider] = lambda: doble
+    yield doble
+    fastapi_app.dependency_overrides.pop(get_identity_provider, None)
 
 
 def test_endpoint_without_token_returns_401(client):
@@ -54,11 +89,13 @@ def test_devices_my_devices_endpoint_without_auth(client):
 
 
 def test_verify_email_existing_cognito_user_sends_email_attribute(
-    client, db_session, test_user_data
+    client, db_session, test_user_data, idp_falso
 ):
     """
-    Cognito exige `email` junto a `email_verified` en admin_update_user_attributes.
-    Cubre la rama de usuario master que ya existe en Cognito (Flujo A).
+    Cubre la rama de usuario master cuya credencial ya existe (Flujo A).
+
+    Que la llamada a Cognito lleve `email` junto a `email_verified` —sin él
+    falla— lo comprueba `test_marcar_verificado_manda_el_correo_junto_al_email_verified`.
     """
     token_value = "verify-existing-cognito-user"
     token_record = TokenConfirmacion(
@@ -75,28 +112,18 @@ def test_verify_email_existing_cognito_user_sends_email_attribute(
     db_session.commit()
 
     existing_sub = "existing-cognito-sub-456"
-    mock_cognito = MagicMock()
-    mock_cognito.admin_get_user.return_value = {
-        "UserAttributes": [
-            {"Name": "sub", "Value": existing_sub},
-            {"Name": "email", "Value": test_user_data.email},
-            {"Name": "email_verified", "Value": "false"},
-        ]
-    }
+    idp_falso.sujeto_de.return_value = existing_sub
 
-    with patch("app.api.v1.endpoints.auth.cognito", mock_cognito):
-        response = client.post(f"/api/v1/auth/verify-email?token={token_value}")
+    response = client.post(f"/api/v1/auth/verify-email?token={token_value}")
 
     assert response.status_code == status.HTTP_200_OK
-    mock_cognito.admin_create_user.assert_not_called()
-    mock_cognito.admin_set_user_password.assert_called_once()
-    mock_cognito.admin_update_user_attributes.assert_called_once_with(
-        UserPoolId=settings.COGNITO_USER_POOL_ID,
-        Username=test_user_data.email,
-        UserAttributes=[
-            {"Name": "email", "Value": test_user_data.email},
-            {"Name": "email_verified", "Value": "true"},
-        ],
+    # La credencial ya estaba: no se recrea, se le fija la contraseña y se le
+    # marca el correo como verificado.
+    idp_falso.crear_credencial.assert_not_called()
+    idp_falso.fijar_password.assert_called_once()
+    idp_falso.marcar_correo_verificado.assert_called_once_with(
+        handle=test_user_data.external_id,
+        email=test_user_data.email,
     )
 
     db_session.refresh(test_user_data)
@@ -129,19 +156,8 @@ def _make_verified_user(db_session, test_organization_data):
     return user
 
 
-def _cognito_ok():
-    return {
-        "AuthenticationResult": {
-            "AccessToken": "access",
-            "IdToken": "id",
-            "RefreshToken": "refresh",
-            "ExpiresIn": 3600,
-        }
-    }
-
-
 def test_login_without_data_plane_still_succeeds(
-    client, db_session, test_organization_data
+    client, db_session, test_organization_data, idp_falso
 ):
     """
     El plano de datos no puede impedir iniciar sesión. Sin Valkey el usuario entra
@@ -149,19 +165,16 @@ def test_login_without_data_plane_still_succeeds(
     reintenta luego contra `POST /auth/data-token`, que ahí sí devuelve 503.
     """
     from app.api.deps import get_scope_store
-    from app.main import app as fastapi_app
     from app.services.scope_store import ScopeStore
 
     user = _make_verified_user(db_session, test_organization_data)
     fastapi_app.dependency_overrides[get_scope_store] = lambda: ScopeStore(None)
 
     try:
-        with patch("app.api.v1.endpoints.auth.cognito") as cognito:
-            cognito.initiate_auth.return_value = _cognito_ok()
-            response = client.post(
-                "/api/v1/auth/login",
-                json={"email": user.email, "password": "irrelevante"},
-            )
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": user.email, "password": "irrelevante"},
+        )
     finally:
         fastapi_app.dependency_overrides.pop(get_scope_store, None)
 
@@ -170,3 +183,66 @@ def test_login_without_data_plane_still_succeeds(
     assert body["data_token"] is None
     # Las credenciales de sesión siguen llegando
     assert body["access_token"] == "access"
+
+
+# ---------------------------------------------------------------------------
+# El handle, que no es el correo (Fase 3, rebanada B1)
+# ---------------------------------------------------------------------------
+
+
+def test_login_autentica_con_el_handle_de_la_fila_no_con_el_correo(
+    client, db_session, test_organization_data, idp_falso
+):
+    """
+    Es lo que hace posible la rebanada B2: el día que un alta nueva nazca con
+    handle UUID, este endpoint ya autentica con él. Hoy los dos valores
+    coinciden en toda fila existente —la 028 rellenó `external_id` desde el
+    correo— así que la diferencia solo se ve forzándola.
+    """
+    from app.models.user import User
+
+    handle = str(uuid4())
+    user = User(
+        id=uuid4(),
+        organization_id=test_organization_data.id,
+        email="handle-distinto@example.com",
+        full_name="Handle Distinto",
+        email_verified=True,
+        external_id=handle,
+        cognito_sub=str(uuid4()),
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": user.email, "password": "irrelevante"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    idp_falso.autenticar.assert_called_once_with(handle=handle, password="irrelevante")
+
+
+def test_una_contrasena_mala_sigue_siendo_un_401_con_el_mensaje_del_proveedor(
+    client, db_session, test_organization_data, idp_falso
+):
+    """La traducción al HTTP no cambió con el refactor: mismo código, mismo
+    detalle. Lo que cambió es de dónde sale —una clase del dominio en vez de
+    un `ClientError`— y eso no puede notarse desde fuera.
+    """
+    from app.services.identity import CredencialesInvalidas
+
+    user = _make_verified_user(db_session, test_organization_data)
+    idp_falso.autenticar.side_effect = CredencialesInvalidas(
+        "Incorrect username or password.", codigo="NotAuthorizedException"
+    )
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": user.email, "password": "la-que-no-es"},
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json()["detail"] == (
+        "Credenciales inválidas. Incorrect username or password."
+    )

@@ -2,13 +2,14 @@ from datetime import timedelta
 from typing import List
 from uuid import UUID
 
-import boto3
-from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_organization_id, get_current_user_full
-from app.core.config import settings
+from app.api.deps import (
+    get_current_organization_id,
+    get_current_user_full,
+    get_identity_provider,
+)
 from app.db.session import get_db
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 from app.models.user import User
@@ -21,23 +22,12 @@ from app.schemas.user import (
     UserInviteResponse,
     UserOut,
 )
+from app.services.identity import ErrorDeIdentidad, IdentityProvider
 from app.services.notifications import send_invitation_email
 from app.utils.datetime import utcnow
 from app.utils.security import generate_verification_token
 
 router = APIRouter()
-
-
-# ------------------------------------------
-# Cognito client
-# ------------------------------------------
-cognito_client_kwargs = {"region_name": settings.COGNITO_REGION}
-if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-    cognito_client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-    cognito_client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-if getattr(settings, "COGNITO_ENDPOINT", None):
-    cognito_client_kwargs["endpoint_url"] = settings.COGNITO_ENDPOINT
-cognito = boto3.client("cognito-idp", **cognito_client_kwargs)
 
 
 @router.get("", response_model=List[UserOut])
@@ -149,6 +139,7 @@ def invite_user(
 def accept_invitation(
     data: UserAcceptInvitation,
     db: Session = Depends(get_db),
+    idp: IdentityProvider = Depends(get_identity_provider),
 ):
     """
     Permite a un usuario invitado aceptar la invitación y crear su cuenta.
@@ -211,88 +202,43 @@ def accept_invitation(
             detail=f"Ya existe un usuario con el email {email}.",
         )
 
-    # 6️⃣ Verificar si el usuario ya existe en Cognito
-    cognito_sub = None
-    user_exists = False
+    # 6️⃣ ¿Existe ya la credencial en el proveedor de identidad?
+    #
+    # El handle de un alta nueva sigue siendo el correo, como hasta ahora. La
+    # rebanada B2 lo cambia por un UUID; el único sitio que hay que tocar es
+    # este, porque `external_id` se guarda en la fila unas líneas más abajo.
+    handle = email
 
     try:
-        # Intentar obtener el usuario de Cognito
-        existing_cognito_user = cognito.admin_get_user(
-            UserPoolId=settings.COGNITO_USER_POOL_ID, Username=email
-        )
-        user_exists = True
-
-        # Obtener el cognito_sub del usuario existente
-        cognito_sub = next(
-            (
-                attr["Value"]
-                for attr in existing_cognito_user["UserAttributes"]
-                if attr["Name"] == "sub"
-            ),
-            None,
+        cognito_sub = idp.sujeto_de(handle=handle)
+    except ErrorDeIdentidad as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al verificar usuario en Cognito: {e.mensaje}",
         )
 
+    user_exists = cognito_sub is not None
+    if user_exists:
         print(f"[ACCEPT INVITATION] Usuario ya existe en Cognito: {email}")
-
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "UserNotFoundException":
-            # Usuario no existe, continuar con la creación
-            user_exists = False
-        else:
-            # Otro error, re-lanzarlo
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al verificar usuario en Cognito: {e.response['Error'].get('Message', str(e))}",
-            )
 
     try:
         if not user_exists:
-            # 7️⃣ Crear usuario en Cognito con email verificado
-            user_attributes = [
-                {"Name": "email", "Value": email},
-                {"Name": "email_verified", "Value": "true"},
-            ]
-
-            # Agregar nombre si está disponible
-            if full_name:
-                user_attributes.append({"Name": "name", "Value": full_name})
-
-            cognito_resp = cognito.admin_create_user(
-                UserPoolId=settings.COGNITO_USER_POOL_ID,
-                Username=email,
-                UserAttributes=user_attributes,
-                MessageAction="SUPPRESS",  # No enviar correo automático de Cognito
-            )
-
-            # Obtener el cognito_sub del usuario creado
-            cognito_sub = next(
-                (
-                    attr["Value"]
-                    for attr in cognito_resp["User"]["Attributes"]
-                    if attr["Name"] == "sub"
-                ),
-                None,
+            # 7️⃣ Crear la credencial con el correo ya verificado
+            cognito_sub = idp.crear_credencial(
+                handle=handle,
+                email=email,
+                full_name=full_name or None,
+                email_verificado=True,
             )
 
             print(f"[ACCEPT INVITATION] Usuario creado en Cognito: {email}")
 
         # 8️⃣ Establecer contraseña proporcionada por el usuario (permanente)
-        cognito.admin_set_user_password(
-            UserPoolId=settings.COGNITO_USER_POOL_ID,
-            Username=email,
-            Password=data.password,
-            Permanent=True,  # Esto evita el estado FORCE_CHANGE_PASSWORD
-        )
+        idp.fijar_password(handle=handle, password=data.password)
 
-        # 9️⃣ Asegurarse de que el email esté verificado en Cognito
+        # 9️⃣ Asegurarse de que el email esté verificado en el proveedor
         if user_exists:
-            cognito.admin_update_user_attributes(
-                UserPoolId=settings.COGNITO_USER_POOL_ID,
-                Username=email,
-                UserAttributes=[
-                    {"Name": "email_verified", "Value": "true"},
-                ],
-            )
+            idp.marcar_correo_verificado(handle=handle, email=email)
 
         if not cognito_sub:
             raise HTTPException(
@@ -300,11 +246,10 @@ def accept_invitation(
                 detail="No se pudo obtener el identificador de Cognito.",
             )
 
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
+    except ErrorDeIdentidad as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al configurar usuario en Cognito [{error_code}]: {e.response['Error'].get('Message', str(e))}",
+            detail=f"Error al configurar usuario en Cognito [{e.codigo}]: {e.mensaje}",
         )
 
     # 9️⃣ Crear usuario en la base de datos
@@ -313,6 +258,7 @@ def accept_invitation(
         full_name=full_name or email,  # Usar full_name del token o email como fallback
         organization_id=organization_id,
         cognito_sub=cognito_sub,
+        external_id=handle,
         is_master=False,
         email_verified=True,
         # password_hash no se usa, la autenticación es con Cognito
