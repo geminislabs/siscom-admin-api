@@ -43,6 +43,7 @@ from app.services.organization import OrganizationService
 from app.utils.paseto_token import decode_service_token
 
 if TYPE_CHECKING:  # pragma: no cover - solo para anotaciones
+    from app.services.identity import IdentityProvider
     from app.services.scope_store import ScopeStore
     from app.utils.data_token import DataTokenIssuer
 
@@ -168,6 +169,19 @@ def get_scope_store() -> "ScopeStore":
 
         _scope_store = ScopeStore(build_client())
     return _scope_store
+
+
+def get_identity_provider() -> "IdentityProvider":
+    """El proveedor de identidad del despliegue.
+
+    Es una dependencia y no un import directo para que una prueba pueda
+    sustituirlo con `dependency_overrides` sin parchear módulos. Los endpoints
+    que ya conocen la marca de la petición —rebanada B3— usarán en su lugar
+    `proveedor_para_cuenta()`, que es quien de verdad enruta.
+    """
+    from app.services.identity import proveedor_por_defecto
+
+    return proveedor_por_defecto()
 
 
 def close_rules_kafka_producer() -> None:

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Interfaz `IdentityProvider` y modelos de la `028`** (Fase 3, rebanada B1; **sin migraciones**). `app/services/identity/` es ahora la frontera con quien verifica contraseñas, y `CognitoIdentityProvider` el único sitio del repositorio con un `boto3.client("cognito-idp")` — antes había tres (`auth.py`, `users.py`, `user_commands.py`), cada uno con su traducción de `ClientError` a `HTTPException` ligeramente distinta de las otras. Nada de Cognito cruza la interfaz: ni `AuthenticationResult`, ni `ChallengeName`, ni `ClientError`; salen `Sesion` y las excepciones de `app/services/identity/errors.py`
+  - `User` declara `external_id`, `identity_provider` y `brand_account_id`, y **pierde el `unique=True` de `email`**: la unicidad la hacen los dos índices parciales de la `028`, que la vuelven por marca. `Account` declara `identity_provider` e `idp_config`. Al existir los modelos, **el comparador de deriva empieza a cubrir la `028`** — igual que pasó con la `027`
+  - Los endpoints **autentican con el handle de la fila (`external_id`), no con el correo**. Hoy valen lo mismo en toda fila existente —la `028` lo rellenó desde el correo y su trigger lo mantiene—, y es lo que hace que la rebanada B2 sea un cambio de una línea
+  - `_handle_por_defecto` en el modelo repite del lado de la aplicación lo que hace el trigger `users_identidad_before`: el harness de tests construye el esquema con `create_all()` y no tiene triggers, así que sin él toda alta reventaría contra el `NOT NULL`
+  - **Ninguna respuesta HTTP cambia.** Es un refactor: los códigos y los detalles de `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password`, `/auth/reset-password`, `/auth/verify-email` y `/users/accept-invitation` son los de antes, y hay tests que lo fijan
+
 - **`PATCH /devices/{id}/status` gana un test con un PASETO de servicio firmado de verdad**, más su contraparte negativa (un token con otro rol recibe 401). El test que llegó con `1.29.1` sustituye la dependencia por un `AuthResult` fabricado a mano, así que comprueba qué hace el endpoint con el resultado pero **nunca pasa por `decode_service_token`**: con ese override puesto, cambiar `required_role` en `deps.py` no rompía ningún test y GAC volvía a comerse un 401 en producción. Comprobado rompiendo el rol a propósito — el test nuevo falla, el viejo sigue en verde
 
 ### Changed
@@ -17,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Se documenta el camino del **hotfix**: ramificar desde el tag anterior, no desde `develop`. El riesgo no son los conflictos sino arrastrar lo que ya está mergeado sin desplegar — el 9/09 la migración de identidad estuvo a un merge de salir dentro de una release cuya nota decía «migraciones: ninguna»
   - Y una advertencia sobre `nota-de-migracion.py`: **lee el árbol de trabajo, no el tag**. Generarla desde una rama con migraciones sin liberar hace que anuncie migraciones que la release no lleva. Pasó ese mismo día
 - **`gac-web/docs/RELEASE.md`** gana el mismo paso de espejo y una sección de dependencias entre repos, con el caso del 9/09: `v1.7.4` exigía `siscom-admin-api v1.29.1` desplegada, y sacar la consola primero habría dado 401 en Asignación con un despliegue en verde
+
+### Fixed
+
+- **`POST /users/accept-invitation` no mandaba el atributo `email` al marcar el correo como verificado en Cognito**, que es justo lo que documenta el test de `verify-email` desde que se escribió («Cognito exige `email` junto a `email_verified`»). Los dos flujos comparten ahora la misma llamada del adaptador, así que el descuadre no puede volver
 
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría

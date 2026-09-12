@@ -3,13 +3,14 @@
 Cómo se identifica a un usuario en siscom-admin-api, y qué cambia cuando el
 mismo despliegue atiende a varias marcas.
 
-> **Estado (8 de septiembre de 2026).** Lo que describe este documento está en
-> el **esquema** (migración `028_identidad_esquema`, Fase 3 rebanada A). El
-> **código todavía no lo usa**: `/auth/login` sigue buscando `User.email` sin
-> marca y creando usuarios de Cognito con el correo como username. La rebanada B
-> es la que conecta las dos cosas. Cada sección marca qué parte ya existe y cuál
-> no, porque leer esto como si estuviera todo construido lleva a escribir código
-> que no funciona.
+> **Estado (10 de septiembre de 2026).** El esquema está en producción
+> (migración `028_identidad_esquema`, Fase 3 rebanada A, desde `v1.30.0`) y el
+> código ya tiene los modelos y la interfaz `IdentityProvider` (rebanada B1).
+> Lo que **todavía no existe** es la resolución de marca: `/auth/login` sigue
+> buscando `User.email` sin filtrar por `brand_account_id`, y las altas nuevas
+> siguen usando el correo como handle. Eso son las rebanadas B2 y B3. Cada
+> sección marca qué parte ya existe y cuál no, porque leer esto como si
+> estuviera todo construido lleva a escribir código que no funciona.
 
 ---
 
@@ -176,7 +177,7 @@ Con `marca_id = None` para la marca por defecto, que en SQLAlchemy es
 
 > **Hoy `/auth/login` todavía hace la consulta de arriba, la mala.** Sigue
 > siendo correcta mientras ningún usuario tenga marca, y deja de serlo el día
-> que el primer partner tenga dominio. Lo cambia la rebanada B.
+> que el primer partner tenga dominio. Lo cambia la rebanada B3.
 
 ---
 
@@ -243,26 +244,62 @@ rompe el white-label. La guía de setup lo dice ahora en su paso 2.
 
 ---
 
-## 8. Lo que traerá la rebanada B
+## 8. La interfaz `IdentityProvider` (rebanada B1, ya existe)
 
-Nada de esto existe todavía. Se lista para que nadie lo dé por hecho ni lo
-construya por duplicado:
+Vive en `app/services/identity/`. Es la frontera entre esta aplicación y quien
+verifica contraseñas, y lo que la hace útil es una sola regla:
 
-- **Interfaz `IdentityProvider`**, que no filtra Cognito. Nada de
-  `ChallengeName` ni `AuthenticationResult` cruzando al dominio:
-  `authenticate(brand_account_id, email, password)`, `create_credential(user)`,
-  `reset_password_start / confirm`, `change_password`, `revoke_sessions`,
-  `verify_token`.
-- **`CognitoIdentityProvider`**, que saca boto3 de `app/api/v1/endpoints/auth.py`.
-- **Username UUID** en las altas nuevas, con el correo como atributo normal.
+> **Nada de Cognito la cruza.** Ni `AuthenticationResult`, ni `ChallengeName`,
+> ni `ClientError`, ni un dict de `UserAttributes`. Entran y salen `str`,
+> `Sesion` y las excepciones de `app/services/identity/errors.py`.
+
+| Método | Para qué |
+|---|---|
+| `autenticar(handle, password)` | Verifica la contraseña y abre sesión |
+| `renovar(handle, refresh_token)` | Renueva sin volver a pedir contraseña |
+| `revocar_sesiones(access_token)` | Cierra todas las sesiones del dueño del token |
+| `verificar_token(token)` | Comprueba la firma y devuelve los claims |
+| `sujeto_de(handle)` | El sujeto de esa credencial, o `None` si no existe |
+| `crear_credencial(handle, email, full_name, email_verificado)` | Alta, sin enviar correo |
+| `fijar_password(handle, password)` | Deja la contraseña puesta y utilizable |
+| `marcar_correo_verificado(handle, email)` | Se lo cuenta al proveedor |
+
+`CognitoIdentityProvider` es la única implementación, y el único sitio del
+repositorio con un `boto3.client("cognito-idp")`. Antes había tres —`auth.py`,
+`users.py` y `user_commands.py`—, cada uno con su traducción de `ClientError` a
+`HTTPException`, ligeramente distinta de las otras.
+
+### Dos cosas en las que se apartó de lo que decía este documento
+
+1. **Recibe un `handle`, no un `(brand_account_id, email)`.** Resolver la
+   credencial a partir de la marca y el correo es trabajo de Postgres, y
+   hacerlo dentro del proveedor obligaría a cada implementación a conocer el
+   esquema. La marca decide **qué proveedor** (`proveedor_para_cuenta()`) y
+   **qué fila**; las dos cosas pasan antes de llamar.
+2. **No hay `reset_password_start` / `confirm`.** El reinicio de contraseña de
+   este sistema no pasa por el proveedor: el código lo emite esta aplicación
+   (`token_confirmacion`), lo envía SES, y lo único que el proveedor hace al
+   final es `fijar_password`.
+
+### Lo que sigue faltando
+
+- **Username UUID** en las altas nuevas, con el correo como atributo normal
+  (B2). El único sitio que hay que tocar es dónde se calcula el `handle` al
+  aceptar una invitación: `external_id` ya se guarda en la fila.
 - **Resolución de marca en `/auth/login`**: `Host` → marca → credencial por
-  `(brand_account_id, email)` → `external_id` → autenticar.
+  `(brand_account_id, email)` → `external_id` → autenticar (B3).
 - **Selector de cuenta** tras autenticar, para el usuario que pertenece a varias
-  organizaciones de la misma marca.
-- **Plantillas de SES por marca**. El envío ya existe
+  organizaciones de la misma marca (B3).
+- **Plantillas de SES por marca** (B4). El envío ya existe
   (`app/services/notifications.py`); falta parametrizar remitente y contenido
   por tenant. Cognito no envía un solo correo en este sistema: todos los
   `admin_create_user` llevan `MessageAction="SUPPRESS"`.
+
+> **`POST /auth/refresh` es el cabo suelto de B2.** Es público, así que no tiene
+> fila de la que sacar el handle y lo toma del campo `email` del cuerpo. Mientras
+> el handle sea el correo funciona; el primer usuario con handle UUID no podrá
+> renovar. Cuando llegue B2, ese endpoint tiene que resolver la fila igual que
+> `/auth/login`.
 
 ---
 
@@ -296,5 +333,7 @@ construya por duplicado:
 | `docs/runbooks/desplegar-identidad.md` | Cómo se despliega la `028` y por qué su reversión es condicional |
 | `docs/guides/cognito-setup.md` | Configuración del pool, con la advertencia del username |
 | `app/db/migrations/versions/028_identidad_esquema.py` | El esquema, con el razonamiento en la cabecera |
-| `tests/test_identidad_esquema.py` | Qué se comprueba, y sobre qué base |
+| `tests/test_identidad_esquema.py` | Qué se comprueba del esquema, y sobre qué base |
+| `tests/test_identidad_codigo.py` | Los modelos, el registro de proveedores y el adaptador de Cognito |
+| `app/services/identity/base.py` | La interfaz, con el razonamiento de cada decisión |
 | [modules/auth.md](modules/auth.md) · [modules/users.md](modules/users.md) | Los flujos que tocarán estas columnas |

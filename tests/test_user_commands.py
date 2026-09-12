@@ -113,7 +113,7 @@ def test_engine_stop_creates_and_sends_command_via_kore(
     monkeypatch.setattr(
         user_commands_endpoint,
         "_validate_user_password",
-        lambda email, password: True,
+        lambda idp, user, password: True,
     )
     monkeypatch.setattr(
         user_commands_endpoint.kore_service,

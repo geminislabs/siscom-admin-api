@@ -1,13 +1,8 @@
-import base64
-import hashlib
-import hmac
 import logging
 import random
 from datetime import timedelta
 from typing import Optional
 
-import boto3
-from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -17,9 +12,9 @@ from app.api.deps import (
     get_current_user,
     get_current_user_full,
     get_data_token_issuer,
+    get_identity_provider,
     get_scope_store,
 )
-from app.core.config import settings
 from app.db.session import get_db
 from app.models.account import Account, AccountStatus
 from app.models.account_user import AccountRole, AccountUser
@@ -53,6 +48,17 @@ from app.schemas.user import (
     UserLoginResponse,
 )
 from app.services.data_token_issuance import revoke_sessions_for_user
+from app.services.identity import (
+    AutenticacionIncompleta,
+    CredencialesInvalidas,
+    CredencialNoEncontrada,
+    CredencialSinConfirmar,
+    ErrorDeIdentidad,
+    HandleYaExiste,
+    IdentityProvider,
+    ParametroInvalido,
+    PasswordRechazada,
+)
 from app.services.notifications import (
     send_password_reset_email,
     send_verification_email,
@@ -65,31 +71,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# ------------------------------------------
-# Cognito client
-# ------------------------------------------
-cognito_client_kwargs = {"region_name": settings.COGNITO_REGION}
-if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
-    cognito_client_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
-    cognito_client_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
-if getattr(settings, "COGNITO_ENDPOINT", None):
-    cognito_client_kwargs["endpoint_url"] = settings.COGNITO_ENDPOINT
-cognito = boto3.client("cognito-idp", **cognito_client_kwargs)
-
 # Security bearer para obtener el token.
 # Se reutiliza BearerAuth (401 en vez del 403 por defecto) para que el contrato de
 # autenticación sea el mismo en todo el servicio.
 security = BearerAuth()
 
-
-def get_secret_hash(username: str) -> str:
-    """
-    Genera el SECRET_HASH requerido por Cognito cuando se usa CLIENT_SECRET.
-    """
-    message = bytes(username + settings.COGNITO_CLIENT_ID, "utf-8")
-    secret = bytes(settings.COGNITO_CLIENT_SECRET, "utf-8")
-    dig = hmac.new(secret, msg=message, digestmod=hashlib.sha256).digest()
-    return base64.b64encode(dig).decode()
+# Este módulo ya no conoce a Cognito: habla con un `IdentityProvider`, que
+# recibe por dependencia. El cliente de boto3, el SECRET_HASH y la traducción
+# de `ClientError` viven en `app/services/identity/cognito.py`.
+#
+# El handle con el que se autentica es `user.external_id`, no el correo. Hoy
+# valen lo mismo para toda fila existente —la 028 lo rellenó desde el correo y
+# su trigger lo mantiene—, y a partir de la rebanada B2 dejarán de valerlo.
 
 
 # ------------------------------------------
@@ -98,7 +91,11 @@ def get_secret_hash(username: str) -> str:
 @router.post(
     "/register", response_model=OnboardingResponse, status_code=status.HTTP_201_CREATED
 )
-def register_user(data: OnboardingRequest, db: Session = Depends(get_db)):
+def register_user(
+    data: OnboardingRequest,
+    db: Session = Depends(get_db),
+    idp: IdentityProvider = Depends(get_identity_provider),
+):
     """
     Registro rápido - Crea Account + Organization + User.
 
@@ -186,61 +183,35 @@ def register_user(data: OnboardingRequest, db: Session = Depends(get_db)):
     db.add(account_membership)
     db.flush()
 
-    # 8️⃣ Registrar usuario en Cognito
-    cognito_sub = None
+    # 8️⃣ Registrar la credencial en el proveedor de identidad
     try:
-        cognito_response = cognito.admin_create_user(
-            UserPoolId=settings.COGNITO_USER_POOL_ID,
-            Username=data.email,
-            UserAttributes=[
-                {"Name": "email", "Value": data.email},
-                {"Name": "email_verified", "Value": "false"},
-                {"Name": "name", "Value": user_full_name},
-            ],
-            MessageAction="SUPPRESS",
+        cognito_sub = idp.crear_credencial(
+            handle=user.external_id,
+            email=data.email,
+            full_name=user_full_name,
         )
-
-        cognito_sub = next(
-            (
-                attr["Value"]
-                for attr in cognito_response["User"]["Attributes"]
-                if attr["Name"] == "sub"
-            ),
-            None,
-        )
-
-        cognito.admin_set_user_password(
-            UserPoolId=settings.COGNITO_USER_POOL_ID,
-            Username=data.email,
-            Password=data.password,
-            Permanent=True,
-        )
+        idp.fijar_password(handle=user.external_id, password=data.password)
 
         if cognito_sub:
             user.cognito_sub = cognito_sub
 
-        logger.info(f"[REGISTER] Usuario registrado en Cognito: {data.email}")
+        logger.info(f"[REGISTER] Credencial creada para: {data.email}")
 
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"].get("Message", str(e))
-
+    except ErrorDeIdentidad as e:
         logger.error(
-            f"[REGISTER ERROR] Cognito: {error_code} - {error_message} - Email: {data.email}"
+            f"[REGISTER ERROR] Identidad: {e.codigo} - {e.mensaje} - Email: {data.email}"
         )
+        db.rollback()
 
-        if error_code == "UsernameExistsException":
-            db.rollback()
+        if isinstance(e, HandleYaExiste):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"El usuario con email {data.email} ya existe. Si es tu cuenta y no puedes acceder, contacta soporte.",
             )
-        else:
-            db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="No se pudo completar el registro. Por favor, intenta nuevamente o contacta soporte.",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No se pudo completar el registro. Por favor, intenta nuevamente o contacta soporte.",
+        )
 
     # 9️⃣ Generar token y enviar email de verificación
     verification_token_str = generate_verification_token()
@@ -351,6 +322,7 @@ def login_user(
     db: Session = Depends(get_db),
     issuer=Depends(get_data_token_issuer),
     store=Depends(get_scope_store),
+    idp: IdentityProvider = Depends(get_identity_provider),
 ):
     """
     Autentica un usuario con sus credenciales.
@@ -382,74 +354,59 @@ def login_user(
             status_code=status.HTTP_403_FORBIDDEN, detail="Email no verificado"
         )
 
-    # 3️⃣ Autenticar con AWS Cognito
+    # 3️⃣ Autenticar contra el proveedor de identidad
     try:
-        auth_params = {
-            "USERNAME": credentials.email,
-            "PASSWORD": credentials.password,
-            "SECRET_HASH": get_secret_hash(credentials.email),
-        }
-
-        response = cognito.initiate_auth(
-            ClientId=settings.COGNITO_CLIENT_ID,
-            AuthFlow="USER_PASSWORD_AUTH",
-            AuthParameters=auth_params,
+        sesion = idp.autenticar(
+            handle=user.external_id,
+            password=credentials.password,
         )
+        access_token = sesion.access_token
+        id_token = sesion.id_token
+        refresh_token = sesion.refresh_token
+        expires_in = sesion.expires_in
 
-        # Extraer tokens de la respuesta
-        auth_result = response.get("AuthenticationResult")
-
-        if not auth_result:
-            # Puede ser que requiera un challenge (ej: cambio de contraseña)
-            challenge_name = response.get("ChallengeName")
-            if challenge_name:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Se requiere completar el challenge: {challenge_name}",
-                )
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Credenciales inválidas",
-            )
-
-        access_token = auth_result.get("AccessToken")
-        id_token = auth_result.get("IdToken")
-        refresh_token = auth_result.get("RefreshToken")
-        expires_in = auth_result.get("ExpiresIn", 3600)
-
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"].get("Message", str(e))
-
-        # Log para debugging (en producción usar logger apropiado)
+    except AutenticacionIncompleta as e:
+        # El proveedor pide un paso más antes de dar sesión (típicamente un
+        # cambio de contraseña forzado). El nombre del reto es texto suyo.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Se requiere completar el challenge: {e.reto}",
+        )
+    except ErrorDeIdentidad as e:
         print(
-            f"[AUTH ERROR] Code: {error_code}, Message: {error_message}, Email: {credentials.email}"
+            f"[AUTH ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {credentials.email}"
         )
 
-        if error_code == "NotAuthorizedException":
+        if isinstance(e, CredencialesInvalidas):
+            # Sin mensaje del proveedor es el caso en que no hubo sesión ni
+            # reto: se responde igual que siempre, sin el punto de más.
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Credenciales inválidas. {error_message}",
+                detail=(
+                    f"Credenciales inválidas. {e.mensaje}"
+                    if e.mensaje
+                    else "Credenciales inválidas"
+                ),
             )
-        elif error_code == "UserNotFoundException":
+        elif isinstance(e, CredencialNoEncontrada):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Usuario no encontrado en Cognito",
             )
-        elif error_code == "UserNotConfirmedException":
+        elif isinstance(e, CredencialSinConfirmar):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Usuario no confirmado en Cognito",
             )
-        elif error_code == "InvalidParameterException":
+        elif isinstance(e, ParametroInvalido):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error de configuración: {error_message}",
+                detail=f"Error de configuración: {e.mensaje}",
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error de autenticación [{error_code}]: {error_message}",
+                detail=f"Error de autenticación [{e.codigo}]: {e.mensaje}",
             )
 
     # 4️⃣ Actualizar el last_login_at del usuario
@@ -581,7 +538,11 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
     response_model=ResetPasswordResponse,
     status_code=status.HTTP_200_OK,
 )
-def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+    idp: IdentityProvider = Depends(get_identity_provider),
+):
     """
     Restablece la contraseña de un usuario utilizando un código de verificación de 6 dígitos.
 
@@ -639,44 +600,36 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
             detail="Este código de verificación ya ha sido utilizado",
         )
 
-    # 5️⃣ Actualizar la contraseña en AWS Cognito
+    # 5️⃣ Actualizar la contraseña en el proveedor de identidad
     try:
-        cognito.admin_set_user_password(
-            UserPoolId=settings.COGNITO_USER_POOL_ID,
-            Username=user.email,
-            Password=request.new_password,
-            Permanent=True,  # La contraseña es permanente, no temporal
-        )
+        idp.fijar_password(handle=user.external_id, password=request.new_password)
 
         print(f"[PASSWORD RESET] Contraseña actualizada exitosamente para {user.email}")
 
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"].get("Message", str(e))
-
+    except ErrorDeIdentidad as e:
         print(
-            f"[PASSWORD RESET ERROR] Code: {error_code}, Message: {error_message}, Email: {user.email}"
+            f"[PASSWORD RESET ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {user.email}"
         )
 
-        if error_code == "UserNotFoundException":
+        if isinstance(e, CredencialNoEncontrada):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Usuario no encontrado en Cognito",
             )
-        elif error_code == "InvalidPasswordException":
+        elif isinstance(e, PasswordRechazada):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Contraseña inválida: {error_message}",
+                detail=f"Contraseña inválida: {e.mensaje}",
             )
-        elif error_code == "InvalidParameterException":
+        elif isinstance(e, ParametroInvalido):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Parámetro inválido: {error_message}",
+                detail=f"Parámetro inválido: {e.mensaje}",
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al actualizar la contraseña [{error_code}]: {error_message}",
+                detail=f"Error al actualizar la contraseña [{e.codigo}]: {e.mensaje}",
             )
 
     # 6️⃣ Marcar el código como usado
@@ -699,6 +652,7 @@ def change_password(
     request: ChangePasswordRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    idp: IdentityProvider = Depends(get_identity_provider),
 ):
     """
     Cambia la contraseña de un usuario autenticado.
@@ -738,26 +692,22 @@ def change_password(
     # Esto nos permite cambiar la contraseña sin necesitar el access token
     # Pero primero validamos la contraseña actual autenticando al usuario
 
-    # 1️⃣ Verificar la contraseña actual autenticando con Cognito
+    # 1️⃣ Verificar la contraseña actual autenticando contra el proveedor
     try:
-        auth_params = {
-            "USERNAME": current_user.email,
-            "PASSWORD": request.old_password,
-            "SECRET_HASH": get_secret_hash(current_user.email),
-        }
-
-        cognito.initiate_auth(
-            ClientId=settings.COGNITO_CLIENT_ID,
-            AuthFlow="USER_PASSWORD_AUTH",
-            AuthParameters=auth_params,
+        idp.autenticar(
+            handle=current_user.external_id,
+            password=request.old_password,
         )
 
         # Si llegamos aquí, la contraseña actual es correcta
 
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-
-        if error_code == "NotAuthorizedException":
+    except AutenticacionIncompleta:
+        # Un reto solo aparece **después** de que la contraseña verifique, que
+        # es lo único que se está comprobando aquí. Se sigue adelante, igual
+        # que antes del refactor: el código viejo ni miraba la respuesta.
+        pass
+    except ErrorDeIdentidad as e:
+        if isinstance(e, CredencialesInvalidas):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La contraseña actual es incorrecta",
@@ -765,39 +715,34 @@ def change_password(
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al verificar la contraseña actual: {error_code}",
+                detail=f"Error al verificar la contraseña actual: {e.codigo}",
             )
 
-    # 2️⃣ Cambiar la contraseña usando AdminSetUserPassword
+    # 2️⃣ Cambiar la contraseña
     try:
-        cognito.admin_set_user_password(
-            UserPoolId=settings.COGNITO_USER_POOL_ID,
-            Username=current_user.email,
-            Password=request.new_password,
-            Permanent=True,
+        idp.fijar_password(
+            handle=current_user.external_id,
+            password=request.new_password,
         )
 
         print(
             f"[CHANGE PASSWORD] Contraseña actualizada exitosamente para {current_user.email}"
         )
 
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"].get("Message", str(e))
-
+    except ErrorDeIdentidad as e:
         print(
-            f"[CHANGE PASSWORD ERROR] Code: {error_code}, Message: {error_message}, Email: {current_user.email}"
+            f"[CHANGE PASSWORD ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {current_user.email}"
         )
 
-        if error_code == "InvalidPasswordException":
+        if isinstance(e, PasswordRechazada):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"La nueva contraseña no cumple con los requisitos: {error_message}",
+                detail=f"La nueva contraseña no cumple con los requisitos: {e.mensaje}",
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al actualizar la contraseña: {error_code}",
+                detail=f"Error al actualizar la contraseña: {e.codigo}",
             )
 
     # 3️⃣ Retornar mensaje de éxito
@@ -930,7 +875,11 @@ def resend_verification(
     response_model=ConfirmEmailResponse,
     status_code=status.HTTP_200_OK,
 )
-def verify_email(token: str, db: Session = Depends(get_db)):
+def verify_email(
+    token: str,
+    db: Session = Depends(get_db),
+    idp: IdentityProvider = Depends(get_identity_provider),
+):
     """
     Verifica el email de un usuario utilizando un token de verificación.
 
@@ -1053,67 +1002,28 @@ def verify_email(token: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="Organización no encontrada"
         )
 
-    # Verificar si el usuario ya existe en Cognito
-    cognito_sub = None
-    user_exists = False
-
+    # ¿Existe ya la credencial en el proveedor?
     try:
-        # Intentar obtener el usuario de Cognito
-        existing_cognito_user = cognito.admin_get_user(
-            UserPoolId=settings.COGNITO_USER_POOL_ID, Username=user.email
-        )
-        user_exists = True
-
-        # Obtener el cognito_sub del usuario existente
-        cognito_sub = next(
-            (
-                attr["Value"]
-                for attr in existing_cognito_user["UserAttributes"]
-                if attr["Name"] == "sub"
-            ),
-            None,
+        cognito_sub = idp.sujeto_de(handle=user.external_id)
+    except ErrorDeIdentidad as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al verificar usuario en Cognito: {e.mensaje}",
         )
 
-        print(
-            f"[VERIFY EMAIL - FLUJO A] Usuario master ya existe en Cognito: {user.email}"
-        )
-
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "UserNotFoundException":
-            # Usuario no existe, continuar con la creación
-            user_exists = False
-            print(
-                f"[VERIFY EMAIL - FLUJO A] Usuario master no existe en Cognito, creando: {user.email}"
-            )
-        else:
-            # Otro error, re-lanzarlo
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al verificar usuario en Cognito: {e.response['Error'].get('Message', str(e))}",
-            )
+    user_exists = cognito_sub is not None
+    print(
+        f"[VERIFY EMAIL - FLUJO A] Usuario master "
+        f"{'ya existe' if user_exists else 'no existe'} en Cognito: {user.email}"
+    )
 
     try:
         if not user_exists:
-            # Crear usuario en Cognito con email verificado
-            cognito_resp = cognito.admin_create_user(
-                UserPoolId=settings.COGNITO_USER_POOL_ID,
-                Username=user.email,
-                UserAttributes=[
-                    {"Name": "email", "Value": user.email},
-                    {"Name": "email_verified", "Value": "true"},
-                    {"Name": "name", "Value": user.full_name or ""},
-                ],
-                MessageAction="SUPPRESS",  # No enviar correo automático de Cognito
-            )
-
-            # Obtener el cognito_sub del usuario creado
-            cognito_sub = next(
-                (
-                    attr["Value"]
-                    for attr in cognito_resp["User"]["Attributes"]
-                    if attr["Name"] == "sub"
-                ),
-                None,
+            cognito_sub = idp.crear_credencial(
+                handle=user.external_id,
+                email=user.email,
+                full_name=user.full_name or "",
+                email_verificado=True,
             )
 
             print(
@@ -1121,23 +1031,14 @@ def verify_email(token: str, db: Session = Depends(get_db)):
             )
 
         # Establecer contraseña permanente del usuario (ya sea nuevo o existente)
-        cognito.admin_set_user_password(
-            UserPoolId=settings.COGNITO_USER_POOL_ID,
-            Username=user.email,
-            Password=token_record.password_temp,
-            Permanent=True,  # Contraseña permanente, no temporal
+        idp.fijar_password(
+            handle=user.external_id,
+            password=token_record.password_temp,
         )
 
-        # Asegurarse de que el email esté verificado en Cognito
+        # Asegurarse de que el email esté verificado en el proveedor
         if user_exists:
-            cognito.admin_update_user_attributes(
-                UserPoolId=settings.COGNITO_USER_POOL_ID,
-                Username=user.email,
-                UserAttributes=[
-                    {"Name": "email", "Value": user.email},
-                    {"Name": "email_verified", "Value": "true"},
-                ],
-            )
+            idp.marcar_correo_verificado(handle=user.external_id, email=user.email)
 
         if not cognito_sub:
             raise HTTPException(
@@ -1149,23 +1050,20 @@ def verify_email(token: str, db: Session = Depends(get_db)):
             f"[VERIFY EMAIL - FLUJO A] Contraseña establecida para master: {user.email}"
         )
 
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"].get("Message", str(e))
-
+    except ErrorDeIdentidad as e:
         print(
-            f"[VERIFY EMAIL ERROR] Code: {error_code}, Message: {error_message}, Email: {user.email}"
+            f"[VERIFY EMAIL ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {user.email}"
         )
 
-        if error_code == "InvalidPasswordException":
+        if isinstance(e, PasswordRechazada):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Contraseña inválida: {error_message}",
+                detail=f"Contraseña inválida: {e.mensaje}",
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al configurar usuario en Cognito [{error_code}]: {error_message}",
+                detail=f"Error al configurar usuario en Cognito [{e.codigo}]: {e.mensaje}",
             )
 
     # Actualizar usuario en la base de datos
@@ -1196,7 +1094,10 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 @router.post(
     "/refresh", response_model=RefreshTokenResponse, status_code=status.HTTP_200_OK
 )
-def refresh_token(request: RefreshTokenRequest):
+def refresh_token(
+    request: RefreshTokenRequest,
+    idp: IdentityProvider = Depends(get_identity_provider),
+):
     """
     Renueva el access token y el id token usando un refresh token válido.
 
@@ -1218,59 +1119,58 @@ def refresh_token(request: RefreshTokenRequest):
     - 500: Error al renovar los tokens en Cognito
     """
 
-    # 1️⃣ Llamar a initiate_auth con el flujo REFRESH_TOKEN_AUTH
+    # 1️⃣ Pedirle al proveedor una sesión nueva
     try:
-        # Cuando el App Client tiene Client Secret habilitado,
-        # debemos incluir el SECRET_HASH incluso para REFRESH_TOKEN_AUTH.
-        # El SECRET_HASH se calcula usando el email como USERNAME.
-        auth_params = {
-            "REFRESH_TOKEN": request.refresh_token,
-            "SECRET_HASH": get_secret_hash(request.email),
-        }
-
-        response = cognito.initiate_auth(
-            ClientId=settings.COGNITO_CLIENT_ID,
-            AuthFlow="REFRESH_TOKEN_AUTH",
-            AuthParameters=auth_params,
+        # El handle aquí sale del cuerpo de la petición y no de la base: este
+        # endpoint es público y no hay usuario autenticado del que sacarlo.
+        # Mientras el handle sea el correo eso funciona; **la rebanada B2 lo
+        # rompe**, porque un usuario nuevo tendrá handle UUID y su correo no
+        # firmará el SECRET_HASH. Cuando llegue, este endpoint tiene que
+        # resolver la fila por (marca, correo) como hará `/auth/login`.
+        sesion = idp.renovar(
+            handle=request.email,
+            refresh_token=request.refresh_token,
         )
 
-        # Extraer tokens de la respuesta
-        auth_result = response.get("AuthenticationResult")
+        access_token = sesion.access_token
+        id_token = sesion.id_token
+        expires_in = sesion.expires_in
 
-        if not auth_result:
+        print(f"[REFRESH TOKEN] Tokens renovados exitosamente para {request.email}")
+
+    except AutenticacionIncompleta:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No se pudo renovar el token",
+        )
+    except CredencialesInvalidas as e:
+        if not e.mensaje:
+            # Sin mensaje del proveedor es la respuesta vacía, no un rechazo.
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="No se pudo renovar el token",
             )
-
-        access_token = auth_result.get("AccessToken")
-        id_token = auth_result.get("IdToken")
-        expires_in = auth_result.get("ExpiresIn", 3600)
-
-        print(f"[REFRESH TOKEN] Tokens renovados exitosamente para {request.email}")
-
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"].get("Message", str(e))
-
         print(
-            f"[REFRESH TOKEN ERROR] Code: {error_code}, Message: {error_message}, Email: {request.email}"
+            f"[REFRESH TOKEN ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {request.email}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Refresh token inválido o expirado: {e.mensaje}",
+        )
+    except ErrorDeIdentidad as e:
+        print(
+            f"[REFRESH TOKEN ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {request.email}"
         )
 
-        if error_code == "NotAuthorizedException":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Refresh token inválido o expirado: {error_message}",
-            )
-        elif error_code == "InvalidParameterException":
+        if isinstance(e, ParametroInvalido):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Parámetros inválidos: {error_message}",
+                detail=f"Parámetros inválidos: {e.mensaje}",
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al renovar el token [{error_code}]: {error_message}",
+                detail=f"Error al renovar el token [{e.codigo}]: {e.mensaje}",
             )
 
     # 2️⃣ Retornar los nuevos tokens
@@ -1291,6 +1191,7 @@ def logout_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     store=Depends(get_scope_store),
+    idp: IdentityProvider = Depends(get_identity_provider),
 ):
     """
     Cierra la sesión del usuario actual en AWS Cognito.
@@ -1319,21 +1220,18 @@ def logout_user(
     # 1️⃣ Obtener el access token del header Authorization
     access_token = credentials.credentials
 
-    # 2️⃣ Llamar a global_sign_out de Cognito
+    # 2️⃣ Revocar la sesión en el proveedor
     try:
-        cognito.global_sign_out(AccessToken=access_token)
+        idp.revocar_sesiones(access_token=access_token)
 
         print(f"[LOGOUT] Sesión cerrada exitosamente para {current_user.email}")
 
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"].get("Message", str(e))
-
+    except ErrorDeIdentidad as e:
         print(
-            f"[LOGOUT ERROR] Code: {error_code}, Message: {error_message}, Email: {current_user.email}"
+            f"[LOGOUT ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {current_user.email}"
         )
 
-        if error_code == "NotAuthorizedException":
+        if isinstance(e, CredencialesInvalidas):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token inválido o expirado",
@@ -1341,7 +1239,7 @@ def logout_user(
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al cerrar sesión [{error_code}]: {error_message}",
+                detail=f"Error al cerrar sesión [{e.codigo}]: {e.mensaje}",
             )
 
     # 3️⃣ Retornar mensaje de éxito

@@ -2,22 +2,26 @@
 
 POR QUE ESTE FICHERO EXISTE APARTE DEL RESTO DE TESTS
 =====================================================
-Por lo mismo que `test_tenancy_esquema.py`: la rebanada A es esquema **sin
-modelos**. `app/models/user.py` no declara todavia `external_id`,
-`identity_provider` ni `brand_account_id`, asi que las dos redes habituales no
-tienen de donde agarrarse.
+Por lo mismo que `test_tenancy_esquema.py`: lo que prueba no lo construye
+`create_all()`.
 
-  - El harness normal construye la base con `SQLModel.metadata.create_all()` y
-    solo conoce lo que algun modelo declara: aqui, nada. Peor todavia, ese
-    harness seguiria creando `users.email` con la unicidad **global** que esta
-    migracion quita — un test escrito ahi probaria lo contrario de lo que hay
-    en produccion.
-  - El comparador de deriva mira en una sola direccion —que el esquema tenga lo
-    que los modelos esperan—, asi que de la 028 solo comprueba que aplique.
+Cuando se escribio, la rebanada A era esquema **sin modelos** y ninguna de las
+dos redes habituales tenia de donde agarrarse. Desde la rebanada B1 los modelos
+existen —`app/models/user.py` declara `external_id`, `identity_provider` y
+`brand_account_id`, y sus `__table_args__` reproducen los tres indices—, asi
+que el comparador de deriva ya cubre la 028 y los modelos se ejercitan en
+`tests/test_identidad_codigo.py`, sobre el harness normal.
 
-Y lo que hay debajo no es declarativo: la unicidad por marca vive en dos
-indices parciales que se reparten la tabla, y `external_id` lo rellena un
-trigger mientras dure la ventana entre los dos releases.
+Lo que sigue sin poder probarse alli es lo que **solo existe si corren las
+migraciones**:
+
+  - El trigger `users_identidad_before`, que rellena el handle mientras dure la
+    ventana entre los dos releases. En el harness ese hueco lo tapa
+    `_handle_por_defecto`, que es codigo de la aplicacion y no de la base.
+  - Que la migracion **quite** `users_email_key`: `create_all()` no arrastra
+    esa restriccion, asi que alli no hay nada que quitar y un test no
+    distinguiria una base migrada de una que nunca la tuvo.
+  - El backfill y el `downgrade` condicional.
 
 Por eso la base de este modulo se construye como la del comparador: snapshot
 del esquema productivo + `alembic upgrade head`.
