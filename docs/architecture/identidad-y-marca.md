@@ -295,11 +295,19 @@ repositorio con un `boto3.client("cognito-idp")`. Antes había tres —`auth.py`
   por tenant. Cognito no envía un solo correo en este sistema: todos los
   `admin_create_user` llevan `MessageAction="SUPPRESS"`.
 
-> **`POST /auth/refresh` es el cabo suelto de B2.** Es público, así que no tiene
-> fila de la que sacar el handle y lo toma del campo `email` del cuerpo. Mientras
-> el handle sea el correo funciona; el primer usuario con handle UUID no podrá
-> renovar. Cuando llegue B2, ese endpoint tiene que resolver la fila igual que
-> `/auth/login`.
+> **`POST /auth/refresh` es el cabo suelto de B2, y ya está medido.** Es público,
+> así que no tiene fila de la que sacar el handle y lo toma del campo `email` del
+> cuerpo. El 12/09/2026 se comprobó contra el pool productivo que en
+> `REFRESH_TOKEN_AUTH` el `SECRET_HASH` **se firma con el `Username`** — ni el
+> `sub` ni el correo sirven, y sin hash tampoco renueva (ver ADR-007). Así que:
+> mientras el handle sea el correo funciona, y **el primer usuario con handle
+> UUID no podrá renovar**. El fallo es `NotAuthorizedException`, indistinguible
+> de un refresh token inválido.
+>
+> Resolver la fila desde el access token cuesta una consulta más
+> (`WHERE cognito_sub = :sub`, ya indexada). Queda por comprobar si el endpoint
+> OAuth de Cognito (`/oauth2/token`) permite renovar sin nombre de usuario, que
+> es lo que dejaría el contrato del proveedor sin ataduras.
 
 ---
 

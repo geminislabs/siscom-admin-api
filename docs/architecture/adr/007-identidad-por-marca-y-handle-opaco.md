@@ -126,6 +126,56 @@ que sí recalcula e ignora lo que traiga el `INSERT`: aquél ancla un invariante
 de aislamiento, éste sólo rellena un hueco de transición. Se borra en la
 migración *contract*.
 
+## Medido después: el `SECRET_HASH` del refresh va sobre el handle
+
+**12 de septiembre de 2026**, contra el pool productivo `us-east-1_IhHXuqCU9`.
+
+La decisión 1 dice que `external_id` es *con qué se autentica*. Quedaba una
+pregunta sin responder que sólo aparece en el flujo de renovación: `InitiateAuth`
+con `REFRESH_TOKEN_AUTH` exige `SECRET_HASH` cuando el app client tiene secret, y
+ese hash se firma sobre un nombre — pero circulaban dos respuestas sobre **cuál**,
+el `Username` o el `sub`. Elegir mal da `NotAuthorizedException`, que es
+indistinguible de un refresh token inválido.
+
+Comprobado por ejecución, con un usuario desechable creado con **username UUID y
+correo distinto** —sin esa diferencia el experimento no distingue las hipótesis—
+y borrado en la misma corrida:
+
+| Variante de `REFRESH_TOKEN_AUTH` | Resultado |
+|---|---|
+| sin `SECRET_HASH` | `NotAuthorizedException` |
+| `SECRET_HASH` sobre el **`Username`** (el handle) | **renueva** |
+| `SECRET_HASH` sobre el `sub` | `NotAuthorizedException` |
+| `SECRET_HASH` sobre el correo | `NotAuthorizedException` |
+
+Tres consecuencias:
+
+1. **El hash es obligatorio y va sobre el handle.** `POST /auth/refresh` no puede
+   renovar sin saber de quién es el token: no hay atajo.
+2. **El `sub` no basta.** El access token lo trae, pero no es lo que Cognito
+   quiere, así que resolver la identidad desde el token exige además una consulta
+   `WHERE cognito_sub = :sub` para llegar al `external_id`. Es la misma que hace
+   `deps.py` en cada petición y tiene índice (`idx_users_cognito_sub`).
+3. **Queda probado que la rebanada B2 rompe `/auth/refresh`.** Hoy el endpoint
+   recibe un correo y funciona *sólo* porque el username es el correo. Con
+   handles UUID, firmar con el correo falla.
+
+**De propina, y no era la pregunta:** el login con **username UUID contra el pool
+productivo funcionó**. Es la premisa entera de la rebanada B2 comprobada por
+ejecución, no sólo la unicidad de correo que se verificó el 8/09.
+
+### Lo que esto deja abierto
+
+El `SECRET_HASH` **no es OAuth**: es un requisito de la API `InitiateAuth` del
+SDK. Cognito expone además un endpoint OAuth estándar (`/oauth2/token`) donde la
+renovación se hace con `grant_type=refresh_token` y autenticación de cliente, sin
+nombre de usuario de por medio. Si ese camino está disponible en este pool —
+depende de que tenga dominio y de la configuración OAuth del app client—, el
+contrato del proveedor pierde el parámetro que lo ata a Cognito.
+
+**Está sin comprobar, y no se da por hecho.** Es exactamente la forma de premisa
+que este ADR existe para no repetir.
+
 ## Consecuencias
 
 - **La reversión puede ser imposible.** El `downgrade` repone `users_email_key`,
@@ -138,12 +188,17 @@ migración *contract*.
   creó esta aplicación; no lo es necesariamente para los creados a mano desde la
   consola. El paso 1 de `docs/runbooks/desplegar-identidad.md` lo comprueba
   contra el pool y trae el `UPDATE` que corrige los que no encajen.
-- **El modelo `User` queda desalineado a propósito** hasta la rebanada B: declara
-  `email` con `unique=True` y no conoce las columnas nuevas. El comparador de
-  deriva no lo ve —sólo mira que el esquema tenga lo que los modelos esperan— y
-  el harness de tests seguirá creando la unicidad global. Por eso los tests de
+- **El modelo `User` quedó desalineado a propósito** hasta la rebanada B1: declaraba
+  `email` con `unique=True` y no conocía las columnas nuevas. El comparador de
+  deriva no lo veía —sólo mira que el esquema tenga lo que los modelos esperan— y
+  el harness de tests seguía creando la unicidad global. Por eso los tests de
   esta migración corren sobre la base desechable con el esquema productivo, y no
   sobre `create_all()`.
+  **Resuelto en `v1.30.1`**: los modelos declaran las tres columnas y reproducen
+  los tres índices, así que el comparador ya cubre la `028` y el harness impone
+  la misma unicidad por marca que producción. Los tests sobre la base desechable
+  siguen haciendo falta para lo que sólo existe si corren las migraciones: el
+  trigger, el backfill y el `downgrade` condicional.
 
 ## Referencias
 
@@ -158,3 +213,4 @@ migración *contract*.
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-09-08 | 1.0 | Documento inicial |
+| 2026-09-12 | 1.1 | Medición del `SECRET_HASH` en `REFRESH_TOKEN_AUTH` contra el pool productivo; la consecuencia sobre el modelo `User` se marca resuelta en `v1.30.1` |
