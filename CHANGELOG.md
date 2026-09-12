@@ -7,32 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **Interfaz `IdentityProvider` y modelos de la `028`** (Fase 3, rebanada B1; **sin migraciones**). `app/services/identity/` es ahora la frontera con quien verifica contraseñas, y `CognitoIdentityProvider` el único sitio del repositorio con un `boto3.client("cognito-idp")` — antes había tres (`auth.py`, `users.py`, `user_commands.py`), cada uno con su traducción de `ClientError` a `HTTPException` ligeramente distinta de las otras. Nada de Cognito cruza la interfaz: ni `AuthenticationResult`, ni `ChallengeName`, ni `ClientError`; salen `Sesion` y las excepciones de `app/services/identity/errors.py`
-  - `User` declara `external_id`, `identity_provider` y `brand_account_id`, y **pierde el `unique=True` de `email`**: la unicidad la hacen los dos índices parciales de la `028`, que la vuelven por marca. `Account` declara `identity_provider` e `idp_config`. Al existir los modelos, **el comparador de deriva empieza a cubrir la `028`** — igual que pasó con la `027`
-  - Los endpoints **autentican con el handle de la fila (`external_id`), no con el correo**. Hoy valen lo mismo en toda fila existente —la `028` lo rellenó desde el correo y su trigger lo mantiene—, y es lo que hace que la rebanada B2 sea un cambio de una línea
-  - `_handle_por_defecto` en el modelo repite del lado de la aplicación lo que hace el trigger `users_identidad_before`: el harness de tests construye el esquema con `create_all()` y no tiene triggers, así que sin él toda alta reventaría contra el `NOT NULL`
-  - **Ninguna respuesta HTTP cambia.** Es un refactor: los códigos y los detalles de `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password`, `/auth/reset-password`, `/auth/verify-email` y `/users/accept-invitation` son los de antes, y hay tests que lo fijan
-
-- **`PATCH /devices/{id}/status` gana un test con un PASETO de servicio firmado de verdad**, más su contraparte negativa (un token con otro rol recibe 401). El test que llegó con `1.29.1` sustituye la dependencia por un `AuthResult` fabricado a mano, así que comprueba qué hace el endpoint con el resultado pero **nunca pasa por `decode_service_token`**: con ese override puesto, cambiar `required_role` en `deps.py` no rompía ningún test y GAC volvía a comerse un 401 en producción. Comprobado rompiendo el rol a propósito — el test nuevo falla, el viejo sigue en verde
-
-### Changed
-
-- **`docs/RELEASE.md` describe el modelo de ramas, que hasta ahora no mencionaba `master` ni una vez.** `develop` es la troncal; `master` es el puntero a producción y se mueve con un **fast-forward desde `develop`**, no con un PR de release. Quedan escritas las dos formas que se probaron antes y por qué dolieron: etiquetar `develop` sin tocar `master` es lo que dejó la rama por defecto 27 commits atrás de producción durante el incidente de septiembre —con CodeQL mirando solo ahí—, y un PR por release cuesta dos rondas de CI, hace chocar el corte del changelog con las ramas de trabajo y deja en `master` un commit de merge que `develop` no tiene
-  - Se documenta el camino del **hotfix**: ramificar desde el tag anterior, no desde `develop`. El riesgo no son los conflictos sino arrastrar lo que ya está mergeado sin desplegar — el 9/09 la migración de identidad estuvo a un merge de salir dentro de una release cuya nota decía «migraciones: ninguna»
-  - Y una advertencia sobre `nota-de-migracion.py`: **lee el árbol de trabajo, no el tag**. Generarla desde una rama con migraciones sin liberar hace que anuncie migraciones que la release no lleva. Pasó ese mismo día
-- **`gac-web/docs/RELEASE.md`** gana el mismo paso de espejo y una sección de dependencias entre repos, con el caso del 9/09: `v1.7.4` exigía `siscom-admin-api v1.29.1` desplegada, y sacar la consola primero habría dado 401 en Asignación con un despliegue en verde
-
-### Fixed
-
-- **`POST /users/accept-invitation` no mandaba el atributo `email` al marcar el correo como verificado en Cognito**, que es justo lo que documenta el test de `verify-email` desde que se escribió («Cognito exige `email` junto a `email_verified`»). Los dos flujos comparten ahora la misma llamada del adaptador, así que el descuadre no puede volver
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
-> historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0`, `1.29.1`
-> y `1.30.0` sí se
+> historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0`, `1.29.1`,
+> `1.30.0` y `1.30.1` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
 ### Changed
@@ -91,6 +70,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [1.30.1] - 2026-09-11
+
+**Migraciones.** Ninguna. La cabeza sigue en `028_identidad_esquema`, que entró con `1.30.0`.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir en
+la base ni orden que respetar. Los índices y los `CHECK` que esta release añade a los modelos son
+declarativos —los crea `create_all()` en el harness de tests, para que imponga la misma unicidad
+por marca que producción—; en producción ya existían desde la `028` y esta release no ejecuta un
+solo DDL.
+
+**Antes de desplegar.** Correr los tres contadores del paso 3 de
+`docs/runbooks/desplegar-identidad.md`. A partir de esta release, **lo que viaja a Cognito es
+`users.external_id` y ya no el correo**, así que si `handle_distinto_del_correo` no da 0 hay filas
+que alguien tocó a mano y hay que mirarlas primero. Dieron `0, 0, 0` el 10/09, y desde entonces
+ningún código escribe `users.email` ni `users.external_id`.
+
+**Que no cambia para los clientes.** El contrato OpenAPI de esta release es **byte-idéntico** al de
+`1.30.0` —generado con `app.openapi()` en las dos ramas y comparado—, y los códigos y textos de
+error son los mismos. Importa porque los clientes ramifican sobre ellos: `nexus-web` clasifica por
+status y filtra el detalle con una allowlist, e iOS convierte `403` + detalle con «verif» en
+`emailNotVerified`.
+
+### Added
+
+- **Interfaz `IdentityProvider` y modelos de la `028`** (Fase 3, rebanada B1; **sin migraciones**). `app/services/identity/` es ahora la frontera con quien verifica contraseñas, y `CognitoIdentityProvider` el único sitio del repositorio con un `boto3.client("cognito-idp")` — antes había tres (`auth.py`, `users.py`, `user_commands.py`), cada uno con su traducción de `ClientError` a `HTTPException` ligeramente distinta de las otras. Nada de Cognito cruza la interfaz: ni `AuthenticationResult`, ni `ChallengeName`, ni `ClientError`; salen `Sesion` y las excepciones de `app/services/identity/errors.py`
+  - `User` declara `external_id`, `identity_provider` y `brand_account_id`, y **pierde el `unique=True` de `email`**: la unicidad la hacen los dos índices parciales de la `028`, que la vuelven por marca. `Account` declara `identity_provider` e `idp_config`. Al existir los modelos, **el comparador de deriva empieza a cubrir la `028`** — igual que pasó con la `027`
+  - Los endpoints **autentican con el handle de la fila (`external_id`), no con el correo**. Hoy valen lo mismo en toda fila existente —la `028` lo rellenó desde el correo y su trigger lo mantiene—, y es lo que hace que la rebanada B2 sea un cambio de una línea
+  - `_handle_por_defecto` en el modelo repite del lado de la aplicación lo que hace el trigger `users_identidad_before`: el harness de tests construye el esquema con `create_all()` y no tiene triggers, así que sin él toda alta reventaría contra el `NOT NULL`
+  - **Ninguna respuesta HTTP cambia.** Es un refactor: los códigos y los detalles de `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password`, `/auth/reset-password`, `/auth/verify-email` y `/users/accept-invitation` son los de antes, y hay tests que lo fijan
+
+- **`PATCH /devices/{id}/status` gana un test con un PASETO de servicio firmado de verdad**, más su contraparte negativa (un token con otro rol recibe 401). El test que llegó con `1.29.1` sustituye la dependencia por un `AuthResult` fabricado a mano, así que comprueba qué hace el endpoint con el resultado pero **nunca pasa por `decode_service_token`**: con ese override puesto, cambiar `required_role` en `deps.py` no rompía ningún test y GAC volvía a comerse un 401 en producción. Comprobado rompiendo el rol a propósito — el test nuevo falla, el viejo sigue en verde
+
+### Changed
+
+- **`docs/RELEASE.md` describe el modelo de ramas, que hasta ahora no mencionaba `master` ni una vez.** `develop` es la troncal; `master` es el puntero a producción y se mueve con un **fast-forward desde `develop`**, no con un PR de release. Quedan escritas las dos formas que se probaron antes y por qué dolieron: etiquetar `develop` sin tocar `master` es lo que dejó la rama por defecto 27 commits atrás de producción durante el incidente de septiembre —con CodeQL mirando solo ahí—, y un PR por release cuesta dos rondas de CI, hace chocar el corte del changelog con las ramas de trabajo y deja en `master` un commit de merge que `develop` no tiene
+  - Se documenta el camino del **hotfix**: ramificar desde el tag anterior, no desde `develop`. El riesgo no son los conflictos sino arrastrar lo que ya está mergeado sin desplegar — el 9/09 la migración de identidad estuvo a un merge de salir dentro de una release cuya nota decía «migraciones: ninguna»
+  - Y una advertencia sobre `nota-de-migracion.py`: **lee el árbol de trabajo, no el tag**. Generarla desde una rama con migraciones sin liberar hace que anuncie migraciones que la release no lleva. Pasó ese mismo día
+- **`gac-web/docs/RELEASE.md`** gana el mismo paso de espejo y una sección de dependencias entre repos, con el caso del 9/09: `v1.7.4` exigía `siscom-admin-api v1.29.1` desplegada, y sacar la consola primero habría dado 401 en Asignación con un despliegue en verde
+
+### Fixed
+
+- **`POST /users/accept-invitation` no mandaba el atributo `email` al marcar el correo como verificado en Cognito**, que es justo lo que documenta el test de `verify-email` desde que se escribió («Cognito exige `email` junto a `email_verified`»). Los dos flujos comparten ahora la misma llamada del adaptador, así que el descuadre no puede volver
 
 ## [1.30.0] - 2026-09-09
 
