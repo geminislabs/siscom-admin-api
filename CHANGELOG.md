@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`anyio` 4.13.0 → 4.14.2** (CVE-2026-63374 y CVE-2026-64847). Llega por `starlette`, `httpx` y `watchfiles`, así que **viaja en la imagen de producción**. Los dos avisos se publicaron después de la última build verde, así que la CI llevaba en rojo sin que nadie tocara el repositorio — el mismo patrón que `nanoid` y `fast-uri` en `nexus-web-page`
+  - El primero es el que importa aquí: en conexiones TLS hacia dominios internacionalizados, un atacante que ya haya secuestrado la conexión puede presentar un certificado legítimo de la versión IDNA 2003 del dominio y hacer que valide
+  - El segundo bloquea a un *worker* de pool de procesos que escriba demasiado a `stderr`, porque `anyio` no drena esa tubería
+  - `pip check` limpio y `pip-audit` deja de reportarlos
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
