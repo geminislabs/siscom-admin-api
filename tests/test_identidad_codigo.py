@@ -497,3 +497,15 @@ def test_verificar_token_traduce_el_http_al_dominio(monkeypatch, codigo_http, cl
 
     with pytest.raises(clase):
         CognitoIdentityProvider(_ClienteFalso()).verificar_token("t")
+
+
+def test_revocar_sesiones_de_no_necesita_el_token_del_usuario():
+    """La variante administrativa es la que sirve donde de verdad importa: el
+    restablecimiento de contraseña no está autenticado, y el cambio sí lo está
+    pero quien lo pide es precisamente a quien no queremos echar.
+    """
+    cliente = _ClienteFalso()
+
+    CognitoIdentityProvider(cliente).revocar_sesiones_de(handle="h")
+
+    assert cliente.kwargs_de("admin_user_global_sign_out")["Username"] == "h"

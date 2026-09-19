@@ -85,6 +85,36 @@ security = BearerAuth()
 # su trigger lo mantiene—, y a partir de la rebanada B2 dejarán de valerlo.
 
 
+def _revocar_todas_las_sesiones(idp: IdentityProvider, store, user: User) -> None:
+    """Corta las sesiones vivas de un usuario, en los dos planos.
+
+    POR QUE EXISTE
+    ==============
+    Hasta la v1.30.1 esto sólo pasaba en `/auth/logout`. Cambiar o restablecer
+    la contraseña no cerraba nada, y el refresh token de este pool **vale 90
+    días**: quien sospechaba que le habían robado la credencial cambiaba su
+    contraseña y el intruso seguía renovando sesión durante meses. El único
+    gesto que la cortaba era un logout, que es justo lo que no hace quien no
+    sabe que lo hackearon.
+
+    QUE CORTA, Y CUANDO
+    ===================
+    - **El plano de datos, al instante**: borrar el alcance en Valkey invalida
+      los data tokens ya emitidos, que es lo que da acceso al mapa.
+    - **El plano de control, en cuanto caduque el access token**: revocar en el
+      proveedor mata los refresh tokens —nadie puede renovar— pero los access
+      tokens ya emitidos siguen siendo válidos hasta su vencimiento, que en este
+      pool se mide en minutos. No se promete más que eso.
+
+    Se revoca **primero el plano de datos**: si el proveedor fallara, la sesión
+    del mapa ya está cortada. Al revés, un fallo aquí dejaría un data token vivo
+    tras una revocación aparentemente correcta — el mismo orden que usa el
+    logout, y por la misma razón.
+    """
+    revoke_sessions_for_user(store, user.id)
+    idp.revocar_sesiones_de(handle=user.external_id)
+
+
 # ------------------------------------------
 # Registro de usuario (Onboarding)
 # ------------------------------------------
@@ -542,6 +572,7 @@ def reset_password(
     request: ResetPasswordRequest,
     db: Session = Depends(get_db),
     idp: IdentityProvider = Depends(get_identity_provider),
+    store=Depends(get_scope_store),
 ):
     """
     Restablece la contraseña de un usuario utilizando un código de verificación de 6 dígitos.
@@ -632,11 +663,33 @@ def reset_password(
                 detail=f"Error al actualizar la contraseña [{e.codigo}]: {e.mensaje}",
             )
 
-    # 6️⃣ Marcar el código como usado
+    # 6️⃣ Cerrar las sesiones que siguieran vivas
+    #
+    # Quien restablece su contraseña por este camino suele haber perdido el
+    # acceso, y a veces porque alguien más lo tiene. Dejar vivas las sesiones
+    # anteriores convierte el restablecimiento en un trámite cosmético.
+    try:
+        _revocar_todas_las_sesiones(idp, store, user)
+    except ErrorDeIdentidad as e:
+        print(
+            f"[PASSWORD RESET] No se pudieron revocar las sesiones de {user.email}: "
+            f"{e.codigo} {e.mensaje}"
+        )
+        # La contraseña YA está cambiada. Callarse sería mentir sobre lo que se
+        # consiguió, así que se dice — y se dice qué hacer.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "La contraseña se actualizó, pero no se pudieron cerrar las "
+                "sesiones anteriores. Cierra sesión en tus otros dispositivos."
+            ),
+        )
+
+    # 7️⃣ Marcar el código como usado
     token_record.used = True
     db.commit()
 
-    # 7️⃣ Retornar mensaje de éxito
+    # 8️⃣ Retornar mensaje de éxito
     return ResetPasswordResponse(
         message="Contraseña restablecida exitosamente. Ahora puede iniciar sesión con su nueva contraseña."
     )
@@ -653,6 +706,7 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     idp: IdentityProvider = Depends(get_identity_provider),
+    store=Depends(get_scope_store),
 ):
     """
     Cambia la contraseña de un usuario autenticado.
@@ -745,8 +799,52 @@ def change_password(
                 detail=f"Error al actualizar la contraseña: {e.codigo}",
             )
 
-    # 3️⃣ Retornar mensaje de éxito
-    return ChangePasswordResponse(message="Contraseña actualizada exitosamente.")
+    # 3️⃣ Cerrar todas las sesiones, incluida la de quien pide el cambio
+    try:
+        _revocar_todas_las_sesiones(idp, store, current_user)
+    except ErrorDeIdentidad as e:
+        print(
+            f"[CHANGE PASSWORD] No se pudieron revocar las sesiones de "
+            f"{current_user.email}: {e.codigo} {e.mensaje}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "La contraseña se actualizó, pero no se pudieron cerrar las "
+                "sesiones anteriores. Cierra sesión en tus otros dispositivos."
+            ),
+        )
+
+    # 4️⃣ Y devolverle una sesión nueva a quien acaba de hacer lo correcto
+    #
+    # Sin esto, cambiar la contraseña te echa a ti también: la revocación no
+    # distingue tu dispositivo del de nadie. Como la contraseña nueva está aquí
+    # mismo, se autentica otra vez —**después** de revocar, o la sesión nueva
+    # caería con las demás— y se devuelve.
+    #
+    # Es **best effort a propósito**: si esto falla, la contraseña ya cambió y
+    # las sesiones ya se cortaron, que es lo que importaba. Se responde igual,
+    # sin credenciales, y el cliente manda a iniciar sesión.
+    sesion = None
+    try:
+        sesion = idp.autenticar(
+            handle=current_user.external_id,
+            password=request.new_password,
+        )
+    except ErrorDeIdentidad as e:
+        print(
+            f"[CHANGE PASSWORD] Sesión no renovada para {current_user.email}: "
+            f"{e.codigo} {e.mensaje}"
+        )
+
+    # 5️⃣ Retornar mensaje de éxito
+    return ChangePasswordResponse(
+        message="Contraseña actualizada exitosamente.",
+        access_token=sesion.access_token if sesion else None,
+        id_token=sesion.id_token if sesion else None,
+        refresh_token=sesion.refresh_token if sesion else None,
+        expires_in=sesion.expires_in if sesion else None,
+    )
 
 
 # ------------------------------------------

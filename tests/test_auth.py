@@ -16,7 +16,7 @@ es de este endpoint: a quién llama y con qué handle.
 """
 
 from datetime import timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -245,4 +245,169 @@ def test_una_contrasena_mala_sigue_siendo_un_401_con_el_mensaje_del_proveedor(
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.json()["detail"] == (
         "Credenciales inválidas. Incorrect username or password."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Revocación al cambiar y restablecer contraseña
+# ---------------------------------------------------------------------------
+
+
+def _con_store_vacio():
+    """Sustituye el store de alcances por uno sin cliente (Valkey ausente).
+
+    El del plano de datos es *best effort* por diseño, así que no tener Valkey
+    no puede cambiar lo que responde el endpoint — y estos tests miran el otro
+    plano, el del proveedor.
+    """
+    from app.api.deps import get_scope_store
+    from app.services.scope_store import ScopeStore
+
+    fastapi_app.dependency_overrides[get_scope_store] = lambda: ScopeStore(None)
+
+
+def test_cambiar_contrasena_cierra_las_demas_sesiones(
+    client, db_session, test_organization_data, idp_falso
+):
+    """
+    Es el agujero que este cambio cierra: hasta la v1.30.1, cambiar la
+    contraseña no cerraba nada y el refresh token de este pool vale 90 días.
+    Quien sospechaba que le habían robado la credencial cambiaba su contraseña y
+    el intruso seguía renovando sesión durante meses.
+    """
+    user = _make_verified_user(db_session, test_organization_data)
+    _con_store_vacio()
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.patch(
+            "/api/v1/auth/password",
+            headers={"Authorization": "Bearer lo-que-sea"},
+            json={"old_password": "la-de-antes", "new_password": "La-nueva-1!"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    idp_falso.revocar_sesiones_de.assert_called_once_with(handle=user.external_id)
+
+
+def test_cambiar_contrasena_no_echa_a_quien_la_cambia(
+    client, db_session, test_organization_data, idp_falso
+):
+    """La revocación no distingue tu dispositivo del de nadie, así que el
+    endpoint abre una sesión nueva —después de revocar— y la devuelve. Sin esto,
+    hacer lo correcto te cuesta volver a entrar.
+    """
+    user = _make_verified_user(db_session, test_organization_data)
+    _con_store_vacio()
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.patch(
+            "/api/v1/auth/password",
+            headers={"Authorization": "Bearer lo-que-sea"},
+            json={"old_password": "la-de-antes", "new_password": "La-nueva-1!"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["access_token"] == "access"
+    # Y la sesión nueva se pide DESPUÉS de revocar, o caería con las demás.
+    llamadas = [c[0] for c in idp_falso.method_calls]
+    assert llamadas.index("revocar_sesiones_de") < llamadas.index("autenticar", 1)
+
+
+def test_si_la_sesion_nueva_falla_la_contrasena_igual_cambio(
+    client, db_session, test_organization_data, idp_falso
+):
+    """Reautenticar es una comodidad, no el objetivo. Si falla, la contraseña ya
+    cambió y las sesiones ya se cortaron: se responde 200 sin credenciales y el
+    cliente manda a iniciar sesión.
+    """
+    from app.services.identity import ErrorDelProveedor
+
+    user = _make_verified_user(db_session, test_organization_data)
+    _con_store_vacio()
+    # La primera autenticación valida la contraseña actual; la segunda es la que
+    # abre la sesión nueva.
+    idp_falso.autenticar.side_effect = [
+        Sesion(access_token="access"),
+        ErrorDelProveedor("cayó", codigo="TooManyRequests"),
+    ]
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.patch(
+            "/api/v1/auth/password",
+            headers={"Authorization": "Bearer lo-que-sea"},
+            json={"old_password": "la-de-antes", "new_password": "La-nueva-1!"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["access_token"] is None
+    idp_falso.revocar_sesiones_de.assert_called_once()
+
+
+def test_si_la_revocacion_falla_el_endpoint_no_finge_que_todo_fue_bien(
+    client, db_session, test_organization_data, idp_falso
+):
+    """La contraseña ya está cambiada, así que callarse sería mentir sobre lo
+    que se consiguió. Se dice, y se dice qué hacer.
+    """
+    from app.services.identity import ErrorDelProveedor
+
+    user = _make_verified_user(db_session, test_organization_data)
+    _con_store_vacio()
+    idp_falso.revocar_sesiones_de.side_effect = ErrorDelProveedor(
+        "no se pudo", codigo="TooManyRequests"
+    )
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.patch(
+            "/api/v1/auth/password",
+            headers={"Authorization": "Bearer lo-que-sea"},
+            json={"old_password": "la-de-antes", "new_password": "La-nueva-1!"},
+        )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert "cerrar las sesiones anteriores" in response.json()["detail"]
+
+
+def test_restablecer_contrasena_cierra_las_demas_sesiones(
+    client, db_session, test_user_data, idp_falso
+):
+    """Quien llega por aquí suele haber perdido el acceso, y a veces porque
+    alguien más lo tiene. Sin revocar, el restablecimiento es cosmético.
+    """
+    codigo = "123456"
+    db_session.add(
+        TokenConfirmacion(
+            id=uuid4(),
+            token=codigo,
+            expires_at=utcnow() + timedelta(hours=1),
+            used=False,
+            type=TokenType.PASSWORD_RESET,
+            user_id=test_user_data.id,
+            email=test_user_data.email,
+        )
+    )
+    db_session.commit()
+    _con_store_vacio()
+
+    response = client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": test_user_data.email,
+            "code": codigo,
+            "new_password": "La-nueva-1!",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    idp_falso.fijar_password.assert_called_once()
+    idp_falso.revocar_sesiones_de.assert_called_once_with(
+        handle=test_user_data.external_id
     )
