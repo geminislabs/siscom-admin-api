@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Auditoría de dependencias por tiempo** (`.github/workflows/dependency-audit.yml`), **lunes y jueves**, sobre `master` y `develop`. `ci.yml` sólo corre con `push` y `pull_request`, así que **un aviso publicado entre dos PRs deja el repositorio vulnerable sin que nadie lo sepa** — es como se destaparon los dos CVE de `anyio` el 18/09: porque un PR de otra cosa los encontró, no porque nadie estuviera mirando. El mismo hueco existía en `nexus-web-page`, donde llegó a ser de trece días
+  - **Sólo se programa el escaneo de dependencias.** Gitleaks y semgrep son función del código y no pueden ponerse rojos solos: correrlos por reloj repetiría el mismo veredicto y enseñaría a ignorar los correos de fallo. CodeQL ya tiene su propio `schedule` y no se toca
+  - Corre `pip-audit-scan.sh` y `osv-scan.sh` **tal cual**, para que las listas de riesgos aceptados —el `--ignore-vuln` de `ecdsa` y `osv-scanner.toml`— no se dupliquen aquí y se desincronicen
+  - **Lunes y jueves, no diario.** Cron no sabe expresar «cada 72 horas»: `*/3` sobre el día del mes reinicia el contador en cada cambio de mes —del 31 al 1 pasa un día, no tres— y puede caer en fin de semana, que es una alerta que nadie mira hasta el lunes. Con lunes y jueves el hueco máximo son 4 días y siempre cae en día laborable
+  - **Revisa sólo la rama por defecto**, no las dos. La primera versión llevaba matriz sobre `master` y `develop`, y **CodeQL la rechazó con dos alertas altas de `cache-poisoning`**: un workflow programado corre con los privilegios de la rama por defecto, así que hacer checkout de `develop` y ejecutar sus `scripts/*.sh` daba a código de una rama menos protegida acceso de escritura a la caché de `master`. Se pierde poco — `develop` ya lo escanea `ci.yml` en cada push y en cada PR, y en el hueco que este workflow viene a tapar `develop` no cambia
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
