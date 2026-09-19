@@ -173,6 +173,18 @@ class CognitoIdentityProvider(IdentityProvider):
         except ClientError as exc:
             raise _traducir(exc) from exc
 
+    def revocar_sesiones_de(self, *, handle: str) -> None:
+        # `admin_user_global_sign_out` es la variante administrativa: no pide el
+        # access token del usuario, que es justo lo que no hay en el
+        # restablecimiento de contraseña.
+        try:
+            self._cognito.admin_user_global_sign_out(
+                UserPoolId=settings.COGNITO_USER_POOL_ID,
+                Username=handle,
+            )
+        except ClientError as exc:
+            raise _traducir(exc) from exc
+
     def verificar_token(self, token: str) -> dict:
         """Valida la firma del JWT contra las JWKS del pool.
 

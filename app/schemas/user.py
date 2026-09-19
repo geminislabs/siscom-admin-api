@@ -275,9 +275,24 @@ class ChangePasswordRequest(BaseModel):
 
 
 class ChangePasswordResponse(BaseModel):
-    """Schema para la respuesta de cambio de contraseña."""
+    """Schema para la respuesta de cambio de contraseña.
+
+    Cambiar la contraseña **cierra todas las sesiones**, incluida la de quien la
+    cambia. Para no echar a quien acaba de hacer lo correcto, el endpoint abre
+    una sesión nueva con la contraseña nueva y la devuelve aquí: el cliente la
+    guarda y no se entera de nada, mientras los demás dispositivos quedan fuera.
+
+    Los campos son **opcionales a propósito**. Si la reautenticación falla, la
+    contraseña ya se cambió y las sesiones ya se cortaron: se responde igual, sin
+    credenciales, y el cliente manda a iniciar sesión.
+    """
 
     message: str
+    access_token: Optional[str] = None
+    id_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_type: str = "Bearer"
+    expires_in: Optional[int] = None
 
     class Config:
         json_schema_extra = {

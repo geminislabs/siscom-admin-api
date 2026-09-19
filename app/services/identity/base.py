@@ -86,7 +86,27 @@ class IdentityProvider(ABC):
 
     @abstractmethod
     def revocar_sesiones(self, *, access_token: str) -> None:
-        """Invalida todas las sesiones del dueño de ese access token."""
+        """Invalida todas las sesiones del dueño de ese access token.
+
+        Es la variante de autoservicio: la usa el logout, que tiene el token de
+        quien pide cerrar sesión.
+        """
+
+    @abstractmethod
+    def revocar_sesiones_de(self, *, handle: str) -> None:
+        """Invalida todas las sesiones de esa credencial, sin su access token.
+
+        Hace falta porque los dos sitios donde de verdad importa revocar no
+        tienen token que ofrecer: el restablecimiento de contraseña no está
+        autenticado, y el cambio de contraseña sí lo está pero quien lo pide es
+        precisamente quien no queremos echar.
+
+        **Lo que revoca y lo que no**, y conviene no prometer de más: corta los
+        refresh tokens, así que nadie puede renovar. Los access tokens ya
+        emitidos siguen siendo válidos hasta que caduquen — en este pool se
+        miden en minutos. El corte inmediato del plano de datos lo da la
+        revocación de alcances en Valkey, que es de esta aplicación.
+        """
 
     @abstractmethod
     def verificar_token(self, token: str) -> dict:
