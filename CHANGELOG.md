@@ -7,24 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-
-- **Cambiar o restablecer la contraseña ahora cierra todas las sesiones.** Hasta ahora sólo lo hacía `POST /auth/logout`: `PATCH /auth/password` y `POST /auth/reset-password` cambiaban la credencial y dejaban vivas las sesiones anteriores. Con **refresh tokens de 90 días** en el pool productivo, eso significaba que quien sospechaba que le habían robado la cuenta cambiaba su contraseña y el intruso seguía renovando sesión durante meses — y el único gesto que lo cortaba era un logout, que es justo lo que no hace quien no sabe que lo hackearon
-  - La interfaz gana `revocar_sesiones_de(handle)`, la variante **administrativa**: los dos sitios donde importa revocar no tienen access token que ofrecer — el restablecimiento no está autenticado, y el cambio sí lo está pero quien lo pide es a quien no hay que echar
-  - **Qué corta y cuándo, sin prometer de más**: el plano de datos al instante (borrar el alcance en Valkey invalida los data tokens ya emitidos), y el de control en cuanto caduque el access token — revocar en el proveedor mata los refresh tokens, pero los access tokens ya emitidos siguen válidos hasta su vencimiento, que en este pool se mide en minutos
-  - Se revoca **primero el plano de datos**, igual que en el logout y por la misma razón: si el proveedor fallara, la sesión del mapa ya está cortada
-  - **Si la revocación falla, el endpoint lo dice.** La contraseña ya está cambiada a esas alturas, así que responder 200 sería mentir sobre lo que se consiguió: devuelve 500 diciendo que hay que cerrar sesión en los otros dispositivos
-- **`PATCH /auth/password` devuelve una sesión nueva**, en campos opcionales que se añaden a su respuesta. La revocación no distingue el dispositivo de quien cambia la contraseña del de nadie, así que sin esto hacer lo correcto te costaba volver a entrar. Se reautentica **después** de revocar —o la sesión nueva caería con las demás— y es *best effort*: si falla, la contraseña ya cambió y las sesiones ya se cortaron, así que se responde igual sin credenciales
-- **`anyio` 4.13.0 → 4.14.2** (CVE-2026-63374 y CVE-2026-64847). Llega por `starlette`, `httpx` y `watchfiles`, así que **viaja en la imagen de producción**. Los dos avisos se publicaron después de la última build verde, así que la CI llevaba en rojo sin que nadie tocara el repositorio — el mismo patrón que `nanoid` y `fast-uri` en `nexus-web-page`
-  - El primero es el que importa aquí: en conexiones TLS hacia dominios internacionalizados, un atacante que ya haya secuestrado la conexión puede presentar un certificado legítimo de la versión IDNA 2003 del dominio y hacer que valide
-  - El segundo bloquea a un *worker* de pool de procesos que escriba demasiado a `stderr`, porque `anyio` no drena esa tubería
-  - `pip check` limpio y `pip-audit` deja de reportarlos
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
 > historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0`, `1.29.1`,
-> `1.30.0` y `1.30.1` sí se
+> `1.30.0`, `1.30.1` y `1.31.0` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
 ### Changed
@@ -83,6 +70,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [1.31.0] - 2026-09-18
+
+**Migraciones.** Ninguna. La cabeza sigue en `028_identidad_esquema`, que entró con `1.30.0`.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir
+en la base ni orden que respetar.
+
+**Orden entre repositorios.** `nexus-web-page v1.16.1` va **antes** que esta release, y ya está
+desplegada. Las dos son seguras en cualquier orden, pero sólo así no hay ventana: la web ya sabe
+adoptar la sesión nueva que este release empieza a mandar, de modo que cambiar la contraseña no
+echa a nadie al login.
+
+**Verificación después de desplegar.** Entrar desde dos navegadores, cambiar la contraseña en uno y
+confirmar que el otro se cae. Es la propiedad entera de esta release en treinta segundos — y una
+propiedad que hasta hoy no existía en ninguna parte del sistema.
+
+### Security
+
+- **Cambiar o restablecer la contraseña ahora cierra todas las sesiones.** Hasta ahora sólo lo hacía `POST /auth/logout`: `PATCH /auth/password` y `POST /auth/reset-password` cambiaban la credencial y dejaban vivas las sesiones anteriores. Con **refresh tokens de 90 días** en el pool productivo, eso significaba que quien sospechaba que le habían robado la cuenta cambiaba su contraseña y el intruso seguía renovando sesión durante meses — y el único gesto que lo cortaba era un logout, que es justo lo que no hace quien no sabe que lo hackearon
+  - La interfaz gana `revocar_sesiones_de(handle)`, la variante **administrativa**: los dos sitios donde importa revocar no tienen access token que ofrecer — el restablecimiento no está autenticado, y el cambio sí lo está pero quien lo pide es a quien no hay que echar
+  - **Qué corta y cuándo, sin prometer de más**: el plano de datos al instante (borrar el alcance en Valkey invalida los data tokens ya emitidos), y el de control en cuanto caduque el access token — revocar en el proveedor mata los refresh tokens, pero los access tokens ya emitidos siguen válidos hasta su vencimiento, que en este pool se mide en minutos
+  - Se revoca **primero el plano de datos**, igual que en el logout y por la misma razón: si el proveedor fallara, la sesión del mapa ya está cortada
+  - **Si la revocación falla, el endpoint lo dice.** La contraseña ya está cambiada a esas alturas, así que responder 200 sería mentir sobre lo que se consiguió: devuelve 500 diciendo que hay que cerrar sesión en los otros dispositivos
+- **`PATCH /auth/password` devuelve una sesión nueva**, en campos opcionales que se añaden a su respuesta. La revocación no distingue el dispositivo de quien cambia la contraseña del de nadie, así que sin esto hacer lo correcto te costaba volver a entrar. Se reautentica **después** de revocar —o la sesión nueva caería con las demás— y es *best effort*: si falla, la contraseña ya cambió y las sesiones ya se cortaron, así que se responde igual sin credenciales
+- **`anyio` 4.13.0 → 4.14.2** (CVE-2026-63374 y CVE-2026-64847). Llega por `starlette`, `httpx` y `watchfiles`, así que **viaja en la imagen de producción**. Los dos avisos se publicaron después de la última build verde, así que la CI llevaba en rojo sin que nadie tocara el repositorio — el mismo patrón que `nanoid` y `fast-uri` en `nexus-web-page`
+  - El primero es el que importa aquí: en conexiones TLS hacia dominios internacionalizados, un atacante que ya haya secuestrado la conexión puede presentar un certificado legítimo de la versión IDNA 2003 del dominio y hacer que valide
+  - El segundo bloquea a un *worker* de pool de procesos que escriba demasiado a `stderr`, porque `anyio` no drena esa tubería
+  - `pip check` limpio y `pip-audit` deja de reportarlos
 
 ## [1.30.1] - 2026-09-11
 
