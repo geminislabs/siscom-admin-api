@@ -1,0 +1,90 @@
+# Auditoría de dependencias por tiempo, no por commit.
+#
+# POR QUE EXISTE ESTE WORKFLOW APARTE
+# ===================================
+# `ci.yml` sólo corre con `push` y `pull_request`. Eso basta para todo lo que es
+# función del código —gitleaks y semgrep no pueden ponerse rojos solos— pero no
+# para los avisos de dependencias, que son función del código **y del mundo
+# exterior**: un aviso publicado entre dos PRs deja el repositorio vulnerable
+# sin que nadie lo sepa.
+#
+# Pasó en los dos repositorios a la vez el 18/09/2026. En `nexus-web-page` el
+# hueco fue de trece días; aquí, los dos CVE de `anyio` se destaparon porque un
+# PR de otra cosa los encontró, no porque nadie estuviera mirando.
+#
+# QUE **NO** SE PROGRAMA, Y POR QUE
+# =================================
+# Ni gitleaks ni semgrep. Su resultado sólo cambia si cambia el código, así que
+# correrlos por reloj produce el mismo veredicto una y otra vez — ruido que
+# enseña a ignorar los correos de fallo, que es el peor resultado posible.
+#
+# CodeQL ya tiene su propio `schedule` en `codeql.yml`; esto no lo toca.
+#
+# DONDE CORRE, Y POR QUE SOLO EN UNA RAMA
+# =======================================
+# Los workflows programados se ejecutan **desde la rama por defecto** (`master`),
+# así que este fichero tiene que estar allí para que el `schedule` exista.
+#
+# La primera versión llevaba una matriz sobre `master` y `develop`. **CodeQL la
+# rechazó, con razón**: un workflow programado corre con los privilegios de la
+# rama por defecto, así que hacer checkout de `develop` y ejecutar sus
+# `scripts/*.sh` da a código de una rama menos protegida acceso de escritura a
+# la caché de `master` — `actions/cache-poisoning/poisonable-step`, dos alertas
+# altas. Es la vía clásica para envenenar una caché que después consumen los
+# workflows de confianza.
+#
+# Se revisa **sólo la rama por defecto**, y se pierde poco: `develop` ya lo
+# escanea `ci.yml` en cada push y en cada PR. El hueco que este workflow viene a
+# tapar es el del tiempo sin empujar nada — y en ese hueco `develop` no cambia,
+# así que la pregunta que queda es la de producción, que la contesta `master`.
+name: Dependency audit
+
+on:
+  schedule:
+    # 13:17 UTC = 07:17 en Ciudad de México. Temprano, para que el fallo se vea
+    # al empezar el día y no a media tarde.
+    #
+    # El minuto 17 y no el 0 a propósito: el cron de GitHub es **best effort**, y
+    # la hora en punto es la franja más congestionada — todo el mundo programa
+    # ahí, y las ejecuciones se retrasan o se saltan. Un minuto raro evita la
+    # cola sin costar nada.
+    #
+    # **Lunes y jueves, no diario ni «cada 72 horas».** Cron no sabe expresar un
+    # intervalo de 72 h: `*/3` sobre el día del mes reinicia el contador en cada
+    # cambio de mes —del 31 al 1 pasa un día, no tres— y puede caer en sábado,
+    # que es una alerta que nadie mira hasta el lunes. Con lunes y jueves el
+    # hueco máximo son 4 días y siempre cae en día laborable.
+    - cron: '17 13 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependencias:
+    name: pip-audit + OSV
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Sin `cache: pip` a propósito. La caché es el recurso que CodeQL señala
+      # como envenenable en un contexto privilegiado, y aquí no compra nada:
+      # este workflow corre dos veces por semana, no en cada push.
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      # `pip-audit-scan.sh` instala `requirements.txt` por su cuenta, y lleva
+      # dentro el `--ignore-vuln` de `ecdsa` con su razonamiento. Correrlo tal
+      # cual evita que la lista de riesgos aceptados se duplique aquí y se
+      # desincronice.
+      - name: pip-audit dependency scan
+        run: bash scripts/pip-audit-scan.sh
+
+      # OSV lee `requirements.txt` y aplica `osv-scanner.toml`, que es donde
+      # viven las excepciones para este escáner.
+      - name: OSV dependency scan
+        run: bash scripts/osv-scan.sh
