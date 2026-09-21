@@ -59,16 +59,25 @@ se le quita el rol**. La salida limpia no es añadirle una condición sino
 quitarlo — y para poder quitarlo, todo usuario que hoy dependa de él necesita su
 membresía explícita.
 
-> ### ✅ Medido contra producción el 20 de septiembre de 2026
+> ### ⚠️ Medido el 20/09, y **mal interpretado** hasta el 21
 >
-> **Siete usuarios** con `is_master` y sin membresía OWNER en su organización, y
-> los siete **sin ningún evento `org_user_removed`** en `account_events`. Son
-> masters heredados, de antes de que `organization_users` existiera; ninguno es
-> alguien a quien sacaron a propósito.
+> **Siete usuarios** con `is_master` y sin membresía OWNER, los siete sin ningún
+> evento `org_user_removed`. De ahí se concluyó que eran **masters heredados**,
+> de antes de que `organization_users` existiera.
 >
-> Uno de ellos es la cuenta del propio Jesús: **quitar el *fallback* sin este
-> relleno le habría costado el OWNER de su organización.** La medición se pagó
-> sola.
+> **Era falso, y lo destapó el despliegue de `v1.32.1`** con un
+> `ForeignKeyViolation`: al medir los huérfanos salieron **exactamente los mismos
+> siete**. La causa es circular — **no tienen membresía porque su organización no
+> existe**: `organization_users.organization_id` tiene FK a `organizations`, así
+> que esa fila nunca pudo crearse.
+>
+> Se dijo además que una de ellas era la cuenta del propio Jesús y que quitar el
+> *fallback* sin rellenar le habría costado el OWNER de su organización.
+> **También falso**: su organización no existe, así que el *fallback* sólo le da
+> OWNER de algo que no está.
+>
+> **Consecuencia: el relleno inserta cero filas, y el *fallback* se puede borrar
+> sin él** — lo único que sostiene son huérfanos.
 
 La consulta, por si hay que repetirla en otro entorno:
 
@@ -129,14 +138,18 @@ para el código viejo, que no la menciona.
 - Credencial `siscom_migrator`.
 - `/health` con `schema_revision: 029_estado_de_usuario`.
 
-**2 · Los contadores de esta migración** — los tres tienen que dar **0**:
+**2 · Los contadores de alarma** — los tres tienen que dar **0**:
 
 ```sql
--- a) masters sin ninguna membresía en su propia organización
---    (0 = el fallback de is_master ya no sostiene a nadie, y se puede borrar)
+-- a) masters con organización REAL, sin membresía en ella
+--    0 = el fallback de is_master ya no sostiene a nadie con acceso efectivo,
+--    y se puede borrar. El EXISTS es lo que tumbó la v1.32.1: sin él, entran
+--    los huérfanos, que no pueden tener membresía porque su organización no está
 SELECT count(*) FROM users u
 WHERE u.is_master
   AND u.organization_id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM organizations o
+               WHERE o.id = u.organization_id)
   AND NOT EXISTS (SELECT 1 FROM organization_users ou
                    WHERE ou.user_id = u.id
                      AND ou.organization_id = u.organization_id)
@@ -153,14 +166,40 @@ SELECT count(*) FROM (
    GROUP BY 1, 2 HAVING count(*) > 1) d;
 ```
 
-**3 · Cuántas membresías creó el relleno** — informativo, no un contador de
-alarma. Debería ser **7**:
+**3 · Cuántas membresías creó el relleno** — informativo. **Debe ser `0`.**
+
+No es que el relleno falle: es que **no hay a quién rellenar**. Los siete que se
+creían masters heredados resultaron ser huérfanos, y el `EXISTS` los excluye
+correctamente. Si aquí saliera un número distinto de cero, significa que apareció
+un master con organización real y sin membresía — legítimo, pero conviene mirar
+de dónde salió.
 
 ```sql
 SELECT count(*) FROM organization_users ou
  JOIN users u ON u.id = ou.user_id AND u.organization_id = ou.organization_id
  WHERE u.is_master AND ou.role = 'owner'
    AND ou.created_at > now() - interval '1 hour';
+```
+
+**4 · Los huérfanos** — informativo, y **no es un cero**: al 21/09/2026 son **7**.
+
+Esta release **no los toca**. El contador está aquí para que el número no se
+mueva sin que nadie lo note, y porque resolverlos es el trabajo que viene después
+— con la columna `status` que esta migración añade, no borrando filas: veinte
+claves foráneas referencian `users`, varias con `ON DELETE CASCADE` hacia
+`mobility.devices`, `team.members`, `user_units` y `user_devices`.
+
+```sql
+SELECT count(*) FROM users u
+WHERE u.organization_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM organizations o
+                   WHERE o.id = u.organization_id);
+```
+
+**5 · Que la columna llegó** — todos deben salir `ACTIVE`:
+
+```sql
+SELECT status, count(*) FROM users GROUP BY 1;
 ```
 
 ---
