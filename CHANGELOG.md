@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
 > historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0`, `1.29.1`,
-> `1.30.0`, `1.30.1`, `1.31.0`, `1.32.0` y `1.32.1` sí se
+> `1.30.0`, `1.30.1`, `1.31.0`, `1.32.0`, `1.32.1` y `1.32.2` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
 ### Changed
@@ -71,7 +71,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.32.2] - 2026-09-21
+
+**Migraciones.** Una: `029_estado_de_usuario` — **la misma que la `1.32.0` y la `1.32.1`
+anunciaron y no llegaron a aplicar**. Cabeza: `028_identidad_esquema` → `029_estado_de_usuario`.
+
+**Rollback.** Basta redesplegar el tag anterior: la migración es aditiva y el código de `1.31.0`
+ignora la columna que no conoce.
+
+### Fixed
+
+- **El relleno excluye las organizaciones inexistentes.** El despliegue de la `1.32.1` falló en
+  400 ms con `ForeignKeyViolation`: la organización del primer usuario del relleno **no existe en
+  `organizations`**
+  - **La premisa era falsa.** Se había medido «siete usuarios con `is_master` y sin membresía
+    OWNER» y se concluyó que eran **masters heredados**. Al medir los huérfanos salieron
+    **exactamente los mismos siete**. La causa es circular: **no tienen membresía porque su
+    organización no existe** — `organization_users.organization_id` tiene FK a `organizations`, así
+    que esa fila nunca pudo crearse. No son heredados: son **huérfanos**
+  - **El relleno inserta cero filas**, y nunca iba a insertar otra cosa. Se conserva con el
+    `EXISTS` porque es el invariante correcto y hará lo suyo si algún día aparece un master con
+    organización real y sin membresía
+  - **El *fallback* de `is_master` se puede borrar sin relleno ninguno**: lo único que sostiene son
+    huérfanos, a los que da «OWNER de una organización que no existe». Al quitarlo pasan a `None`,
+    que no es menos acceso — es el mismo, dicho con verdad
+  - **Hallazgo colateral, y es el que más pesa**: `users.organization_id` **no tiene clave foránea
+    en producción**. El DDL sólo declara un índice; el modelo sí la declara. Es deriva que el
+    comparador no ve porque mira columnas y no restricciones — sobre **la columna de la que cuelga
+    la autorización de 62 endpoints**. Añadirla exige resolver antes los siete huérfanos
+  - Test `test_master_con_organizacion_inexistente_no_tumba_la_migracion`, **verificado quitando el
+    `EXISTS`**: reproduce el `ForeignKeyViolation` exacto de producción
+- **Corregida una afirmación falsa** que entró con la `1.32.0`: decía que una de las siete era la
+  cuenta de Jesús y que quitar el *fallback* sin rellenar le habría costado el OWNER de su
+  organización. Su organización no existe, así que el *fallback* sólo le daba OWNER de algo que no
+  está. Corregido en la migración, el runbook y este changelog
+- **El runbook, coherente de punta a punta.** Los contadores llevan el `EXISTS`; el del relleno pasa
+  de «debería ser 7» a **debe ser 0**; y se añaden dos informativos — los huérfanos (que **no** son
+  cero: son 7 y esta release no los toca) y el reparto de `status`
+
 ## [1.32.1] - 2026-09-21
+
+> ### ⚠️ Etiquetada, pero **tampoco llegó a producción**
+>
+> Esta vez no se colgó: falló en **400 ms** con `ForeignKeyViolation` sobre
+> `organization_users_organization_id_fkey`. El `lock_timeout` hizo su trabajo —el `ALTER`
+> tomó su bloqueo al instante— y lo que salió fue un problema distinto y anterior: **siete
+> usuarios cuya organización no existe**. Producción siguió en `v1.31.0` con el esquema en
+> `028`.
+>
+> **Lo que esta versión describe se liberó realmente en la `1.32.2`.**
 
 **Migraciones.** Una: `029_estado_de_usuario` — **la misma que la `1.32.0` anunciaba y no llegó a
 aplicar**. Cabeza: `028_identidad_esquema` → `029_estado_de_usuario`.
