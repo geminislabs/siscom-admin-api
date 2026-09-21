@@ -70,7 +70,12 @@ jobs:
           SES_FROM_EMAIL: test@example.com
           FRONTEND_URL: http://localhost:3000
           PASETO_SECRET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-        run: pytest tests/ -v --cov=app --cov-report=term-missing --cov-report=xml
+        # `--durations=25` viaja de polizón, y está medido: de los 874 s del job
+        # `quality` en la corrida 35646430146, **786 s son este paso** — el resto
+        # suma 88 s. La misma batería tarda 23 s en un portátil, así que el factor
+        # 34 está dentro de estos tests y no en el runner. Esto dice en cuáles.
+        # Sale en el log de cada corrida y no cambia el veredicto.
+        run: pytest tests/ -v --durations=25 --cov=app --cov-report=term-missing --cov-report=xml
 
       - name: Comprobar deriva entre migraciones y modelos
         env:
