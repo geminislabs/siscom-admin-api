@@ -7,26 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`users.status`** (migración `029_estado_de_usuario`), `text NOT NULL DEFAULT 'ACTIVE'` con `CHECK (status IN ('ACTIVE','INACTIVE'))`. Es la mitad *expand*: ningún modelo la lee todavía. Destraba un fallo **que ya ocurre en producción** — quitar a alguien de una organización borra la membresía pero deja la fila de `users`, así que **volver a invitarlo responde 400 y no hay salida por la API**: no existe endpoint que borre un usuario y no había estado que marcar
-  - **Relajar la comprobación no era una opción.** Los índices de la `028` (`uq_users_marca_correo`, `uq_users_correo_marca_por_defecto`) no filtran por estado, así que aunque la aplicación dejara pasar el alta, Postgres la rechaza. La respuesta correcta es **reactivar la fila**, no crear otra — y así se conserva el handle de Cognito, que es inmutable y sigue siendo válido
-  - **Sólo dos valores, a propósito.** Añadir `SUSPENDED` o `PENDING` ahora sería sembrar códigos sin semántica acordada, lo mismo que la `027` evitó al no sembrar `self_signup_mode`
-  - **Relleno de las membresías `owner` de los masters heredados.** `OrganizationService.get_user_role` tiene un *fallback* (`organization.py:78-81`) que devuelve OWNER a un `is_master` sin membresía — segunda fuente de verdad, y con un fallo propio: **a un master al que le borran la membresía no se le quita el rol**. Para poder borrar ese *fallback* en el release siguiente, quien dependa de él necesita su membresía explícita. Medido contra producción el 20/09: **siete usuarios, los siete sin ningún evento `org_user_removed`** — masters heredados, ninguno removido a propósito
-  - El `INSERT` **excluye a quien tenga un `org_user_removed` en `account_events`** aunque hoy eso no deje fuera a nadie: hace la migración auto-correctiva si alguien quita a un master entre la medición y el despliegue. Y su `NOT EXISTS` de membresía **no filtra por rol**, o crearía una segunda fila para quien ya tiene membresía con otro rol y violaría `uq_org_user`
-  - **El `downgrade` quita la columna y deja el relleno**, decidido y no olvidado: esas membresías materializan un rol que esas personas ya tienen hoy, y borrarlas las dejaría peor que antes de la migración. Fijado con un test para que un `DELETE` «por simetría» se vea en CI
-  - Runbook: `docs/runbooks/desplegar-estado-de-usuario.md`. Contexto y decisiones: §26 del documento de arquitectura
-- **Auditoría de dependencias por tiempo** (`.github/workflows/dependency-audit.yml`), **lunes y jueves**, sobre `master` y `develop`. `ci.yml` sólo corre con `push` y `pull_request`, así que **un aviso publicado entre dos PRs deja el repositorio vulnerable sin que nadie lo sepa** — es como se destaparon los dos CVE de `anyio` el 18/09: porque un PR de otra cosa los encontró, no porque nadie estuviera mirando. El mismo hueco existía en `nexus-web-page`, donde llegó a ser de trece días
-  - **Sólo se programa el escaneo de dependencias.** Gitleaks y semgrep son función del código y no pueden ponerse rojos solos: correrlos por reloj repetiría el mismo veredicto y enseñaría a ignorar los correos de fallo. CodeQL ya tiene su propio `schedule` y no se toca
-  - Corre `pip-audit-scan.sh` y `osv-scan.sh` **tal cual**, para que las listas de riesgos aceptados —el `--ignore-vuln` de `ecdsa` y `osv-scanner.toml`— no se dupliquen aquí y se desincronicen
-  - **Lunes y jueves, no diario.** Cron no sabe expresar «cada 72 horas»: `*/3` sobre el día del mes reinicia el contador en cada cambio de mes —del 31 al 1 pasa un día, no tres— y puede caer en fin de semana, que es una alerta que nadie mira hasta el lunes. Con lunes y jueves el hueco máximo son 4 días y siempre cae en día laborable
-  - **Revisa sólo la rama por defecto**, no las dos. La primera versión llevaba matriz sobre `master` y `develop`, y **CodeQL la rechazó con dos alertas altas de `cache-poisoning`**: un workflow programado corre con los privilegios de la rama por defecto, así que hacer checkout de `develop` y ejecutar sus `scripts/*.sh` daba a código de una rama menos protegida acceso de escritura a la caché de `master`. Se pierde poco — `develop` ya lo escanea `ci.yml` en cada push y en cada PR, y en el hueco que este workflow viene a tapar `develop` no cambia
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
 > historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0`, `1.29.1`,
-> `1.30.0`, `1.30.1` y `1.31.0` sí se
+> `1.30.0`, `1.30.1`, `1.31.0` y `1.32.0` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
 ### Changed
@@ -85,6 +70,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [1.32.0] - 2026-09-21
+
+**Migraciones.** Una: `029_estado_de_usuario`. Cabeza: `028_identidad_esquema` →
+`029_estado_de_usuario`.
+
+**Rollback.** Basta redesplegar el tag anterior: la migración es aditiva (expand/contract), así que
+el código de `1.31.0` convive con el esquema nuevo — ignora la columna que no conoce. Si además
+hiciera falta revertir el esquema, **antes** de desplegar el tag viejo, porque el archivo de la
+migración vive en la imagen nueva:
+
+```bash
+docker run --rm --network siscom-network --env-file .env \
+  siscom-admin-api:latest alembic downgrade 028_identidad_esquema
+```
+
+> **Este downgrade no es del todo simétrico, y es deliberado.** Quita `users.status` y su `CHECK`,
+> pero **no borra las siete membresías `owner` que el relleno creó**: materializan un rol que esas
+> personas ya tienen hoy a través del *fallback* de `is_master`, y borrarlas las dejaría peor que
+> antes de la migración. Está fijado con un test para que nadie añada el `DELETE` «por simetría».
+
+**Contrato.** El OpenAPI es **byte-idéntico** al de `v1.31.0`, comparado generando `app.openapi()`
+en un *worktree* de cada punto. Es minor y no patch por el cambio de esquema, no por el de contrato:
+ningún cliente ve nada distinto.
+
+**Verificación después de desplegar.** Las tres señales del paso 6 de `docs/RELEASE.md`, más los tres
+contadores de `docs/runbooks/desplegar-estado-de-usuario.md`. El primero es el que importa: **cuando
+dé 0, el *fallback* de `is_master` ya no sostiene a nadie y se puede borrar** — que es lo que
+desbloquea la rebanada de código siguiente.
+
+### Added
+
+- **`users.status`** (migración `029_estado_de_usuario`), `text NOT NULL DEFAULT 'ACTIVE'` con `CHECK (status IN ('ACTIVE','INACTIVE'))`. Es la mitad *expand*: ningún modelo la lee todavía. Destraba un fallo **que ya ocurre en producción** — quitar a alguien de una organización borra la membresía pero deja la fila de `users`, así que **volver a invitarlo responde 400 y no hay salida por la API**: no existe endpoint que borre un usuario y no había estado que marcar
+  - **Relajar la comprobación no era una opción.** Los índices de la `028` (`uq_users_marca_correo`, `uq_users_correo_marca_por_defecto`) no filtran por estado, así que aunque la aplicación dejara pasar el alta, Postgres la rechaza. La respuesta correcta es **reactivar la fila**, no crear otra — y así se conserva el handle de Cognito, que es inmutable y sigue siendo válido
+  - **Sólo dos valores, a propósito.** Añadir `SUSPENDED` o `PENDING` ahora sería sembrar códigos sin semántica acordada, lo mismo que la `027` evitó al no sembrar `self_signup_mode`
+  - **Relleno de las membresías `owner` de los masters heredados.** `OrganizationService.get_user_role` tiene un *fallback* (`organization.py:78-81`) que devuelve OWNER a un `is_master` sin membresía — segunda fuente de verdad, y con un fallo propio: **a un master al que le borran la membresía no se le quita el rol**. Para poder borrar ese *fallback* en el release siguiente, quien dependa de él necesita su membresía explícita. Medido contra producción el 20/09: **siete usuarios, los siete sin ningún evento `org_user_removed`** — masters heredados, ninguno removido a propósito
+  - El `INSERT` **excluye a quien tenga un `org_user_removed` en `account_events`** aunque hoy eso no deje fuera a nadie: hace la migración auto-correctiva si alguien quita a un master entre la medición y el despliegue. Y su `NOT EXISTS` de membresía **no filtra por rol**, o crearía una segunda fila para quien ya tiene membresía con otro rol y violaría `uq_org_user`
+  - **El `downgrade` quita la columna y deja el relleno**, decidido y no olvidado: esas membresías materializan un rol que esas personas ya tienen hoy, y borrarlas las dejaría peor que antes de la migración. Fijado con un test para que un `DELETE` «por simetría» se vea en CI
+  - Runbook: `docs/runbooks/desplegar-estado-de-usuario.md`. Contexto y decisiones: §26 del documento de arquitectura
+- **Auditoría de dependencias por tiempo** (`.github/workflows/dependency-audit.yml`), **lunes y jueves**, sobre `master` y `develop`. `ci.yml` sólo corre con `push` y `pull_request`, así que **un aviso publicado entre dos PRs deja el repositorio vulnerable sin que nadie lo sepa** — es como se destaparon los dos CVE de `anyio` el 18/09: porque un PR de otra cosa los encontró, no porque nadie estuviera mirando. El mismo hueco existía en `nexus-web-page`, donde llegó a ser de trece días
+  - **Sólo se programa el escaneo de dependencias.** Gitleaks y semgrep son función del código y no pueden ponerse rojos solos: correrlos por reloj repetiría el mismo veredicto y enseñaría a ignorar los correos de fallo. CodeQL ya tiene su propio `schedule` y no se toca
+  - Corre `pip-audit-scan.sh` y `osv-scan.sh` **tal cual**, para que las listas de riesgos aceptados —el `--ignore-vuln` de `ecdsa` y `osv-scanner.toml`— no se dupliquen aquí y se desincronicen
+  - **Lunes y jueves, no diario.** Cron no sabe expresar «cada 72 horas»: `*/3` sobre el día del mes reinicia el contador en cada cambio de mes —del 31 al 1 pasa un día, no tres— y puede caer en fin de semana, que es una alerta que nadie mira hasta el lunes. Con lunes y jueves el hueco máximo son 4 días y siempre cae en día laborable
+  - **Revisa sólo la rama por defecto**, no las dos. La primera versión llevaba matriz sobre `master` y `develop`, y **CodeQL la rechazó con dos alertas altas de `cache-poisoning`**: un workflow programado corre con los privilegios de la rama por defecto, así que hacer checkout de `develop` y ejecutar sus `scripts/*.sh` daba a código de una rama menos protegida acceso de escritura a la caché de `master`. Se pierde poco — `develop` ya lo escanea `ci.yml` en cada push y en cada PR, y en el hueco que este workflow viene a tapar `develop` no cambia
 
 ## [1.31.0] - 2026-09-18
 
