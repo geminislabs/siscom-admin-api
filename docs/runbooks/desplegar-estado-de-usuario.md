@@ -1,6 +1,7 @@
 # Runbook — desplegar la migración de estado de usuario (029)
 
-**Estado:** escrita. **No se ha desplegado.**
+**Estado:** **desplegada** en `v1.32.2` el 21/09/2026, a la tercera — la `1.32.0` y la
+`1.32.1` la anunciaron sin llegar a aplicarla. Resultado del despliegue al final.
 
 Es **solo esquema y datos**: ningún modelo, endpoint ni servicio de este
 repositorio lee todavía `users.status`. Mitad *expand* del expand/contract
@@ -214,6 +215,32 @@ WHERE u.organization_id IS NOT NULL
 ```sql
 SELECT status, count(*) FROM users GROUP BY 1;
 ```
+
+---
+
+## Resultado del despliegue del 21/09/2026
+
+Las tres señales del paso 6 salieron: `Running upgrade 028_identidad_esquema ->
+029_estado_de_usuario` **una sola vez**, con la credencial `siscom_migrator`, y
+`/health` respondiendo `schema_revision: 029_estado_de_usuario`.
+
+Los contadores, medidos contra producción — (a), (b) y (c) el 22/09/2026, el
+resto el día del despliegue:
+
+| Contador | Esperado | Medido | Lectura |
+| --- | --- | --- | --- |
+| **(a)** masters con organización real y sin membresía | `0` | **`0`** | El *fallback* de `is_master` no sostiene el acceso de nadie. **Se puede borrar** |
+| **(b)** usuarios con `status IS NULL` | `0` | **`0`** | La columna es `NOT NULL`; confirmado, no deducido |
+| **(c)** membresías duplicadas por (organización, usuario) | `0` | **`0`** | |
+| **(3)** membresías creadas por el relleno | `0` | **`0`** | No hay a quién rellenar, y nunca lo hubo: es lo que tumbó la `1.32.1` |
+| **(4)** huérfanos | informativo | **`7`** | Sigue abierto. Se resuelven **desactivándolos**, no borrándolos |
+| **(5)** reparto de `status` | todo `ACTIVE` | **`ACTIVE: 23`** | Sin otros valores: la columna llegó y el *default* se aplicó a toda la tabla |
+
+**Dos cosas que este corte deja dichas y conviene no perder.** La primera es que
+**(a) = 0 es lo que autoriza** borrar el *fallback* de `is_master` en
+`OrganizationService.get_user_role` — el punto que abre el release siguiente. La
+segunda es la proporción: **7 huérfanos sobre 23 usuarios**, casi un tercio de la
+tabla, y es la línea base contra la que se mide que ese número no crezca.
 
 ---
 
