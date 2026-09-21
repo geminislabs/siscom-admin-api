@@ -7,14 +7,14 @@ argon2-cffi-bindings==25.1.0
 bcrypt==4.1.2
 black==26.3.1
 boolean.py==5.0
-boto3==1.43.6
+boto3==1.43.97
 botocore==1.43.6
 CacheControl==0.14.4
 certifi==2026.4.22
 cffi==2.0.0
 charset-normalizer==3.4.7
 click==8.3.3
-cryptography==50.0.0
+cryptography==50.0.1
 cyclonedx-python-lib==11.7.0
 defusedxml==0.7.1
 dnspython==2.8.0
@@ -66,7 +66,7 @@ pydantic-settings==2.15.0
 pydantic_core==2.41.5
 Pygments==2.20.0
 pyparsing==3.3.2
-pyseto==1.9.3
+pyseto==1.10.0
 pytest==9.0.3
 pytest-cov==4.1.0
 python-dateutil==2.9.0.post0
