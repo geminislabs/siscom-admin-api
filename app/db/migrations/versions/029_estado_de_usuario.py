@@ -39,36 +39,63 @@ al no sembrar `self_signup_mode`: un valor sin significado acordado invita a que
 alguien le invente uno. Cuando el cierre de cuentas defina mas estados, se
 anaden con su CHECK.
 
-EL RELLENO, Y POR QUE NO ES OPCIONAL
-====================================
+EL RELLENO, Y LA PREMISA QUE RESULTO FALSA
+==========================================
 `OrganizationService.get_user_role` resuelve el rol por membresia, pero tiene un
 fallback heredado (`app/services/organization.py:78-81`): sin membresia, si
 `user.organization_id` coincide y `user.is_master` es cierto, devuelve OWNER.
 
 Ese fallback es la segunda fuente de verdad sobre "que rol tiene esta persona
 aqui", y produce un fallo propio: a un master al que le borran la membresia
-**no se le quita el rol**. La salida limpia no es anadirle una condicion sino
-quitarlo — y para poder quitarlo, todo usuario que hoy dependa de el necesita su
-membresia explicita.
+**no se le quita el rol**. La salida limpia es quitarlo.
 
-**Medido contra produccion el 20/09/2026**: siete usuarios con `is_master` y sin
-membresia OWNER en su organizacion, y los siete **sin ningun evento
-`org_user_removed`** en `account_events`. Es decir, los siete son masters
-heredados —de antes de que `organization_users` existiera— y ninguno es alguien
-a quien sacaron a proposito. Uno de ellos es la cuenta del propio Jesus: quitar
-el fallback sin este relleno le habria costado el OWNER de su organizacion.
+**Se midio contra produccion el 20/09/2026**: siete usuarios con `is_master` y
+sin membresia OWNER, los siete sin ningun evento `org_user_removed`. De ahi se
+concluyo que eran **masters heredados**, de antes de que `organization_users`
+existiera, y que el fallback los sostenia — asi que habia que darles su membresia
+explicita antes de poder borrarlo.
 
-El filtro por `account_events` se conserva en el INSERT **aunque hoy no excluya
-a nadie**. Cuesta un NOT EXISTS y hace la migracion auto-correctiva: si entre
-esta medicion y el despliegue alguien quita a un master a proposito, el relleno
-no le devuelve el rol en silencio. Una migracion que depende de que los datos no
-se muevan entre que se mide y se aplica es una migracion que miente.
+**Era falso, y lo destapo el despliegue de v1.32.1 el 21/09** con un
+`ForeignKeyViolation` en este mismo INSERT: la organizacion de la primera fila
+**no existe en `organizations`**. Al medirlo, los siete resultaron ser
+exactamente los mismos siete de antes:
 
-El NOT EXISTS de membresia **no filtra por rol**, a proposito. La consulta que
-midio los siete si lo hacia (`ou.role = 'owner'`), pero insertar con ese criterio
-podria crear una segunda fila para un usuario que ya tiene membresia con otro rol
-y violar `uq_org_user`. Quien tenga una membresia explicita —sea cual sea su
-rol— ya resuelve por ella y el fallback no le afecta: se deja como esta.
+    users.organization_id apunta a una organizacion que no esta.
+
+Y la causa es circular: **no tienen membresia porque su organizacion no existe.**
+`organization_users.organization_id` tiene FK a `organizations`, asi que esa fila
+**nunca pudo crearse**. No son masters heredados: son **filas huerfanas**.
+
+Tres consecuencias, y conviene que esten escritas:
+
+1. **Este relleno inserta cero filas hoy**, y nunca iba a insertar otra cosa. Se
+   conserva porque es el invariante correcto —un master con organizacion real y
+   sin membresia deberia tenerla— y hara lo suyo el dia que aparezca uno.
+2. **El fallback se puede borrar sin relleno ninguno**, y por una razon mas
+   limpia que la que se creia: lo unico que sostiene son huerfanos, a los que
+   devuelve "OWNER de una organizacion que no existe". Al quitarlo pasan de eso a
+   `None`, que no es menos acceso: es el mismo, dicho con verdad.
+3. **`users.organization_id` no tiene clave foranea en produccion** — el DDL solo
+   declara un indice. El modelo si la declara (`ForeignKey("organizations.id")`),
+   asi que hay deriva que el comparador no ve porque mira columnas, no
+   restricciones. Es la columna que 62 endpoints usan para decidir quien ve que,
+   y no tiene integridad referencial. Anadirla exige resolver antes los siete
+   huerfanos, y eso es trabajo aparte de esta migracion.
+
+POR QUE EL INSERT LLEVA LOS FILTROS QUE LLEVA
+=============================================
+`EXISTS` sobre `organizations`: sin el, la FK de `organization_users` aborta la
+migracion entera. Es lo que tumbo la v1.32.1.
+
+`NOT EXISTS` sobre `account_events`: se conserva **aunque hoy no excluya a
+nadie**. Cuesta poco y hace la migracion auto-correctiva — si entre la medicion y
+el despliegue alguien quita a un master a proposito, el relleno no le devuelve el
+rol en silencio. Una migracion que depende de que los datos no se muevan entre
+que se miden y se aplica es una migracion que miente.
+
+`NOT EXISTS` sobre la membresia **no filtra por rol**, a proposito: filtrando,
+un usuario con membresia `member` recibiria una segunda fila y violaria
+`uq_org_user`. Comprobado por ejecucion rompiendolo.
 
 POR QUE EL DOWNGRADE NO DESHACE EL RELLENO
 ==========================================
@@ -76,11 +103,13 @@ Decision de Jesus, 20/09/2026, y conviene que este escrita porque el guardian de
 CI de la cadena exige `downgrade()` con cuerpo real y este lo tiene: quita la
 columna y su CHECK.
 
-Lo que no hace es tocar las membresias, y no por descuido. El relleno **no
-concede nada nuevo**: materializa el rol que esas siete personas ya tienen hoy a
-traves del fallback. Revertir la columna de estado no es razon para quitarselo, y
-borrarlas dejaria a esos usuarios peor de lo que estaban antes de esta migracion.
-El relleno es, en ese sentido, irreversible a proposito.
+Lo que no hace es tocar las membresias que el paso 2 pudiera crear, y no por
+descuido. Ese relleno **no concede nada nuevo**: materializa un rol que el
+fallback ya daba. Revertir la columna de estado no es razon para quitarselo.
+
+Hoy la cuestion es teorica —el paso 2 inserta cero filas, ver arriba— pero la
+regla se deja escrita y con su test, porque el dia que inserte alguna seguira
+siendo cierta.
 """
 
 from typing import Sequence, Union
@@ -154,12 +183,18 @@ def upgrade() -> None:
         """)
 
     # ------------------------------------------------------------------
-    # 2. La membresia OWNER de los masters heredados
+    # 2. La membresia OWNER de un master que no la tenga
     # ------------------------------------------------------------------
-    # Ver la cabecera: esto es lo que permite borrar el fallback de is_master en
-    # la rebanada de codigo sin quitarle el rol a nadie.
+    # Ver la cabecera: **hoy esto inserta cero filas**. Los siete que se creian
+    # masters heredados resultaron ser huerfanos con la organizacion borrada, y
+    # el `EXISTS` de abajo los deja fuera — que es lo correcto: no se puede crear
+    # una membresia hacia una organizacion que no esta, y la FK lo impide de
+    # todos modos.
     #
-    # Idempotente por los dos NOT EXISTS: correrla dos veces no inserta nada la
+    # Se conserva porque es el invariante correcto y hara lo suyo el dia que
+    # aparezca un master con organizacion real y sin membresia.
+    #
+    # Idempotente por los NOT EXISTS: correrla dos veces no inserta nada la
     # segunda vez.
     op.execute("""
         INSERT INTO public.organization_users (organization_id, user_id, role)
@@ -167,6 +202,10 @@ def upgrade() -> None:
           FROM public.users u
          WHERE u.is_master
            AND u.organization_id IS NOT NULL
+           AND EXISTS (
+                 SELECT 1
+                   FROM public.organizations o
+                  WHERE o.id = u.organization_id)
            AND NOT EXISTS (
                  SELECT 1
                    FROM public.organization_users ou
