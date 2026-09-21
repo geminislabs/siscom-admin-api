@@ -38,7 +38,7 @@ conserva el handle de Cognito, inmutable y todavía válido.
 |---|---|
 | `users.status` | `text NOT NULL DEFAULT 'ACTIVE'` |
 | `ck_users_status` | `CHECK (status IN ('ACTIVE','INACTIVE'))` |
-| *(datos)* | La membresía `owner` que le falta a cada master heredado |
+| *(datos)* | La membresía `owner` de un master que no la tenga — **hoy: cero filas**, ver abajo |
 
 **Sólo dos valores, a propósito.** Añadir `SUSPENDED` o `PENDING` ahora sería
 sembrar códigos sin semántica acordada — lo mismo que la 027 evitó al no sembrar
@@ -47,7 +47,7 @@ su `CHECK`.
 
 ---
 
-## El relleno, y por qué no es opcional
+## El relleno, y la premisa que resultó falsa
 
 `OrganizationService.get_user_role` resuelve por membresía, pero tiene un
 *fallback* heredado (`app/services/organization.py:78-81`): sin membresía, si
@@ -56,8 +56,8 @@ su `CHECK`.
 Ese *fallback* es la segunda fuente de verdad sobre «qué rol tiene esta persona
 aquí», y produce un fallo propio: **a un master al que le borran la membresía no
 se le quita el rol**. La salida limpia no es añadirle una condición sino
-quitarlo — y para poder quitarlo, todo usuario que hoy dependa de él necesita su
-membresía explícita.
+quitarlo. Lo que se creía es que para poder quitarlo había que darle su
+membresía explícita a quien dependiera de él. Resultó que no hay nadie así.
 
 > ### ⚠️ Medido el 20/09, y **mal interpretado** hasta el 21
 >
@@ -96,9 +96,21 @@ WHERE u.is_master
            AND ou.role            = 'owner');
 ```
 
-- `removido_en` **nulo** → heredado. Se rellena.
-- `removido_en` **con fecha** → lo sacaron adrede. **No se rellena**, y el
-  `INSERT` de la migración ya lo excluye.
+Esa consulta **no distingue huérfanos**, que es exactamente el error que costó
+un despliegue. Para separarlos:
+
+```sql
+-- los que NO tienen organización: huérfanos, no se rellenan nunca
+SELECT count(*) FROM users u
+WHERE u.organization_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id = u.organization_id);
+```
+
+- **Sin organización** → huérfano. El `INSERT` lo excluye con su `EXISTS`, y no
+  hay membresía posible: la FK de `organization_users` lo impediría igual.
+- **Con organización y `removido_en` nulo** → se rellena.
+- **Con organización y `removido_en` con fecha** → lo sacaron adrede. No se
+  rellena.
 
 **El filtro por `account_events` se conserva aunque hoy no excluya a nadie.**
 Cuesta un `NOT EXISTS` y hace la migración auto-correctiva: si entre la medición
@@ -116,14 +128,15 @@ tenga membresía explícita —sea cual sea su rol— ya resuelve por ella y el
 
 ## Reversión
 
-`downgrade` quita `ck_users_status` y la columna. **No toca las membresías**, y
-no por descuido: el relleno no concede nada nuevo, materializa el rol que esas
-siete personas ya tienen hoy a través del *fallback*. Revertir la columna no es
-razón para quitárselo, y borrarlas las dejaría peor que antes de la migración.
+`downgrade` quita `ck_users_status` y la columna. **No toca las membresías que el
+relleno pudiera haber creado**, y no por descuido: no conceden nada nuevo,
+materializan un rol que el *fallback* ya daba. Revertir la columna no es razón
+para quitárselo.
 
-El relleno es, en ese sentido, **irreversible a propósito**. Está fijado con un
-test (`test_segundo_ciclo_no_borra_las_membresias_ni_las_duplica`), para que si
-alguien añade un `DELETE` «por simetría» se vea en CI y no en producción.
+Hoy la cuestión es teórica —el relleno inserta cero filas— pero la regla queda
+escrita y con test
+(`test_segundo_ciclo_no_borra_las_membresias_ni_las_duplica`), para que si alguien
+añade un `DELETE` «por simetría» se vea en CI y no en producción.
 
 Rollback completo del release: redesplegar el tag anterior. La columna sobra
 para el código viejo, que no la menciona.
