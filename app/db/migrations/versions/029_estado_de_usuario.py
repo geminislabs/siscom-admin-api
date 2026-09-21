@@ -99,6 +99,35 @@ ESTADOS = ("ACTIVE", "INACTIVE")
 
 def upgrade() -> None:
     # ------------------------------------------------------------------
+    # 0. No colgarse esperando un bloqueo
+    # ------------------------------------------------------------------
+    # El primer intento de desplegar esta migracion (v1.32.0, 21/09/2026) se
+    # quedo **colgado 9 minutos y 42 segundos** en el `ADD COLUMN` de abajo,
+    # hasta que el canal SSH del despliegue se rindio por timeout. No fallo: se
+    # colgo, que es peor.
+    #
+    # `ALTER TABLE` necesita ACCESS EXCLUSIVE sobre `users`, y `users` se lee en
+    # **cada peticion autenticada** (`deps.py` busca por `cognito_sub`). Si algo
+    # tiene la tabla tomada, el ALTER espera; y mientras espera, **los lectores
+    # que llegan despues se encolan detras de el**. Una operacion que en PG15 es
+    # de metadatos —sin reescritura de tabla— se convirtio en diez minutos de
+    # autenticacion degradada.
+    #
+    # `lock_timeout` convierte eso en un fallo de diez segundos que no toca
+    # nada: el despliegue aborta antes de sustituir el contenedor, el servicio
+    # anterior sigue sirviendo, y el mensaje de error **nombra el bloqueo**, que
+    # es justo el diagnostico que la primera vez hubo que ir a buscar a mano.
+    #
+    # `statement_timeout` cubre lo otro que podria tardar, el relleno del paso
+    # 2. Hoy son siete filas, pero el `NOT EXISTS` contra `account_events`
+    # recorre una tabla de auditoria que solo crece.
+    #
+    # LOCAL y no global: revierte al cerrar la transaccion de alembic, asi que
+    # no deja configuracion pegada a la sesion.
+    op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("SET LOCAL statement_timeout = '5min'")
+
+    # ------------------------------------------------------------------
     # 1. La columna de estado
     # ------------------------------------------------------------------
     # NOT NULL con DEFAULT desde el principio: toda fila existente nace
