@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
 > historial falso. Las de `1.25.0`, `1.26.0`, `1.27.0`, `1.27.1`, `1.28.0`, `1.29.0`, `1.29.1`,
-> `1.30.0`, `1.30.1`, `1.31.0` y `1.32.0` sí se
+> `1.30.0`, `1.30.1`, `1.31.0`, `1.32.0` y `1.32.1` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
 ### Changed
@@ -71,7 +71,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [1.32.1] - 2026-09-21
+
+**Migraciones.** Una: `029_estado_de_usuario` — **la misma que la `1.32.0` anunciaba y no llegó a
+aplicar**. Cabeza: `028_identidad_esquema` → `029_estado_de_usuario`.
+
+**Rollback.** Idéntico al de la `1.32.0`: basta redesplegar el tag anterior, porque la migración es
+aditiva y el código de `1.31.0` ignora la columna que no conoce.
+
+> **Este downgrade no es del todo simétrico, y es deliberado.** Quita `users.status` y su `CHECK`,
+> pero **no borra las siete membresías `owner` que el relleno creó**. Hay un test que lo fija.
+
+### Fixed
+
+- **La `029` ya no puede colgarse esperando un bloqueo.** El despliegue de la `1.32.0` se quedó
+  **9 m 42 s** en el `ADD COLUMN` hasta que el canal SSH se rindió. `ALTER TABLE` necesita
+  `ACCESS EXCLUSIVE` sobre `users`, y `users` se lee en **cada petición autenticada**
+  (`deps.py` busca por `cognito_sub`): si algo tiene la tabla tomada el ALTER espera, y **mientras
+  espera, los lectores que llegan después se encolan detrás de él**. Una operación que en PG15 es de
+  metadatos —sin reescritura de tabla— se convirtió en diez minutos de autenticación degradada
+  - `SET LOCAL lock_timeout = '10s'` y `SET LOCAL statement_timeout = '5min'` al principio del
+    `upgrade`. El peor caso pasa de diez minutos de cola a **un fallo de diez segundos que no toca
+    nada**, y cuyo error **nombra el bloqueo** — el diagnóstico que la primera vez hubo que ir a
+    buscar a mano y ya no estaba
+  - **En la migración y no en `deploy.yml`**, a propósito: así viaja con ella y protege también a
+    quien la corra a mano para repararla en caliente. Un guardián general en el workflow es buena
+    idea y es otro cambio
+  - **Verificado de paso que producción es PostgreSQL 15** (`timescale/timescaledb:2.15.1-pg15`).
+    Descarta la hipótesis de reescritura de tabla y deja la contención de bloqueo como única
+    explicación razonable — que **sigue sin estar probada**: lo que lo probaría (`pg_locks` durante
+    el atasco) se perdió al morir el intento. El `lock_timeout` es justamente lo que la probará
+  - Se edita la `029` **en sitio** y no se añade una `030`: nunca llegó a aplicarse en ningún
+    entorno
+
 ## [1.32.0] - 2026-09-21
+
+> ### ⚠️ Etiquetada, pero **nunca llegó a producción**
+>
+> Su despliegue **no falló: se colgó.** La migración se quedó 9 m 42 s esperando el
+> `ACCESS EXCLUSIVE` sobre `users` hasta que el canal SSH se rindió por timeout, y la
+> transacción de alembic revirtió entera. Producción siguió en `v1.31.0` con el esquema en
+> `028_identidad_esquema`, sin que el contenedor se tocara: las migraciones corren **antes**
+> de sustituirlo.
+>
+> **Lo que esta versión describe se liberó realmente en la `1.32.1`.** Se conserva la sección
+> porque el tag existe: es más honesto que un `v1.32.0` publicado no aparezca como versión
+> fantasma el día que alguien lo busque en un `/health`.
 
 **Migraciones.** Una: `029_estado_de_usuario`. Cabeza: `028_identidad_esquema` →
 `029_estado_de_usuario`.
