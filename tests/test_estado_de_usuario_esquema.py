@@ -168,6 +168,13 @@ def datos(engine):
         org_normal = _organizacion(c, cuenta, "Org del usuario normal")
         normal = _usuario(c, "normal@example.com", org_normal, master=False)
 
+        # El caso que tumbo el despliegue de v1.32.1: un master cuya
+        # organizacion **no existe**. Se puede insertar porque
+        # `users.organization_id` no tiene FK en produccion — solo un indice — y
+        # esta base sale del snapshot productivo, asi que reproduce ese hueco.
+        org_fantasma = uuid4()
+        huerfano = _usuario(c, "huerfano@example.com", org_fantasma, master=True)
+
         tx.commit()
 
     if desechable.alembic(BASE, "downgrade", REVISION_ANTERIOR) != 0:
@@ -181,7 +188,9 @@ def datos(engine):
         "con_rol": con_rol,
         "removido": removido,
         "normal": normal,
+        "huerfano": huerfano,
         "org_heredado": org_heredado,
+        "org_fantasma": org_fantasma,
     }
 
 
@@ -278,6 +287,28 @@ def test_master_removido_a_proposito_no_recupera_el_rol(engine, datos):
 def test_usuario_normal_no_recibe_nada(engine, datos):
     with engine.connect() as c:
         assert _membresias_de(c, datos["normal"]) == []
+
+
+def test_master_con_organizacion_inexistente_no_tumba_la_migracion(engine, datos):
+    """El caso que tumbo el despliegue de v1.32.1.
+
+    Un master cuya organizacion no existe **no puede** recibir membresia: la FK
+    de `organization_users` lo impide, y sin el `EXISTS` sobre `organizations`
+    ese `ForeignKeyViolation` aborta la migracion entera.
+
+    Que este test exista es lo que convierte aquel fallo en algo que se ve en CI
+    y no en un despliegue. Los siete usuarios que en produccion se creian
+    "masters heredados" son exactamente este caso.
+    """
+    with engine.connect() as c:
+        assert _membresias_de(c, datos["huerfano"]) == []
+
+        # Y la organizacion sigue sin existir: el test prueba lo que dice
+        existe = c.execute(
+            text("SELECT count(*) FROM organizations WHERE id = :o"),
+            {"o": str(datos["org_fantasma"])},
+        ).scalar_one()
+        assert existe == 0
 
 
 # ---------------------------------------------------------------------------
