@@ -1206,8 +1206,8 @@ def refresh_token(
     4. Retorna los nuevos access token e id token
 
     Notas:
-    - El refresh token NO se renueva, sigue siendo el mismo
-    - Solo se renuevan el access token y el id token
+    - Si el proveedor devuelve un refresh token nuevo —rotación—, se reenvía al
+      cliente en `refresh_token`. Hoy este pool no rota y el campo sale `null`
     - Este endpoint NO requiere autenticación (es público)
     - Se requiere el email para generar el SECRET_HASH cuando el App Client tiene Client Secret habilitado
 
@@ -1233,6 +1233,11 @@ def refresh_token(
         access_token = sesion.access_token
         id_token = sesion.id_token
         expires_in = sesion.expires_in
+        # Con la rotación activada, Cognito devuelve un refresh token nuevo y
+        # el anterior caduca tras el periodo de gracia. Si no se reenvía, el
+        # cliente se queda con el viejo y acaba en la pantalla de login sin
+        # nada en los logs que lo explique.
+        nuevo_refresh_token = sesion.refresh_token
 
         print(f"[REFRESH TOKEN] Tokens renovados exitosamente para {request.email}")
 
@@ -1277,6 +1282,7 @@ def refresh_token(
         id_token=id_token,
         token_type="Bearer",
         expires_in=expires_in,
+        refresh_token=nuevo_refresh_token,
     )
 
 

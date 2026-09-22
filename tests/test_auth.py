@@ -411,3 +411,60 @@ def test_restablecer_contrasena_cierra_las_demas_sesiones(
     idp_falso.revocar_sesiones_de.assert_called_once_with(
         handle=test_user_data.external_id
     )
+
+
+# ── /auth/refresh · el token rotado ──────────────────────────────────────
+#
+# Cognito sabe rotar refresh tokens y en este pool está apagado
+# (`RefreshTokenRotation: null`). El día que se encienda devolverá uno nuevo en
+# cada renovación y el anterior dejará de valer pasado el periodo de gracia. El
+# endpoint tiene que reenviarlo **antes** de que eso pase: si no, todo el mundo
+# acaba en la pantalla de login. Por eso estos dos tests son el paso 1 del orden
+# de §24 y no van después de activar la rotación.
+
+
+def test_refresh_reenvia_el_token_rotado(client, idp_falso):
+    """Si el proveedor devuelve un refresh token nuevo, el cliente lo recibe."""
+    idp_falso.renovar.return_value = Sesion(
+        access_token="access-nuevo",
+        id_token="id-nuevo",
+        refresh_token="refresh-rotado",
+        expires_in=3600,
+    )
+
+    response = client.post(
+        "/api/v1/auth/refresh",
+        json={"email": "usuario@example.com", "refresh_token": "refresh-viejo"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    cuerpo = response.json()
+    assert cuerpo["refresh_token"] == "refresh-rotado"
+    assert cuerpo["access_token"] == "access-nuevo"
+    idp_falso.renovar.assert_called_once_with(
+        handle="usuario@example.com", refresh_token="refresh-viejo"
+    )
+
+
+def test_refresh_sin_rotacion_devuelve_el_campo_nulo(client, idp_falso):
+    """Es el comportamiento de hoy, y tiene que seguir siendo válido.
+
+    Sin rotación Cognito no manda `RefreshToken`, así que el campo sale `null`
+    en vez de ausente o vacío: el cliente distingue «no hay uno nuevo» de «toma
+    éste» sin adivinar. `nexus-web` ya lo trata así — `setSession()` guarda el
+    token sólo si viene.
+    """
+    idp_falso.renovar.return_value = Sesion(
+        access_token="access-nuevo",
+        id_token="id-nuevo",
+        refresh_token=None,
+        expires_in=3600,
+    )
+
+    response = client.post(
+        "/api/v1/auth/refresh",
+        json={"email": "usuario@example.com", "refresh_token": "refresh-viejo"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["refresh_token"] is None

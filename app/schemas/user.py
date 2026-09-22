@@ -393,12 +393,21 @@ class RefreshTokenRequest(BaseModel):
 
 
 class RefreshTokenResponse(BaseModel):
-    """Schema para la respuesta de refresh token."""
+    """Schema para la respuesta de refresh token.
+
+    `refresh_token` es **opcional** porque hoy Cognito no rota: sin rotación
+    activada la respuesta no trae uno y el campo sale `null`. El día que se
+    active, viene el token nuevo y el cliente tiene que guardarlo — el viejo
+    deja de valer pasado el periodo de gracia. Declararlo antes de activar la
+    rotación es lo que evita que ese cambio de configuración tumbe las
+    sesiones de todo el mundo.
+    """
 
     access_token: str
     id_token: str
     token_type: str = "Bearer"
     expires_in: int
+    refresh_token: Optional[str] = None
 
     class Config:
         json_schema_extra = {
@@ -407,6 +416,7 @@ class RefreshTokenResponse(BaseModel):
                 "id_token": "eyJraWQiOiJ...",
                 "token_type": "Bearer",
                 "expires_in": 3600,
+                "refresh_token": "eyJjdHkiOiJ...",
             }
         }
 

@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`POST /auth/refresh` devuelve `refresh_token`** cuando el proveedor da uno nuevo. Hoy este
+  pool no rota (`RefreshTokenRotation: null`), así que el campo sale `null` y nada cambia para
+  ningún cliente. Es el **paso 1** del orden de §24: sin él, activar la rotación deja a los
+  clientes con el token viejo y los manda a la pantalla de login pasado el periodo de gracia, sin
+  rastro en los logs. `nexus-web` ya guarda el token si viene; iOS y Android tienen que hacerlo
+  cuando arreglen su refresh
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
