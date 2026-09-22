@@ -175,9 +175,23 @@ def test_decode_share_token_returns_none_for_wrong_scope(paseto_generator):
 
 
 def test_decode_share_token_returns_none_for_tampered_token(paseto_generator):
+    """Un token manipulado no decodifica.
+
+    La version anterior fallaba 1 de cada 63 corridas, y conviene saber por
+    que: sustituia el caracter `token[-3]` pero elegia el reemplazo mirando
+    `token[-1]`. Cuando el antepenultimo caracter ya era una "X", el
+    reemplazo producia otra "X" y `bad` salia **identico al original** — el
+    test decodificaba un token intacto y se sorprendia de que funcionara.
+
+    El arreglo es mirar el caracter que se sustituye. Y la linea que de
+    verdad cierra el agujero es el `assert bad != token`: sin ella, el test
+    puede volver a quedarse sin manipular nada y nadie se entera hasta que
+    falla, meses despues, en una corrida que no tiene nada que ver.
+    """
     uid = uuid4()
     token, _ = paseto_generator.generate_share_token(uid, "d")
-    bad = token[:-3] + ("X" if token[-1] != "X" else "Y") + token[-2:]
+    bad = token[:-3] + ("X" if token[-3] != "X" else "Y") + token[-2:]
+    assert bad != token, "el test no manipulo el token: no esta probando nada"
     assert paseto_generator.decode_share_token(bad) is None
 
 
