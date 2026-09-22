@@ -16,39 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Superficie interna de usuarios para GAC** — `GET /internal/users` y
-  `PATCH /internal/users/{id}/status`, con token PASETO de servicio (`gac` / `GAC_ADMIN`)
-  - **Direcciona al usuario por su id y no pasa por organización, y ése es el punto.** Los siete
-    huérfanos **no se pueden tocar** por `DELETE /organizations/{org}/users/{id}`: su
-    `organization_id` apunta a una organización que no existe, así que `_verify_org_access` falla
-    antes de llegar al usuario. El endpoint que la `v1.34.0` creó justo para desactivar gente no
-    puede desactivarlos
-  - `orphaned=true` promueve a endpoint el contador (4) del runbook de la 029, que hasta ahora era
-    SQL suelto
-  - El refuerzo en el proveedor va **después** del commit y **se informa en la respuesta**
-    (`proveedor_sincronizado`) en vez de tragárselo: permite a GAC enseñar «desactivado, pero la
-    credencial sigue viva» en vez de mentir
-  - **El harness resultó ser más estricto que producción.** El modelo declara
-    `ForeignKey("organizations.id")` en `users.organization_id` y `create_all()` la crea; el
-    esquema productivo **sólo tiene un índice**. Sin quitar esa restricción en la prueba, el caso
-    que este endpoint existe para resolver **no se puede escribir como test** — la base de pruebas
-    lo prohíbe y la de verdad lo contiene siete veces
-- **Un test que 1 de cada 63 veces no probaba nada.**
-  `test_decode_share_token_returns_none_for_tampered_token` sustituía el carácter `token[-3]` pero
-  elegía el reemplazo mirando `token[-1]`: cuando el antepenúltimo ya era una `X`, `bad` salía
-  **idéntico al original** y el test decodificaba un token intacto. Tasa medida sobre 200 000
-  tokens simulados: **1,57 %**. Tumbó la CI del PR #100, que no tenía nada que ver
-  - Además del arreglo, el test ahora **afirma que manipuló algo** (`assert bad != token`) antes de
-    afirmar nada más. Sin esa línea puede volver a quedarse sin tocar el token y nadie se entera
-    hasta que falla, meses después, en una corrida ajena
-- **CI: adiós a Node 20.** `actions/checkout`, `actions/setup-python` y `actions/upload-artifact`
-  pasan de `v4` a `v7`. GitHub ya forzaba esas tres a correr en Node 24 y lo avisaba en cada
-  corrida; las versiones nuevas lo declaran. De paso se unifican las `checkout`, que convivían en
-  `v4` y `v6` en el mismo repositorio
-  - **`appleboy/scp-action` y `appleboy/ssh-action` se quedan como están**, a propósito: el log del
-    workflow de despliegue **no emite ningún aviso**, así que no están afectadas. Viven en el
-    camino del despliegue y sólo se validan desplegando — no hay razón para arriesgarlo por un
-    aviso que no existe
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
@@ -100,6 +67,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.35.0] - 2026-09-22
+
+**Migraciones.** **Ninguna.** La revisión sigue en `029_estado_de_usuario` antes y después: la
+señal correcta en el log del despliegue es la **ausencia** de `Running upgrade`.
+
+**Rollback.** Redesplegar `v1.34.0`. No hay esquema que revertir. Lo que se pierde al revertir es
+la única vía por API para tocar a los huérfanos — se vuelve a depender de SQL a mano.
+
+**Minor.** Dos endpoints nuevos, `GET /internal/users` y `PATCH /internal/users/{id}/status`.
+Aditivo: nada de lo que existía cambia de forma ni de conducta.
+
+**Para qué se despliega esta release, en concreto.** Para poder desactivar por API a **seis de los
+siete huérfanos** —decididos uno por uno el 22/09 con sus datos delante: ninguno tiene unidades,
+dispositivos ni equipos, y ninguno tiene una organización viva a la que ser reasignado—. El
+séptimo, `fer.garrido.chvz@gmail.com`, es de Geminis y **se arregla, no se desactiva**; su destino
+sigue sin decidirse porque no tiene ninguna cuenta con organizaciones vivas.
+
+**Qué comprobar después.** El reparto de `users.status` pasa de `ACTIVE: 23` a
+`ACTIVE: 17, INACTIVE: 6` **sólo cuando se ejecuten las bajas**, que es un paso aparte y manual.
+Si cambia antes, o cambia de otra forma, hay un camino marcando filas sin que nadie lo pida.
+
+### Added
+
+- **Superficie interna de usuarios para GAC** — `GET /internal/users` y
+  `PATCH /internal/users/{id}/status`, con token PASETO de servicio (`gac` / `GAC_ADMIN`)
+  - **Direcciona al usuario por su id y no pasa por organización, y ése es el punto.** Los siete
+    huérfanos **no se pueden tocar** por `DELETE /organizations/{org}/users/{id}`: su
+    `organization_id` apunta a una organización que no existe, así que `_verify_org_access` falla
+    antes de llegar al usuario. El endpoint que la `v1.34.0` creó justo para desactivar gente no
+    puede desactivarlos
+  - `orphaned=true` promueve a endpoint el contador (4) del runbook de la 029, que hasta ahora era
+    SQL suelto
+  - El refuerzo en el proveedor va **después** del commit y **se informa en la respuesta**
+    (`proveedor_sincronizado`) en vez de tragárselo: permite a GAC enseñar «desactivado, pero la
+    credencial sigue viva» en vez de mentir
+  - **El harness resultó ser más estricto que producción.** El modelo declara
+    `ForeignKey("organizations.id")` en `users.organization_id` y `create_all()` la crea; el
+    esquema productivo **sólo tiene un índice**. Sin quitar esa restricción en la prueba, el caso
+    que este endpoint existe para resolver **no se puede escribir como test** — la base de pruebas
+    lo prohíbe y la de verdad lo contiene siete veces
+- **Un test que 1 de cada 63 veces no probaba nada.**
+  `test_decode_share_token_returns_none_for_tampered_token` sustituía el carácter `token[-3]` pero
+  elegía el reemplazo mirando `token[-1]`: cuando el antepenúltimo ya era una `X`, `bad` salía
+  **idéntico al original** y el test decodificaba un token intacto. Tasa medida sobre 200 000
+  tokens simulados: **1,57 %**. Tumbó la CI del PR #100, que no tenía nada que ver
+  - Además del arreglo, el test ahora **afirma que manipuló algo** (`assert bad != token`) antes de
+    afirmar nada más. Sin esa línea puede volver a quedarse sin tocar el token y nadie se entera
+    hasta que falla, meses después, en una corrida ajena
+- **CI: adiós a Node 20.** `actions/checkout`, `actions/setup-python` y `actions/upload-artifact`
+  pasan de `v4` a `v7`. GitHub ya forzaba esas tres a correr en Node 24 y lo avisaba en cada
+  corrida; las versiones nuevas lo declaran. De paso se unifican las `checkout`, que convivían en
+  `v4` y `v6` en el mismo repositorio
+  - **`appleboy/scp-action` y `appleboy/ssh-action` se quedan como están**, a propósito: el log del
+    workflow de despliegue **no emite ningún aviso**, así que no están afectadas. Viven en el
+    camino del despliegue y sólo se validan desplegando — no hay razón para arriesgarlo por un
+    aviso que no existe
 
 ## [1.34.0] - 2026-09-22
 
