@@ -16,12 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`POST /auth/refresh` devuelve `refresh_token`** cuando el proveedor da uno nuevo. Hoy este
-  pool no rota (`RefreshTokenRotation: null`), así que el campo sale `null` y nada cambia para
-  ningún cliente. Es el **paso 1** del orden de §24: sin él, activar la rotación deja a los
-  clientes con el token viejo y los manda a la pantalla de login pasado el periodo de gracia, sin
-  rastro en los logs. `nexus-web` ya guarda el token si viene; iOS y Android tienen que hacerlo
-  cuando arreglen su refresh
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
@@ -74,8 +68,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
 
+## [1.33.0] - 2026-09-21
 
+**Migraciones.** **Ninguna.** La revisión sigue en `029_estado_de_usuario` antes y después. La
+señal correcta en el log del despliegue es la **ausencia** de `Running upgrade`; si aparece, algo
+va mal y hay que parar.
 
+**Rollback.** Redesplegar el tag anterior. No hay esquema que revertir.
+
+**Por qué minor y no patch.** El contrato OpenAPI cambia, y de forma aditiva: un campo opcional
+nuevo en `RefreshTokenResponse`. Comparado generando `app.openapi()` en un worktree de cada rama,
+el mismo método que cerró la `1.30.1` como patch — ahí el contrato era byte-idéntico y aquí no.
+
+### Added
+
+- **`POST /auth/refresh` devuelve `refresh_token`** cuando el proveedor da uno nuevo. Hoy este pool
+  no rota (`RefreshTokenRotation: null`), así que el campo sale `null` y **nada cambia para ningún
+  cliente**
+  - Es el **paso 1 del orden de §24, y va antes de activar la rotación, no después**. Con rotación,
+    Cognito devuelve un refresh token nuevo en cada renovación y el anterior caduca pasado el
+    periodo de gracia. El endpoint lo tiraba: `Sesion.refresh_token` ya venía del proveedor desde
+    la `1.30.1`, pero ni el código lo copiaba ni el schema lo declaraba. Activar la rotación así
+    manda a todo el mundo a la pantalla de login, sin nada en los logs que lo explique
+  - `nexus-web` ya guarda el token si viene (`setSession()`); iOS y Android tendrán que hacerlo
+    cuando arreglen su refresh, que hoy devuelve 422
+  - Dos tests, y el del token rotado **verificado quitando la línea del arreglo**: falla con
+    `AssertionError` y vuelve a verde al restaurarla
+
+### Changed
+
+- **CI: `pytest` reporta las 25 pruebas más lentas** (`--durations=25`). El job `quality` tarda
+  ~14,5 min y nadie sabía en qué. Medido sobre la corrida `35646430146`: de 874 s, **786 s son el
+  paso de tests** y todo lo demás suma 88 s. El primer desglose dice que **no hay ningún test
+  lento** — hay ~250 pagando un coste fijo de 3,02 s en `setup`, en módulos que no comparten nada.
+  El mismo conjunto tarda 23 s en local, así que el coste es del entorno de CI y no de los tests.
+  Queda abierto qué lo produce
+
+### Fixed
+
+- `docs/runbooks/desplegar-estado-de-usuario.md` deja de decir «No se ha desplegado» y **anota sus
+  seis contadores**, medidos contra producción: (a), (b), (c) y el relleno en `0`, siete huérfanos,
+  y `ACTIVE: 23` sin otros valores
+  - **(a) = 0 es lo que autoriza borrar el *fallback* de `is_master`** en
+    `OrganizationService.get_user_role`, que abre el release siguiente
+  - (4) junto a (5) dicen algo que «los siete huérfanos» dicho suelto escondía: son **siete sobre
+    veintitrés**, casi un tercio de la tabla
 
 ## [1.32.2] - 2026-09-21
 
