@@ -22,11 +22,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, require_organization_role
+from app.api.deps import AuthResult, get_identity_provider, require_organization_role
 from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.organization_user import OrganizationRole, OrganizationUser
-from app.models.user import User
+from app.models.user import User, UserStatus
 from app.schemas.organization import (
     AddUserToOrganizationRequest,
     OrganizationUserOut,
@@ -34,6 +34,7 @@ from app.schemas.organization import (
     UpdateMemberRoleRequest,
 )
 from app.services.audit import AuditService
+from app.services.identity import ErrorDeIdentidad, IdentityProvider
 from app.services.organization import OrganizationService
 
 logger = logging.getLogger(__name__)
@@ -448,6 +449,7 @@ def remove_user_from_organization(
     request: Request,
     db: Session = Depends(get_db),
     auth: AuthResult = Depends(require_organization_role("admin")),
+    idp: IdentityProvider = Depends(get_identity_provider),
 ):
     """
     Elimina un usuario de la organización.
@@ -458,6 +460,13 @@ def remove_user_from_organization(
     - Admin NO puede eliminar a owners
     - No se puede eliminar al último owner
     - Un usuario no puede eliminarse a sí mismo (debe transferir ownership primero)
+
+    **Además de borrar la membresía, marca la fila `INACTIVE`.** Hasta la 029
+    esto sólo borraba la membresía y dejaba la fila de `users` intacta, con su
+    correo y su credencial — lo que producía un callejón sin salida: al volver
+    a invitar a esa persona, `invite_user` encontraba la fila y respondía 400,
+    y no había ningún endpoint que la borrara. La fila **no se borra** (veinte
+    FK la referencian, varias en cascada); se desactiva.
     """
     # Verificar acceso a la organización
     org = _verify_org_access(db, organization_id, auth)
@@ -526,11 +535,40 @@ def remove_user_from_organization(
 
     # Eliminar la membresía
     db.delete(membership)
+
+    # Y desactivar la fila, que es lo que rompe el callejón sin salida.
+    #
+    # Sólo cuando la organización de la que se le saca es **la suya**. Alguien
+    # puede ser miembro de varias: quitarle una membresía ajena no lo da de
+    # baja del sistema.
+    target = db.query(User).filter(User.id == user_id).first()
+    desactivado = False
+    if target is not None and target.organization_id == organization_id:
+        target.status = UserStatus.INACTIVE.value
+        db.add(target)
+        desactivado = True
+
     db.commit()
+
+    # El refuerzo en el proveedor va **después** del commit, y su fallo no
+    # tumba la operación: la fuente de verdad es `users.status`, ya escrito
+    # (§9, regla 1). Si esto falla, queda una credencial habilitada que no
+    # autoriza nada, porque `deps.py` revalida contra Postgres en cada
+    # petición. Al revés —deshabilitar en Cognito y que el commit fallara—
+    # dejaría a alguien sin poder entrar y activo en la base, que es peor.
+    if desactivado and target is not None:
+        try:
+            idp.deshabilitar(handle=target.external_id)
+        except ErrorDeIdentidad as e:
+            logger.error(
+                f"[ORG_USER REMOVE] user={user_id} quedo INACTIVE en la base pero "
+                f"no se pudo deshabilitar en el proveedor [{e.codigo}]: {e.mensaje}"
+            )
 
     logger.info(
         f"[ORG_USER REMOVE] user={user_id} removed from org={organization_id} "
-        f"(was role={current_role_str}) by actor={auth.user_id}"
+        f"(was role={current_role_str}) by actor={auth.user_id} "
+        f"desactivado={desactivado}"
     )
 
     return None

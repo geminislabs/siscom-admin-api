@@ -75,11 +75,25 @@ class OrganizationService:
         if membership:
             return OrganizationRole(membership.role)
 
-        # Fallback: verificar is_master (legacy)
-        user = db.query(User).filter(User.id == user_id).first()
-        if user and user.organization_id == organization_id and user.is_master:
-            return OrganizationRole.OWNER
-
+        # Aquí había un *fallback* heredado: sin membresía, si
+        # `user.organization_id` coincidía y `user.is_master` era cierto,
+        # devolvía OWNER. Se borró el 22/09/2026, y conviene saber por qué se
+        # pudo.
+        #
+        # Era una segunda fuente de verdad sobre «qué rol tiene esta persona
+        # aquí», y tenía un fallo propio: a un master al que le borraban la
+        # membresía **no se le quitaba el rol**.
+        #
+        # Lo que autorizó quitarlo fue una medida, no una opinión. El contador
+        # (a) del runbook de la 029 —masters con organización **real** y sin
+        # membresía en ella— dio **0** contra producción el 21/09. Lo único que
+        # el *fallback* sostenía eran los siete huérfanos, cuya
+        # `organization_id` apunta a una organización que no existe; a ésos les
+        # devolvía «OWNER de una organización que no está». Al quitarlo pasan a
+        # `None`, que no es menos acceso: es el mismo, dicho con verdad.
+        #
+        # Si algún día ese contador deja de ser 0, la respuesta no es devolver
+        # el *fallback* sino crear la membresía que falta.
         return None
 
     @staticmethod

@@ -9,7 +9,6 @@ from fastapi import HTTPException
 
 from app.models.organization import Organization
 from app.models.organization_user import OrganizationRole, OrganizationUser
-from app.models.user import User as UserModel
 from app.services.organization import (
     OrganizationService,
     can_manage_billing_for_client,
@@ -42,27 +41,40 @@ def test_get_user_role_from_membership(org_id, user_id):
     assert role == OrganizationRole.ADMIN
 
 
-def test_get_user_role_fallback_owner_when_master(org_id, user_id):
-    session = MagicMock()
+def test_un_master_sin_membresia_ya_no_recibe_owner(org_id, user_id):
+    """El inverso del test que vivió aquí hasta el 22/09/2026.
 
-    user = MagicMock(spec=UserModel)
-    user.organization_id = org_id
-    user.is_master = True
+    Aquel afirmaba que un `is_master` sin membresía recibía OWNER, que es lo
+    que hacía el *fallback* heredado. Se borró, y esto fija lo contrario para
+    que nadie lo reponga por descuido.
+
+    Lo que autorizó quitarlo fue una medida: el contador (a) del runbook de la
+    029 —masters con organización **real** y sin membresía en ella— dio `0`
+    contra producción el 21/09. Lo único que el *fallback* sostenía eran los
+    siete huérfanos, a los que devolvía «OWNER de una organización que no
+    existe». `None` no es menos acceso que eso: es el mismo, dicho con verdad.
+
+    Que la sesión sea un doble que **sólo** conoce `OrganizationUser` es
+    parte de la afirmación: si alguien repone el *fallback*, el test no falla
+    por el `assert` sino por el `AssertionError` de la consulta a `users`, que
+    ya no debe ocurrir.
+    """
+    session = MagicMock()
 
     def query_side_effect(model):
         q = MagicMock()
         if model is OrganizationUser:
             q.filter.return_value.first.return_value = None
-        elif model is UserModel:
-            q.filter.return_value.first.return_value = user
         else:
-            raise AssertionError(model)
+            raise AssertionError(
+                f"get_user_role ya no consulta {model}: el rol sale de la "
+                "membresía y de nada más"
+            )
         return q
 
     session.query.side_effect = query_side_effect
 
-    role = OrganizationService.get_user_role(session, user_id, org_id)
-    assert role == OrganizationRole.OWNER
+    assert OrganizationService.get_user_role(session, user_id, org_id) is None
 
 
 def test_get_user_role_none_when_not_member(org_id, user_id):

@@ -33,6 +33,7 @@ from app.main import app
 from app.models.account import Account
 from app.models.device import Device
 from app.models.organization import Organization
+from app.models.organization_user import OrganizationRole, OrganizationUser
 from app.models.plan import Plan
 from app.models.unit import Unit
 from app.models.user import User
@@ -322,7 +323,19 @@ def client(db_session):
     app.dependency_overrides[get_db] = override_get_db
     _stub_kafka_producers()
 
-    with TestClient(app) as test_client:
+    # `client=(...)` da una direccion que Postgres acepta.
+    #
+    # Por defecto el TestClient se identifica con el host literal
+    # "testclient", y `AuditService` guarda la IP en una columna `inet`: el
+    # INSERT revienta con `invalid input syntax for type inet`. No se habia
+    # visto porque ningun test ejercia un endpoint que auditara la IP; el
+    # primero que lo hizo fue el de la baja de usuario, el 22/09/2026.
+    #
+    # No es un fallo de produccion —ahi `request.client.host` es una IP de
+    # verdad—, es que el harness ponia un valor que ningun servidor ASGI real
+    # pondria. §20 otra vez: un test que corre sobre datos imposibles no
+    # informa de lo que pasaria.
+    with TestClient(app, client=("203.0.113.10", 51234)) as test_client:
         yield test_client
 
     app.dependency_overrides.clear()
@@ -385,6 +398,27 @@ def test_user_data(db_session, test_organization_data):
         is_master=True,
     )
     db_session.add(user)
+    db_session.flush()
+
+    # La membresia OWNER explicita, que antes faltaba.
+    #
+    # Hasta el 22/09/2026 este fixture creaba la fila con `is_master=True` y
+    # **sin membresia**, y doce tests pasaban porque el *fallback* heredado de
+    # `OrganizationService.get_user_role` les devolvia OWNER. Al borrar ese
+    # fallback salieron todos con 403 a la vez.
+    #
+    # Lo que importa no es que hubiera que arreglarlos, sino que el fixture
+    # modelaba **un estado que produccion no tiene**: el contador (a) del
+    # runbook de la 029 —masters con organizacion real y sin membresia— dio
+    # `0` contra produccion. Los tests se apoyaban en un camino de codigo que
+    # ninguna fila real recorre.
+    db_session.add(
+        OrganizationUser(
+            organization_id=test_organization_data.id,
+            user_id=user.id,
+            role=OrganizationRole.OWNER.value,
+        )
+    )
     db_session.commit()
     db_session.refresh(user)
     return user

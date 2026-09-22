@@ -264,6 +264,24 @@ class CognitoIdentityProvider(IdentityProvider):
         except ClientError as exc:
             raise _traducir(exc) from exc
 
+    def deshabilitar(self, *, handle: str) -> None:
+        try:
+            self._cognito.admin_disable_user(
+                UserPoolId=settings.COGNITO_USER_POOL_ID,
+                Username=handle,
+            )
+        except ClientError as exc:
+            raise _traducir(exc) from exc
+
+    def habilitar(self, *, handle: str) -> None:
+        try:
+            self._cognito.admin_enable_user(
+                UserPoolId=settings.COGNITO_USER_POOL_ID,
+                Username=handle,
+            )
+        except ClientError as exc:
+            raise _traducir(exc) from exc
+
     def marcar_correo_verificado(self, *, handle: str, email: str) -> None:
         # `email` viaja junto a `email_verified` porque Cognito lo exige: sin
         # él la llamada falla. Mandar el mismo correo que ya está puesto es
