@@ -12,7 +12,7 @@ from app.api.deps import (
 )
 from app.db.session import get_db
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
-from app.models.user import User
+from app.models.user import User, UserStatus
 from app.schemas.user import (
     ResendInvitationRequest,
     ResendInvitationResponse,
@@ -78,9 +78,19 @@ def invite_user(
             detail="Solo los usuarios maestros pueden enviar invitaciones.",
         )
 
-    # 2️⃣ Verificar que el email no esté ya registrado
+    # 2️⃣ Verificar que el email no esté ya registrado **y activo**
+    #
+    # Una fila `INACTIVE` no bloquea el alta: es alguien a quien se dio de baja
+    # y a quien ahora se readmite. La invitación sigue su curso normal y
+    # `accept_invitation` **reactiva esa misma fila** en vez de crear otra.
+    #
+    # Crear otra no es alternativa aunque se quisiera: los índices
+    # `uq_users_marca_correo` y `uq_users_correo_marca_por_defecto` de la 028
+    # no filtran por estado, así que Postgres rechazaría el INSERT. Y aunque
+    # los filtrara, reactivar es lo correcto: conserva el handle de Cognito,
+    # que es inmutable, y no deja dos filas con el mismo correo.
     existing_user = db.query(User).filter(User.email == data.email).first()
-    if existing_user:
+    if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Ya existe un usuario registrado con el email {data.email}.",
@@ -194,20 +204,31 @@ def accept_invitation(
             detail="Datos de invitación incompletos.",
         )
 
-    # 5️⃣ Verificar que el usuario no exista (doble validación)
+    # 5️⃣ ¿Hay ya una fila con ese correo?
+    #
+    # Si está ACTIVE es un error, igual que antes. Si está INACTIVE es una
+    # readmisión, y entonces **se reactiva esa fila**: es el caso que la 029
+    # vino a destrabar.
     existing_user = db.query(User).filter(User.email == email).first()
-    if existing_user:
+    if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Ya existe un usuario con el email {email}.",
         )
+
+    reactivando = existing_user is not None
 
     # 6️⃣ ¿Existe ya la credencial en el proveedor de identidad?
     #
     # El handle de un alta nueva sigue siendo el correo, como hasta ahora. La
     # rebanada B2 lo cambia por un UUID; el único sitio que hay que tocar es
     # este, porque `external_id` se guarda en la fila unas líneas más abajo.
-    handle = email
+    #
+    # En una reactivación el handle **sale de la fila**, no del correo: es
+    # inmutable en Cognito y puede no ser el correo (la rebanada B2 escribirá
+    # UUID). Reconstruirlo a partir del correo funcionaría hoy y se rompería
+    # en silencio con el primer handle UUID.
+    handle = existing_user.external_id if reactivando else email
 
     try:
         cognito_sub = idp.sujeto_de(handle=handle)
@@ -240,6 +261,12 @@ def accept_invitation(
         if user_exists:
             idp.marcar_correo_verificado(handle=handle, email=email)
 
+        # Y si se readmite a alguien, reabrir la credencial que
+        # `remove_user_from_organization` cerró. Es idempotente, así que
+        # llamarla sobre una credencial ya habilitada no molesta.
+        if reactivando:
+            idp.habilitar(handle=handle)
+
         if not cognito_sub:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -252,17 +279,34 @@ def accept_invitation(
             detail=f"Error al configurar usuario en Cognito [{e.codigo}]: {e.mensaje}",
         )
 
-    # 9️⃣ Crear usuario en la base de datos
-    new_user = User(
-        email=email,
-        full_name=full_name or email,  # Usar full_name del token o email como fallback
-        organization_id=organization_id,
-        cognito_sub=cognito_sub,
-        external_id=handle,
-        is_master=False,
-        email_verified=True,
-        # password_hash no se usa, la autenticación es con Cognito
-    )
+    # 9️⃣ Reactivar la fila existente, o crear una nueva
+    #
+    # Se reactiva y no se reemplaza: la fila vieja es la que referencian las
+    # veinte claves foráneas —unidades, dispositivos, equipos—, así que
+    # conservarla es lo que hace que readmitir a alguien le devuelva lo suyo
+    # en vez de dejarlo huérfano. `organization_id` **sí** se reescribe: manda
+    # la invitación, que puede readmitirlo en una organización distinta de la
+    # que se le sacó.
+    if reactivando:
+        new_user = existing_user
+        new_user.status = UserStatus.ACTIVE.value
+        new_user.organization_id = organization_id
+        new_user.cognito_sub = cognito_sub
+        new_user.email_verified = True
+        if full_name:
+            new_user.full_name = full_name
+    else:
+        new_user = User(
+            email=email,
+            # Usar full_name del token o email como fallback
+            full_name=full_name or email,
+            organization_id=organization_id,
+            cognito_sub=cognito_sub,
+            external_id=handle,
+            is_master=False,
+            email_verified=True,
+            # password_hash no se usa, la autenticación es con Cognito
+        )
 
     db.add(new_user)
 
@@ -314,9 +358,14 @@ def resend_invitation(
             detail="Solo los usuarios maestros pueden reenviar invitaciones.",
         )
 
-    # 2️⃣ Verificar que el email NO esté ya registrado
+    # 2️⃣ Verificar que el email NO esté ya registrado **y activo**
+    #
+    # Misma regla que `invite_user`, y por la misma razón: si la de allí
+    # admite reinvitar a una fila `INACTIVE`, ésta tiene que admitir
+    # reenviarle la invitación. Dejarla fuera haría que readmitir a alguien
+    # funcionara o no según por qué endpoint se entrara.
     existing_user = db.query(User).filter(User.email == data.email).first()
-    if existing_user:
+    if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"El usuario {data.email} ya está registrado en el sistema.",

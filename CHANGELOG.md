@@ -16,6 +16,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **El código que usa `users.status` — la mitad *contract* de la `029`.** Cierra el callejón sin
+  salida que ya ocurría en producción: se sacaba a alguien de la organización, la fila de `users`
+  sobrevivía intacta, y al reinvitarlo `invite_user` la encontraba y respondía 400 sin que hubiera
+  ningún endpoint capaz de resolverlo
+  - `DELETE /organizations/{org}/users/{user_id}` **marca la fila `INACTIVE`** además de borrar la
+    membresía, y sólo cuando la organización es la suya — alguien puede ser miembro de varias. La
+    fila **no se borra**: veinte FK la referencian, varias en cascada
+  - `invite_user`, `resend_invitation` y `accept_invitation` dejan de rechazar a un usuario
+    `INACTIVE`. `accept_invitation` **reactiva esa misma fila**, con su id: es lo que conserva sus
+    unidades y dispositivos, y lo único posible — los índices de la 028 no filtran por estado, así
+    que Postgres rechazaría una fila nueva con el mismo correo
+  - **El handle de la reactivación sale de `external_id`, no del correo.** Hoy coinciden; con
+    handles UUID (rebanada B2) dejarán de coincidir, y reconstruirlo fallaría en silencio
+  - `IdentityProvider` gana `deshabilitar()` y `habilitar()` (`admin_disable_user` /
+    `admin_enable_user`). Es **refuerzo, no el dato**: la fuente de verdad es `users.status`, y por
+    eso el fallo del proveedor se registra pero no tumba la baja
+- **Se borra el *fallback* de `is_master`** en `OrganizationService.get_user_role`. Era una segunda
+  fuente de verdad sobre el rol, y tenía un fallo propio: a un master al que le borraban la
+  membresía no se le quitaba el rol. Lo autorizó una medida — el contador (a) del runbook de la
+  029 dio `0` contra producción el 21/09
+- **CI: `cancel-in-progress`.** Un push nuevo cancela la corrida anterior de la misma rama, que
+  juzga código ya reemplazado. **Excepto en `master`**, donde la corrida es la que valida el commit
+  que se va a etiquetar
 - **El harness de tests deja de sondear Kafka al arrancar la app.** `_stub_kafka_producers()` ya
   silenciaba los seis productores, pero `check_kafka_accessibility()` vive en el `lifespan` y no es
   una dependencia, así que ningún `dependency_overrides` lo alcanzaba — y `client` abre

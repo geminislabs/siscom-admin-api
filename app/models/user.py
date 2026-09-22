@@ -28,6 +28,7 @@ El documento que explica el modelo entero es
   por correo lleva marca, o es un bug esperando al primer partner.
 """
 
+import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID
@@ -49,6 +50,24 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.organization_user import OrganizationUser
     from app.models.token_confirmacion import TokenConfirmacion
+
+
+class UserStatus(str, enum.Enum):
+    """Estado de la fila de usuario. Gemelo de `ck_users_status` (migración 029).
+
+    Sólo dos valores, y es deliberado. Añadir `SUSPENDED` o `PENDING` ahora
+    sería sembrar códigos sin semántica acordada — el mismo error que la 027
+    evitó al no sembrar `self_signup_mode`. Cuando el cierre de cuentas defina
+    más estados, se añaden aquí **y** en el CHECK de una migración nueva.
+
+    `INACTIVE` no es «borrado»: la fila se queda. Veinte claves foráneas
+    referencian `users`, varias con `ON DELETE CASCADE` hacia
+    `mobility.devices`, `team.members`, `user_units` y `user_devices`, así que
+    borrar a alguien se llevaría por delante datos que no son suyos.
+    """
+
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
 
 
 def _handle_por_defecto(context) -> str:
@@ -117,6 +136,12 @@ class User(SQLModel, table=True):
             "identity_provider IN ('cognito')",
             name="ck_users_identity_provider",
         ),
+        # Gemelo del CHECK que creó la 029. Ampliar la lista es tocar los dos
+        # sitios: aquí y `UserStatus`.
+        CheckConstraint(
+            "status IN ('ACTIVE', 'INACTIVE')",
+            name="ck_users_status",
+        ),
     )
 
     id: UUID = Field(
@@ -170,6 +195,14 @@ class User(SQLModel, table=True):
     )
     email_verified: bool = Field(
         default=False, sa_column=Column(Boolean, default=False, nullable=False)
+    )
+    # La creó la 029, desplegada en `v1.32.2`. Esto es la mitad *contract* del
+    # expand/contract: el modelo encima de una columna que lleva días en la
+    # base. Se declara como `str` y no como el enum de Python porque en la base
+    # es `text` con CHECK, no un tipo ENUM — ver la 029 sobre por qué.
+    status: str = Field(
+        default=UserStatus.ACTIVE.value,
+        sa_column=Column(Text, nullable=False, server_default=text("'ACTIVE'")),
     )
     # DEPRECADO: Usar organization_users.role
     is_master: bool = Field(

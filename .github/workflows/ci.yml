@@ -11,6 +11,17 @@ permissions:
   contents: read
   security-events: write
 
+# Un push nuevo a la misma rama cancela la corrida anterior, que ya no
+# interesa: su veredicto es sobre codigo que se acaba de reemplazar. Se
+# agrupa por workflow + ref, asi que `master` y `develop` no se estorban.
+#
+# `cancel-in-progress` NO se aplica a las corridas de master: ahi la corrida
+# es la que valida el commit que se va a etiquetar, y perderla por un push
+# posterior dejaria una release sin CI verde propio.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   quality:
     runs-on: ubuntu-latest

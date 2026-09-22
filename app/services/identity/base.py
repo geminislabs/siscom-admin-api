@@ -152,3 +152,27 @@ class IdentityProvider(ABC):
         La verificación de verdad ya ocurrió aquí —el usuario abrió el enlace
         que emitió esta aplicación—; esto solo se lo cuenta al proveedor.
         """
+
+    @abstractmethod
+    def deshabilitar(self, *, handle: str) -> None:
+        """Impide que esa credencial vuelva a autenticarse.
+
+        **Es refuerzo, no el dato.** Quién está dado de baja lo dice
+        `users.status` en Postgres, que es la fuente de verdad (§9, regla 1);
+        esto cierra además la puerta del proveedor, para que una credencial
+        viva no sobreviva a un error de esta aplicación. Nunca al revés: no se
+        consulta al proveedor para decidir si alguien está activo.
+
+        Idempotente: deshabilitar a quien ya lo está no es un error.
+        """
+
+    @abstractmethod
+    def habilitar(self, *, handle: str) -> None:
+        """Deshace `deshabilitar`, para cuando a alguien se le readmite.
+
+        Existe porque la reactivación tiene que poder recuperar la credencial
+        original: el handle de Cognito es **inmutable**, así que reactivar la
+        fila y crear una credencial nueva no son intercambiables.
+
+        Idempotente, igual que su gemela.
+        """

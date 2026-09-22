@@ -16,8 +16,9 @@ Los usuarios pertenecen a Organizations.
 Las dependencias resuelven organization_id para validar permisos.
 
 IMPORTANTE: La resolución de roles SIEMPRE usa OrganizationService.get_user_role()
-como única fuente de verdad. El campo is_master es un fallback legacy manejado
-internamente por OrganizationService.
+como única fuente de verdad, y desde el 22/09/2026 esa función es realmente la
+única: el *fallback* a is_master se borró. El rol sale de `organization_users`
+y de ningún otro sitio.
 """
 
 from dataclasses import dataclass
@@ -374,7 +375,9 @@ def get_current_user_with_role(
     Retorna el usuario y su rol organizacional.
 
     DELEGACIÓN: Usa OrganizationService.get_user_role() como única fuente
-    de verdad para roles. El fallback a is_master se maneja internamente.
+    de verdad para roles. Desde el 22/09/2026 esa función no tiene *fallback*:
+    el rol sale de `organization_users` y de ningún otro sitio. `is_master` ya
+    no concede nada.
 
     Returns:
         Tuple de (User, OrganizationRole o None)
@@ -419,7 +422,7 @@ def get_auth_cognito_or_paseto(
         Intenta primero con Cognito, si falla intenta con PASETO.
 
         DELEGACIÓN: Usa OrganizationService.get_user_role() como única fuente
-        de verdad para roles. El fallback a is_master se maneja internamente.
+        de verdad para roles. Sin *fallback*: is_master ya no concede nada.
         """
         from app.models.user import User
 
@@ -503,7 +506,7 @@ def require_organization_role(*allowed_roles: str):
     Factory para crear una dependencia que requiere roles específicos.
 
     DELEGACIÓN: Usa OrganizationService.get_user_role() como única fuente
-    de verdad para roles. El fallback a is_master se maneja internamente.
+    de verdad para roles. Sin *fallback*: is_master ya no concede nada.
 
     JERARQUÍA DE ROLES:
     - owner: Tiene todos los permisos
