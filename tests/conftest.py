@@ -4,6 +4,7 @@ from tests.bootstrap_env import bootstrap_test_runtime
 
 bootstrap_test_runtime()
 
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -245,6 +246,31 @@ def _stub_kafka_producers():
     app.dependency_overrides[get_geofences_kafka_producer] = lambda: producer
     app.dependency_overrides[get_rules_kafka_producer] = lambda: producer
     app.dependency_overrides[get_mobility_kafka_producer] = lambda: producer
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _el_arranque_no_marca_a_kafka():
+    """Silencia el sondeo de Kafka del `lifespan`, como ya se silencian los
+    productores.
+
+    `_stub_kafka_producers()` deja mudos los seis productores desde hace tiempo:
+    la politica «los tests no hablan con Kafka» ya estaba tomada. Lo que se colo
+    es que `check_kafka_accessibility()` **no es una dependencia** — vive en el
+    `lifespan` de `app/main.py`, asi que ningun `dependency_overrides` lo
+    alcanza. Y `client` abre `with TestClient(app)` por test, de modo que ese
+    sondeo se ejecuta una vez por cada test que pida un cliente.
+
+    Son 245 de los 849, y en CI cada uno cuesta 3,02 s clavados —el
+    `api_version_auto_timeout_ms` del probe es 3000—, lo que da 740 s de los
+    780 s que tarda el paso de tests. En local no se nota porque el puerto
+    cerrado responde con un RST inmediato.
+
+    Se parchea en `app.main` y no en `app.services.health` porque el `lifespan`
+    resolvio el nombre al importarse; parchear el modulo de origen no cambiaria
+    la referencia que ya tiene.
+    """
+    with patch("app.main.check_kafka_accessibility", return_value=False):
+        yield
 
 
 @pytest.fixture(autouse=True)

@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **El harness de tests deja de sondear Kafka al arrancar la app.** `_stub_kafka_producers()` ya
+  silenciaba los seis productores, pero `check_kafka_accessibility()` vive en el `lifespan` y no es
+  una dependencia, así que ningún `dependency_overrides` lo alcanzaba — y `client` abre
+  `TestClient(app)` **por test**. Son 245 de los 849 tests, y en CI cada uno costaba 3,02 s
+  clavados (`api_version_auto_timeout_ms: 3000`): **740 s de los 780 s** del paso de tests.
+  Verificado con un sondeo lento simulado: los mismos 7 tests pasan de 22,00 s a 0,74 s
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
