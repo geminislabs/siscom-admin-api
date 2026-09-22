@@ -224,8 +224,8 @@ Las tres señales del paso 6 salieron: `Running upgrade 028_identidad_esquema ->
 029_estado_de_usuario` **una sola vez**, con la credencial `siscom_migrator`, y
 `/health` respondiendo `schema_revision: 029_estado_de_usuario`.
 
-Los contadores, medidos contra producción — (a), (b) y (c) el 22/09/2026, el
-resto el día del despliegue:
+Los contadores, todos medidos contra producción el 21/09/2026 — (3), (4) y (5)
+durante el despliegue, (a), (b) y (c) esa misma noche:
 
 | Contador | Esperado | Medido | Lectura |
 | --- | --- | --- | --- |
