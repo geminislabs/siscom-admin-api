@@ -16,6 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Superficie interna de usuarios para GAC** — `GET /internal/users` y
+  `PATCH /internal/users/{id}/status`, con token PASETO de servicio (`gac` / `GAC_ADMIN`)
+  - **Direcciona al usuario por su id y no pasa por organización, y ése es el punto.** Los siete
+    huérfanos **no se pueden tocar** por `DELETE /organizations/{org}/users/{id}`: su
+    `organization_id` apunta a una organización que no existe, así que `_verify_org_access` falla
+    antes de llegar al usuario. El endpoint que la `v1.34.0` creó justo para desactivar gente no
+    puede desactivarlos
+  - `orphaned=true` promueve a endpoint el contador (4) del runbook de la 029, que hasta ahora era
+    SQL suelto
+  - El refuerzo en el proveedor va **después** del commit y **se informa en la respuesta**
+    (`proveedor_sincronizado`) en vez de tragárselo: permite a GAC enseñar «desactivado, pero la
+    credencial sigue viva» en vez de mentir
+  - **El harness resultó ser más estricto que producción.** El modelo declara
+    `ForeignKey("organizations.id")` en `users.organization_id` y `create_all()` la crea; el
+    esquema productivo **sólo tiene un índice**. Sin quitar esa restricción en la prueba, el caso
+    que este endpoint existe para resolver **no se puede escribir como test** — la base de pruebas
+    lo prohíbe y la de verdad lo contiene siete veces
 - **Un test que 1 de cada 63 veces no probaba nada.**
   `test_decode_share_token_returns_none_for_tampered_token` sustituía el carácter `token[-3]` pero
   elegía el reemplazo mirando `token[-1]`: cuando el antepenúltimo ya era una `X`, `bad` salía
