@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Además del arreglo, el test ahora **afirma que manipuló algo** (`assert bad != token`) antes de
     afirmar nada más. Sin esa línea puede volver a quedarse sin tocar el token y nadie se entera
     hasta que falla, meses después, en una corrida ajena
+- **CI: adiós a Node 20.** `actions/checkout`, `actions/setup-python` y `actions/upload-artifact`
+  pasan de `v4` a `v7`. GitHub ya forzaba esas tres a correr en Node 24 y lo avisaba en cada
+  corrida; las versiones nuevas lo declaran. De paso se unifican las `checkout`, que convivían en
+  `v4` y `v6` en el mismo repositorio
+  - **`appleboy/scp-action` y `appleboy/ssh-action` se quedan como están**, a propósito: el log del
+    workflow de despliegue **no emite ningún aviso**, así que no están afectadas. Viven en el
+    camino del despliegue y sólo se validan desplegando — no hay razón para arriesgarlo por un
+    aviso que no existe
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
