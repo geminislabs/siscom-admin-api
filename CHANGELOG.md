@@ -16,35 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **El código que usa `users.status` — la mitad *contract* de la `029`.** Cierra el callejón sin
-  salida que ya ocurría en producción: se sacaba a alguien de la organización, la fila de `users`
-  sobrevivía intacta, y al reinvitarlo `invite_user` la encontraba y respondía 400 sin que hubiera
-  ningún endpoint capaz de resolverlo
-  - `DELETE /organizations/{org}/users/{user_id}` **marca la fila `INACTIVE`** además de borrar la
-    membresía, y sólo cuando la organización es la suya — alguien puede ser miembro de varias. La
-    fila **no se borra**: veinte FK la referencian, varias en cascada
-  - `invite_user`, `resend_invitation` y `accept_invitation` dejan de rechazar a un usuario
-    `INACTIVE`. `accept_invitation` **reactiva esa misma fila**, con su id: es lo que conserva sus
-    unidades y dispositivos, y lo único posible — los índices de la 028 no filtran por estado, así
-    que Postgres rechazaría una fila nueva con el mismo correo
-  - **El handle de la reactivación sale de `external_id`, no del correo.** Hoy coinciden; con
-    handles UUID (rebanada B2) dejarán de coincidir, y reconstruirlo fallaría en silencio
-  - `IdentityProvider` gana `deshabilitar()` y `habilitar()` (`admin_disable_user` /
-    `admin_enable_user`). Es **refuerzo, no el dato**: la fuente de verdad es `users.status`, y por
-    eso el fallo del proveedor se registra pero no tumba la baja
-- **Se borra el *fallback* de `is_master`** en `OrganizationService.get_user_role`. Era una segunda
-  fuente de verdad sobre el rol, y tenía un fallo propio: a un master al que le borraban la
-  membresía no se le quitaba el rol. Lo autorizó una medida — el contador (a) del runbook de la
-  029 dio `0` contra producción el 21/09
-- **CI: `cancel-in-progress`.** Un push nuevo cancela la corrida anterior de la misma rama, que
-  juzga código ya reemplazado. **Excepto en `master`**, donde la corrida es la que valida el commit
-  que se va a etiquetar
-- **El harness de tests deja de sondear Kafka al arrancar la app.** `_stub_kafka_producers()` ya
-  silenciaba los seis productores, pero `check_kafka_accessibility()` vive en el `lifespan` y no es
-  una dependencia, así que ningún `dependency_overrides` lo alcanzaba — y `client` abre
-  `TestClient(app)` **por test**. Son 245 de los 849 tests, y en CI cada uno costaba 3,02 s
-  clavados (`api_version_auto_timeout_ms: 3000`): **740 s de los 780 s** del paso de tests.
-  Verificado con un sondeo lento simulado: los mismos 7 tests pasan de 22,00 s a 0,74 s
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
@@ -96,6 +67,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.34.0] - 2026-09-22
+
+**Migraciones.** **Ninguna.** La revisión sigue en `029_estado_de_usuario` antes y después: la
+señal correcta en el log del despliegue es la **ausencia** de `Running upgrade`. Si aparece, parar.
+
+**Rollback.** Redesplegar el tag anterior (`v1.33.0`). No hay esquema que revertir. Lo que sí
+vuelve es el *fallback* de `is_master` y la imposibilidad de reinvitar a un usuario dado de baja.
+
+**Por qué minor, y por qué el método de §23 no lo habría dicho.** El contrato OpenAPI es
+**estructuralmente idéntico** al de la `1.33.0`: comparando `app.openapi()` en un worktree de cada
+rama, la única diferencia en 25 985 líneas es el texto de una descripción. Y aun así es minor,
+porque lo que cambia es **conducta**: `invite_user` acepta un caso que antes devolvía 400, y
+`DELETE …/users/{id}` gana un efecto que antes no tenía. La comparación de OpenAPI detecta
+rupturas de forma y es **ciega a los cambios de comportamiento** — aplicada mecánicamente, esto se
+habría etiquetado como patch.
+
+**Qué mirar en este despliegue, además de lo de arriba.** Es la primera release con código capaz
+de escribir `users.status`. Hoy el reparto es `ACTIVE: 23`; conviene volver a correr la consulta
+del punto 5 del runbook unos días después. Si aparece algún `INACTIVE` que nadie pidió, hay un
+camino marcándolo sin querer.
+
+### Changed
+
+- **El código que usa `users.status` — la mitad *contract* de la `029`.** Cierra el callejón sin
+  salida que ya ocurría en producción: se sacaba a alguien de la organización, la fila de `users`
+  sobrevivía intacta, y al reinvitarlo `invite_user` la encontraba y respondía 400 sin que hubiera
+  ningún endpoint capaz de resolverlo
+  - `DELETE /organizations/{org}/users/{user_id}` **marca la fila `INACTIVE`** además de borrar la
+    membresía, y sólo cuando la organización es la suya — alguien puede ser miembro de varias. La
+    fila **no se borra**: veinte FK la referencian, varias en cascada
+  - `invite_user`, `resend_invitation` y `accept_invitation` dejan de rechazar a un usuario
+    `INACTIVE`. `accept_invitation` **reactiva esa misma fila**, con su id: es lo que conserva sus
+    unidades y dispositivos, y lo único posible — los índices de la 028 no filtran por estado, así
+    que Postgres rechazaría una fila nueva con el mismo correo
+  - **El handle de la reactivación sale de `external_id`, no del correo.** Hoy coinciden; con
+    handles UUID (rebanada B2) dejarán de coincidir, y reconstruirlo fallaría en silencio
+  - `IdentityProvider` gana `deshabilitar()` y `habilitar()` (`admin_disable_user` /
+    `admin_enable_user`). Es **refuerzo, no el dato**: la fuente de verdad es `users.status`, y por
+    eso el fallo del proveedor se registra pero no tumba la baja
+- **Se borra el *fallback* de `is_master`** en `OrganizationService.get_user_role`. Era una segunda
+  fuente de verdad sobre el rol, y tenía un fallo propio: a un master al que le borraban la
+  membresía no se le quitaba el rol. Lo autorizó una medida — el contador (a) del runbook de la
+  029 dio `0` contra producción el 21/09
+- **CI: `cancel-in-progress`.** Un push nuevo cancela la corrida anterior de la misma rama, que
+  juzga código ya reemplazado. **Excepto en `master`**, donde la corrida es la que valida el commit
+  que se va a etiquetar
+- **El harness de tests deja de sondear Kafka al arrancar la app.** `_stub_kafka_producers()` ya
+  silenciaba los seis productores, pero `check_kafka_accessibility()` vive en el `lifespan` y no es
+  una dependencia, así que ningún `dependency_overrides` lo alcanzaba — y `client` abre
+  `TestClient(app)` **por test**. Son 245 de los 849 tests, y en CI cada uno costaba 3,02 s
+  clavados (`api_version_auto_timeout_ms: 3000`): **740 s de los 780 s** del paso de tests.
+  Verificado con un sondeo lento simulado: los mismos 7 tests pasan de 22,00 s a 0,74 s
 
 ## [1.33.0] - 2026-09-21
 
