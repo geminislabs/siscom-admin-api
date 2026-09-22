@@ -78,6 +78,7 @@ from app.api.v1.endpoints.internal import organizations as internal_organization
 from app.api.v1.endpoints.internal import plans as internal_plans
 from app.api.v1.endpoints.internal import products as internal_products
 from app.api.v1.endpoints.internal import teams as internal_teams
+from app.api.v1.endpoints.internal import users as internal_users
 
 api_router = APIRouter()
 
@@ -231,6 +232,11 @@ api_router.include_router(
     internal_organization_billing.router,
     prefix="/internal/organizations",
     tags=["internal-organizations"],
+)
+api_router.include_router(
+    internal_users.router,
+    prefix="/internal/users",
+    tags=["internal-users"],
 )
 
 # Internal Plans (Gestión de planes, productos y capabilities)
