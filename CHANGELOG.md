@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Un test que 1 de cada 63 veces no probaba nada.**
+  `test_decode_share_token_returns_none_for_tampered_token` sustituía el carácter `token[-3]` pero
+  elegía el reemplazo mirando `token[-1]`: cuando el antepenúltimo ya era una `X`, `bad` salía
+  **idéntico al original** y el test decodificaba un token intacto. Tasa medida sobre 200 000
+  tokens simulados: **1,57 %**. Tumbó la CI del PR #100, que no tenía nada que ver
+  - Además del arreglo, el test ahora **afirma que manipuló algo** (`assert bad != token`) antes de
+    afirmar nada más. Sin esa línea puede volver a quedarse sin tocar el token y nadie se entera
+    hasta que falla, meses después, en una corrida ajena
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
