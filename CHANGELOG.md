@@ -60,6 +60,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+
+- Gitleaks + Semgrep + pip-audit + OSV-Scanner in CI `security` job
+- `POST /api/v1/mobility/locations` y `/batch` exigen JWT y validan que el `device_id` pertenezca a un dispositivo activo del usuario autenticado. Antes aceptaban cualquier `device_id` sin autenticación, lo que permitía inyectar ubicaciones de terceros al tópico de Kafka
+- PASETO: los tokens de compartir ubicación se firman con `SHARE_LOCATION_KEY_B64`, una clave dedicada, en lugar de con `PASETO_SECRET_KEY`. El verificador de esos tokens vive en siscom-api; entregarle la clave de servicio le permitía firmar tokens `internal-*` y llamar a la API interna como administrador. Sin la clave nueva configurada, `/units/{id}/share-location` responde `503` en vez de degradar a la clave de servicio (ver ADR-004)
+- `decode_any_token` se elimina: probaba las dos claves contra el mismo token, de modo que un token de compartir ubicación podía acabar aceptado donde se esperaba uno de servicio
+- `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
+- Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
+- El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.36.0] - 2026-09-22
+
+**Migraciones.** **Ninguna.** Revisión `029_estado_de_usuario` antes y después; la señal correcta
+es la **ausencia** de `Running upgrade`.
+
+**Rollback.** Redesplegar `v1.35.0` **reabre el agujero**. Si hay que revertir por otra razón,
+revertir a `v1.35.0` deja el plano de control abierto otra vez: preferible arreglar hacia delante.
+
+**Por qué sale sola y cuanto antes.** Es un arreglo de seguridad, y la `v1.35.0` —desplegada hoy
+mismo— añadió la ruta que más daño hacía. Va sin nada más dentro para que el despliegue no tenga
+que sopesar otros riesgos.
+
+**Qué comprobar después.** Que GAC sigue funcionando. Usa PASETO por `getInternalToken()` contra
+`/internal/tokens/app` de `gac-api`, que emite `service: gac` / `role: GAC_ADMIN`, así que su
+camino no cambia. **Si algo de GAC empieza a dar 403**, es que alguna llamada iba con credenciales
+de usuario y hay que darle su propia ruta — no reabrir ésta.
+
+### Security
+
 - **El plano de control estaba abierto a cualquier usuario autenticado.** `get_auth_cognito_or_paseto`
   intenta Cognito primero y, si el token es válido y el usuario existe, concede acceso **sin mirar
   ningún rol**: `required_service` y `required_role` se aplicaban sólo al camino PASETO. Cualquiera
@@ -75,13 +103,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     comprobaba el 401. La pregunta no era «¿rechaza a quien no trae token?» sino «¿rechaza a quien
     trae **otro** token?». Ahora existen las dos
   - Detalle completo en `docs/security/plano-de-control-abierto.md`
-- Gitleaks + Semgrep + pip-audit + OSV-Scanner in CI `security` job
-- `POST /api/v1/mobility/locations` y `/batch` exigen JWT y validan que el `device_id` pertenezca a un dispositivo activo del usuario autenticado. Antes aceptaban cualquier `device_id` sin autenticación, lo que permitía inyectar ubicaciones de terceros al tópico de Kafka
-- PASETO: los tokens de compartir ubicación se firman con `SHARE_LOCATION_KEY_B64`, una clave dedicada, en lugar de con `PASETO_SECRET_KEY`. El verificador de esos tokens vive en siscom-api; entregarle la clave de servicio le permitía firmar tokens `internal-*` y llamar a la API interna como administrador. Sin la clave nueva configurada, `/units/{id}/share-location` responde `503` en vez de degradar a la clave de servicio (ver ADR-004)
-- `decode_any_token` se elimina: probaba las dos claves contra el mismo token, de modo que un token de compartir ubicación podía acabar aceptado donde se esperaba uno de servicio
-- `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
-- Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
-- El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
 
 ## [1.35.0] - 2026-09-22
 
