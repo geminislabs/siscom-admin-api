@@ -1,8 +1,24 @@
 import json
+from pathlib import Path
 from typing import Annotated, Any, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+def _version_del_repo() -> str:
+    """Lee `VERSION` de la raiz del repositorio.
+
+    Es la misma pieza que en el sitio web hace `package.json`: un fichero que
+    el commit de release ya toca, para que la version no dependa de que alguien
+    acuerde de exportar una variable en la maquina.
+    """
+    try:
+        ruta = Path(__file__).resolve().parents[2] / "VERSION"
+        texto = ruta.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+    return texto or "unknown"
 
 
 class Settings(BaseSettings):
@@ -161,11 +177,10 @@ class Settings(BaseSettings):
     OTLP_ENDPOINT: str = ""
     DEPLOY_ENV: str = "local"
     SERVICE_NAME: str = "siscom-admin-api"
-    # Centinela a proposito: la version del build vive hoy solo en el tag de git
-    # y nada la inyecta todavia. Un "0.1.0" por defecto se lee como un dato
-    # legitimo y miente; "unknown" declara que no se sabe. Se rellena cuando el
-    # commit de release la escriba en el repo (ver docs/RELEASE.md).
-    SERVICE_VERSION: str = "unknown"
+    # La escribe el commit de release en el fichero VERSION, junto al corte del
+    # CHANGELOG (ver docs/RELEASE.md). Si el fichero no esta o esta vacio, el
+    # valor es "unknown": declarar que no se sabe, nunca inventarse un numero.
+    SERVICE_VERSION: str = _version_del_repo()
 
     # Stripe — None cuando no está configurado (initialize_gateways lo omite)
     STRIPE_SECRET_KEY: Optional[str] = None

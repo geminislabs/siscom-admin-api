@@ -4,6 +4,7 @@
 
 - **Git tags:** annotated tags `v*.*.*` (e.g. `v1.18.0`)
 - **Changelog:** `CHANGELOG.md` — move `[Unreleased]` entries under the new version header before tagging
+- **`VERSION`:** one line at the repository root, bumped in the same commit as the changelog cut. It is what `GET /health` and the OpenTelemetry resource report, so if you forget it the API announces the previous release — which is why it travels in the commit you are already writing, and not in an environment variable someone has to remember to export on the box.
 
 ## Prerequisites
 
@@ -57,7 +58,8 @@ With the fast-forward, `master == develop` at release time, hash for hash, and
    `develop`, no PR**:
 
    ```bash
-   git add CHANGELOG.md
+   echo "X.Y.Z" > VERSION
+   git add CHANGELOG.md VERSION
    git commit -m "chore(release): prepare vX.Y.Z"
    git push origin develop
    ```
@@ -88,6 +90,8 @@ With the fast-forward, `master == develop` at release time, hash for hash, and
      did not recognise the current schema — stop.
    - Migrations ran with the scoped credential (`siscom_migrator`), not `siscom`.
    - `/health` reports the expected `schema_revision`.
+   - `/health` reports the version you just tagged. If it reports the previous
+     one, `VERSION` did not get bumped in step 2.
 
 ## Hotfixes
 
