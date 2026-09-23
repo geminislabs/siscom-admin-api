@@ -14,23 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > `1.30.0`, `1.30.1`, `1.31.0`, `1.32.0`, `1.32.1` y `1.32.2` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
-### Security
-
-- **Se elimina `POST /api/v1/auth/internal`.** Firmaba un PASETO de servicio con el `service` y el
-  `role` que pidiera quien llamara, **hasta 720 horas**, y como única autorización un token de
-  Cognito válido — sin mirar rol. **Cualquiera con sesión en Nexus se acuñaba un `GAC_ADMIN` de
-  treinta días**, y con él entraba en todo `/internal/*`
-  - Eso hacía **esquivable el arreglo de la `v1.36.0`**: de poco sirve exigir PASETO si cualquiera
-    puede fabricarse uno. Verificado por ejecución
-  - **Se borra en vez de restringirse porque no lo llamaba nadie**: cero referencias en los nueve
-    repositorios. GAC firma sus propios tokens con `create_app_token`, detrás de su
-    `require_roles(["admin"])`. Lo único que lo mencionaba era documentación vieja — incluida la de
-    `gac-web`, que decía usarlo cuando su código va por `gac-api` desde hace tiempo
-  - **Doce documentos avisaban de protecciones que ningún código sostenía** («no debe exponerse
-    públicamente», «protegerlo con firewall o VPN»). Todos marcados; el ADR-004 recibe una nota
-    fechada al final en vez de una edición del cuerpo, que borraría el rastro de la decisión
-  - Se encontró **por accidente**, al perderse el token de operación y buscar cómo emitir otro
-
 ### Changed
 
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
@@ -85,6 +68,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.38.0] - 2026-09-23
+
+**Migraciones.** **Ninguna.** Revisión `029_estado_de_usuario` antes y después; la señal correcta
+es la **ausencia** de `Running upgrade`.
+
+**Rollback — leer antes de revertir.** Volver a `v1.37.0` **reabre la puerta de emisión**: cualquiera
+con sesión en Nexus vuelve a poder acuñarse un `GAC_ADMIN` de treinta días. Si hay que revertir por
+otra razón, arreglar hacia delante.
+
+**Ruptura de contrato, y por qué sale como minor.** `POST /api/v1/auth/internal` **desaparece**.
+Estrictamente es una ruptura, pero **no tiene consumidores**: cero referencias en los nueve
+repositorios, medido antes de decidir. Un `404` donde nadie llama no rompe a nadie. Si algo
+empezara a dar `404` contra esa ruta, la respuesta **no es reponerla** sino darle a ese cliente el
+camino de GAC, que es el legítimo.
+
+**Qué comprobar después.** Que GAC sigue emitiendo y usando sus tokens con normalidad — no debería
+notar nada, porque los firma en su propio proceso.
+
+### Security
+
+- **Se elimina `POST /api/v1/auth/internal`.** Firmaba un PASETO de servicio con el `service` y el
+  `role` que pidiera quien llamara, **hasta 720 horas**, y como única autorización un token de
+  Cognito válido — sin mirar rol. **Cualquiera con sesión en Nexus se acuñaba un `GAC_ADMIN` de
+  treinta días**, y con él entraba en todo `/internal/*`
+  - Eso hacía **esquivable el arreglo de la `v1.36.0`**: de poco sirve exigir PASETO si cualquiera
+    puede fabricarse uno. Verificado por ejecución
+  - **Se borra en vez de restringirse porque no lo llamaba nadie**: cero referencias en los nueve
+    repositorios. GAC firma sus propios tokens con `create_app_token`, detrás de su
+    `require_roles(["admin"])`. Lo único que lo mencionaba era documentación vieja — incluida la de
+    `gac-web`, que decía usarlo cuando su código va por `gac-api` desde hace tiempo
+  - **Doce documentos avisaban de protecciones que ningún código sostenía** («no debe exponerse
+    públicamente», «protegerlo con firewall o VPN»). Todos marcados; el ADR-004 recibe una nota
+    fechada al final en vez de una edición del cuerpo, que borraría el rastro de la decisión
+  - Se encontró **por accidente**, al perderse el token de operación y buscar cómo emitir otro
 
 ## [1.37.0] - 2026-09-22
 
