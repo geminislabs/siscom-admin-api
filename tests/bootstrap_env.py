@@ -32,12 +32,18 @@ _TEST_ENV_DEFAULTS = {
     "STRIPE_PUBLISHABLE_KEY": "pk_test_siscom_unit_tests",
     "STRIPE_WEBHOOK_SECRET": "whsec_test_siscom_unit_tests",
     "FACTURAPI_API_KEY": "sk_test_siscom_unit_tests",
+    "OTLP_ENDPOINT": "",
+    "DEPLOY_ENV": "test",
+    "SERVICE_NAME": "siscom-admin-api",
+    "SERVICE_VERSION": "0.1.0",
 }
 
 
 def apply_test_env_defaults() -> None:
     for key, value in _TEST_ENV_DEFAULTS.items():
         os.environ.setdefault(key, value)
+    # Los tests no exportan al Collector aunque el .env local tenga URL.
+    os.environ["OTLP_ENDPOINT"] = ""
 
 
 def bootstrap_test_runtime() -> None:

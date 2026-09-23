@@ -2,6 +2,7 @@
 Servicio de notificaciones por email usando AWS SES.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +11,8 @@ from botocore.exceptions import ClientError
 from jinja2 import Environment, FileSystemLoader
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Configurar Jinja2 para cargar los templates
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
@@ -48,18 +51,21 @@ def _send_email(to: str, subject: str, html_body: str) -> bool:
             },
         )
 
-        print(f"[EMAIL] Correo enviado a {to} - MessageId: {response['MessageId']}")
+        logger.info(
+            "notification.email.sent",
+            extra={"message_id": response.get("MessageId")},
+        )
         return True
 
     except ClientError as e:
         error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"]["Message"]
-        print(
-            f"[EMAIL ERROR] No se pudo enviar correo a {to}: [{error_code}] {error_message}"
+        logger.warning(
+            "notification.email.client_error",
+            extra={"error_code": error_code},
         )
         return False
-    except Exception as e:
-        print(f"[EMAIL ERROR] Error inesperado al enviar correo a {to}: {str(e)}")
+    except Exception:
+        logger.exception("notification.email.unexpected_error")
         return False
 
 
@@ -161,7 +167,7 @@ def send_sms(to: str, message: str) -> bool:
         True si se envió correctamente
     """
     # TODO: Implementar envío de SMS (Twilio, AWS SNS, etc.)
-    print(f"[STUB] SMS enviado a {to}: {message}")
+    logger.info("notification.sms.stub")
     return True
 
 
@@ -184,7 +190,10 @@ def send_push_notification(
         True si se envió correctamente
     """
     # TODO: Implementar push notifications (Firebase, OneSignal, etc.)
-    print(f"[STUB] Push notification enviada a {user_id}: {title}")
+    logger.info(
+        "notification.push.stub",
+        extra={"user_id": user_id},
+    )
     return True
 
 

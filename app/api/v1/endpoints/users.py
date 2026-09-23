@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 from typing import List
 from uuid import UUID
@@ -27,6 +28,7 @@ from app.services.notifications import send_invitation_email
 from app.utils.datetime import utcnow
 from app.utils.security import generate_verification_token
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -134,7 +136,7 @@ def invite_user(
     # 5️⃣ Enviar correo con la URL de invitación
     email_sent = send_invitation_email(data.email, invitation_token, data.full_name)
     if not email_sent:
-        print(f"[WARNING] No se pudo enviar el correo de invitación a {data.email}")
+        logger.warning("user.invite.email_failed")
 
     return UserInviteResponse(
         detail=f"Invitación enviada a {data.email}", expires_at=expires_at
@@ -240,7 +242,7 @@ def accept_invitation(
 
     user_exists = cognito_sub is not None
     if user_exists:
-        print(f"[ACCEPT INVITATION] Usuario ya existe en Cognito: {email}")
+        logger.info("user.accept_invitation.credential_exists")
 
     try:
         if not user_exists:
@@ -252,7 +254,7 @@ def accept_invitation(
                 email_verificado=True,
             )
 
-            print(f"[ACCEPT INVITATION] Usuario creado en Cognito: {email}")
+            logger.info("user.accept_invitation.credential_created")
 
         # 8️⃣ Establecer contraseña proporcionada por el usuario (permanente)
         idp.fijar_password(handle=handle, password=data.password)
@@ -418,9 +420,9 @@ def resend_invitation(
     # 7️⃣ Enviar email con la nueva URL de invitación
     email_sent = send_invitation_email(data.email, new_token, full_name)
     if email_sent:
-        print(f"[RESEND INVITATION] Correo enviado a {data.email}")
+        logger.info("user.resend_invitation.email_sent")
     else:
-        print(f"[RESEND INVITATION ERROR] No se pudo enviar el correo a {data.email}")
+        logger.warning("user.resend_invitation.email_failed")
 
     return ResendInvitationResponse(
         message=f"Invitación reenviada a {data.email}", expires_at=expires_at

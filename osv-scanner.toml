@@ -17,3 +17,16 @@ reason = "pip is not pinned in requirements.txt; false positive from pip-* tooli
 [[IgnoredVulns]]
 id = "GHSA-wj6h-64fc-37mp"
 reason = "ecdsa via python-jose; no fix available (CVE-2024-23342); not reachable — RS256 verification only. Full record: docs/security/threat-model.md, Riesgos aceptados"
+
+# setuptools 81 is pinned because opentelemetry-instrumentation 0.48b0 imports
+# pkg_resources, removed in setuptools>=82. The fix (83) has the same gap.
+# The bug is sdist MANIFEST.in matching, and this service does not publish packages.
+[[IgnoredVulns]]
+id = "GHSA-h35f-9h28-mq5c"
+reason = "setuptools 81 pinned for pkg_resources; CVE is sdist packaging only. Full record: docs/security/threat-model.md, Riesgos aceptados"
+
+# opentelemetry-proto 1.27 requires protobuf<5. The DoS is ParseDict of nested Any,
+# which this API does not expose to client input.
+[[IgnoredVulns]]
+id = "GHSA-7gcm-g887-7qv7"
+reason = "protobuf 4.25.9 via opentelemetry-proto<5; ParseDict DoS is not on a client-facing path. Full record: docs/security/threat-model.md, Riesgos aceptados"

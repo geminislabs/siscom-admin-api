@@ -2,6 +2,8 @@
 Endpoints para el módulo de contacto.
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.config import settings
@@ -9,6 +11,7 @@ from app.schemas.contact import ContactMessageCreate, ContactMessageResponse
 from app.services.notifications import send_contact_email
 from app.utils.recaptcha import verify_recaptcha
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -42,7 +45,10 @@ async def send_contact_message(message: ContactMessageCreate):
         # Re-raise la excepción de reCAPTCHA
         raise e
     except Exception as e:
-        print(f"[CONTACT ERROR] Error al verificar reCAPTCHA: {e}")
+        logger.error(
+            "contact.recaptcha_error",
+            extra={"error_type": type(e).__name__},
+        )
         raise HTTPException(
             status_code=500,
             detail="Error al verificar la seguridad. Por favor intenta más tarde.",
@@ -73,8 +79,8 @@ async def send_contact_message(message: ContactMessageCreate):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    except Exception as e:
-        print(f"[CONTACT ERROR] Error inesperado al procesar mensaje de contacto: {e}")
+    except Exception:
+        logger.exception("contact.submit_failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al procesar el mensaje de contacto",

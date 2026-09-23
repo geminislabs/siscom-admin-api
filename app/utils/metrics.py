@@ -1,11 +1,14 @@
 """
 Módulo de métricas (stub).
-En el futuro, se integrará con StatsD, Telegraf, Prometheus, etc.
+Las métricas de negocio viven en app.observability.metrics.
 """
 
+import logging
 import time
 from functools import wraps
 from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def increment_counter(
@@ -22,7 +25,10 @@ def increment_counter(
         tags: Tags adicionales para la métrica
     """
     # TODO: Implementar envío a StatsD/Telegraf
-    print(f"[METRICS] Counter {metric_name}: +{value} {tags or {}}")
+    logger.debug(
+        "metrics.counter.stub",
+        extra={"metric_name": metric_name, "value": value},
+    )
 
 
 def record_timing(
@@ -39,7 +45,10 @@ def record_timing(
         tags: Tags adicionales para la métrica
     """
     # TODO: Implementar envío a StatsD/Telegraf
-    print(f"[METRICS] Timing {metric_name}: {duration_ms}ms {tags or {}}")
+    logger.debug(
+        "metrics.timing.stub",
+        extra={"metric_name": metric_name, "duration_ms": duration_ms},
+    )
 
 
 def record_gauge(
@@ -56,7 +65,10 @@ def record_gauge(
         tags: Tags adicionales para la métrica
     """
     # TODO: Implementar envío a StatsD/Telegraf
-    print(f"[METRICS] Gauge {metric_name}: {value} {tags or {}}")
+    logger.debug(
+        "metrics.gauge.stub",
+        extra={"metric_name": metric_name, "value": value},
+    )
 
 
 def time_function(metric_name: Optional[str] = None):

@@ -156,6 +156,13 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: str = "INFO"
 
+    # Observabilidad (OTLP). Vacío = telemetría silenciosa (no-op).
+    # Se lee en runtime; no hornear en la imagen.
+    OTLP_ENDPOINT: str = ""
+    DEPLOY_ENV: str = "local"
+    SERVICE_NAME: str = "siscom-admin-api"
+    SERVICE_VERSION: str = "0.1.0"
+
     # Stripe — None cuando no está configurado (initialize_gateways lo omite)
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None

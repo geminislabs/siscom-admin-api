@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import app.services.health as health_mod
+from app.core.config import settings
 
 
 def test_check_kafka_returns_false_when_kafka_import_missing(monkeypatch):
@@ -153,6 +154,23 @@ def test_health_endpoint_devuelve_503_con_la_base_caida(client, monkeypatch):
         assert filtracion not in cuerpo, f"{filtracion!r} se filtro en /health"
 
 
+def test_health_payload_incluye_environment_y_version(monkeypatch):
+    """No usa el fixture client: no necesita Postgres."""
+    from fastapi import Response
+
+    import app.main as main_mod
+
+    monkeypatch.setattr(main_mod, "check_database", lambda: (True, None))
+    monkeypatch.setattr(
+        main_mod, "get_schema_revision", lambda: "025_device_and_unit_refs"
+    )
+
+    body = main_mod.health_check(Response())
+    assert body["environment"] == settings.DEPLOY_ENV
+    assert body["version"] == settings.SERVICE_VERSION
+    assert body["status"] == "healthy"
+
+
 def test_health_endpoint_ok_expone_la_revision(client, monkeypatch):
     import app.main as main_mod
 
@@ -168,3 +186,5 @@ def test_health_endpoint_ok_expone_la_revision(client, monkeypatch):
     assert body["status"] == "healthy"
     assert body["database"] == "ok"
     assert body["schema_revision"] == "025_device_and_unit_refs"
+    assert body["environment"] == settings.DEPLOY_ENV
+    assert body["version"] == settings.SERVICE_VERSION

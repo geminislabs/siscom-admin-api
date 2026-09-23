@@ -1,0 +1,22 @@
+{
+  "groups": [
+    {
+      "name": "siscom-admin-api",
+      "rules": [
+        {
+          "alert": "SiscomAdminApiHighErrorRate",
+          "expr": "(sum(rate(http_server_duration_milliseconds_count{service_name=\"siscom-admin-api\",http_status_code=~\"5..\",http_route!=\"/health\"}[5m])) / sum(rate(http_server_duration_milliseconds_count{service_name=\"siscom-admin-api\",http_route!=\"/health\"}[5m]))) > 0.005",
+          "for": "5m",
+          "labels": {
+            "severity": "warning",
+            "service": "siscom-admin-api"
+          },
+          "annotations": {
+            "summary": "Disponibilidad HTTP de siscom-admin-api por debajo de 99.5%",
+            "description": "La tasa de 5xx (excl. /health) superó 0.5% durante 5 minutos. El routing de esta alerta vive fuera de este repositorio."
+          }
+        }
+      ]
+    }
+  ]
+}

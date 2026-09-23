@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Observabilidad OpenTelemetry (`app/observability/`): traces, logs JSON con
+  `trace_id` y scrubber de PII, métricas `auth_attempts_total` /
+  `active_sessions_total` / `api_errors_total`. Con `OTLP_ENDPOINT` vacío la
+  API no exporta nada. `GET /health` incluye `environment` y `version`.
+
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
