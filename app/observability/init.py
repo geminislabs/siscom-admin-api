@@ -132,7 +132,16 @@ def instrument_app(app: Any) -> None:
 
 
 def reset_telemetry_for_tests() -> None:
-    """Solo tests: permite volver a llamar setup_telemetry."""
+    """Solo tests: permite volver a llamar setup_telemetry.
+
+    Limpia tambien los instrumentos cacheados en `metrics`: se crean de forma
+    perezosa contra el MeterProvider vigente, asi que uno creado antes del
+    setup se queda no-op para siempre si no se tira aqui.
+    """
+    from app.observability import metrics as _metrics
+
+    _metrics.reset_instrumentos_para_tests()
+
     global tracer_provider, meter_provider, logger_provider, _started, _enabled
     tracer_provider = None
     meter_provider = None

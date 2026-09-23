@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Los logs de los 500 salian sin `request_id` ni `trace_id`: el middleware que los pone quedaba por dentro del manejador de excepciones y su `finally` ya habia borrado el contexto. El orden de registro se decide ahora al final de `main.py`, con el porque escrito al lado
+- `api_errors_total` etiquetaba con el path crudo, UUIDs incluidos — cardinalidad sin techo en el backend de metricas. Ahora usa la plantilla de la ruta, y `unmatched` cuando no caso ninguna
+- `reset_telemetry_for_tests()` no limpiaba los instrumentos cacheados, asi que uno creado antes del setup se quedaba no-op para siempre
+
+### Changed
+
+- `SERVICE_VERSION` sale del fichero `VERSION` de la raiz, que el commit de release bumpea junto al corte del CHANGELOG. Antes dependia de una variable de entorno que nadie inyectaba. Si el fichero falta, el valor es `unknown`
+- El `x-request-id` entrante se valida (128 caracteres, juego limitado) y se descarta entero si no sirve, en vez de llegar tal cual a los logs y a la respuesta
+- CORS expone `X-Request-ID`, para que el browser pueda leer el identificador que se le devuelve
+
 ### Added
 
 - Observabilidad OpenTelemetry (`app/observability/`): traces, logs JSON con

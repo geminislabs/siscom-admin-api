@@ -61,12 +61,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-instrument_app(app)
-
-
-@app.middleware("http")
-async def attach_request_id(request: Request, call_next):
-    return await request_id_middleware(request, call_next)
+# El orden de los middlewares se decide al final del fichero, y esta escrito
+# alli: Starlette hace `user_middleware.insert(0, ...)`, asi que **el ultimo
+# registrado queda el mas externo**. Registrar aqui la traza y el request_id
+# los dejaba como los mas internos, y los logs de los 500 salian sin `trace_id`
+# ni `request_id` — justo la linea que uno va a buscar.
 
 
 # Middleware para limitar el tamaño del body y prevenir ataques DoS
@@ -95,6 +94,20 @@ async def limit_body_size(request: Request, call_next):
     return await call_next(request)
 
 
+def _plantilla_de_ruta(request: Request) -> str:
+    """La plantilla, no el path: `/units/{unit_id}` y nunca `/units/<uuid>`.
+
+    Un path crudo como etiqueta de metrica es cardinalidad sin techo: cada
+    identificador abre una serie nueva en el backend.
+    """
+    ruta = request.scope.get("route")
+    plantilla = getattr(ruta, "path", None)
+    if isinstance(plantilla, str) and plantilla:
+        return plantilla
+    # Peticion que no caso con ninguna ruta: una sola serie para todas.
+    return "unmatched"
+
+
 @app.middleware("http")
 async def unhandled_exception_to_json(request: Request, call_next):
     """
@@ -105,15 +118,21 @@ async def unhandled_exception_to_json(request: Request, call_next):
     try:
         return await call_next(request)
     except Exception as exc:
-        record_api_error(request.url.path, type(exc).__name__)
+        plantilla = _plantilla_de_ruta(request)
+        record_api_error(plantilla, type(exc).__name__)
         logger.exception(
             "http.unhandled_exception",
-            extra={"http_method": request.method, "http_path": request.url.path},
+            extra={"http_method": request.method, "http_route": plantilla},
         )
         return JSONResponse(
             status_code=500,
             content={"detail": "Internal server error"},
         )
+
+
+@app.middleware("http")
+async def attach_request_id(request: Request, call_next):
+    return await request_id_middleware(request, call_next)
 
 
 app.add_middleware(
@@ -122,7 +141,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Sin esto el browser no puede leer el identificador que le devolvemos, que
+    # es justo el dato que el usuario copia al reportar un fallo.
+    expose_headers=["X-Request-ID"],
 )
+
+# Lo ultimo que se registra es lo mas externo, asi que la traza envuelve todo
+# lo demas y el span sigue abierto cuando `unhandled_exception_to_json` loguea.
+# Orden resultante, de fuera hacia dentro:
+#     traza OTel -> CORS -> request_id -> manejador de 500 -> tamaño de body
+instrument_app(app)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 

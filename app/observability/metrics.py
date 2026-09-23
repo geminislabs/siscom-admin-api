@@ -21,6 +21,11 @@ def _get(name: str, kind: str, description: str):
     return _counters[name]
 
 
+def reset_instrumentos_para_tests() -> None:
+    """Solo tests: olvida los instrumentos creados contra el provider anterior."""
+    _counters.clear()
+
+
 def record_auth_attempt(method: str, outcome: str) -> None:
     try:
         _get(

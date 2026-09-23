@@ -191,11 +191,35 @@ def test_health_declara_version_desconocida_si_nadie_la_inyecta(monkeypatch):
     assert body["version"] == "unknown"
 
 
-def test_service_version_por_defecto_es_el_centinela():
-    """Cierra la decision donde vive: en el default del Settings, no en el .env."""
+def test_service_version_sale_del_fichero_del_repo():
+    """La version la escribe el commit de release en `VERSION`.
+
+    Antes salia de una variable de entorno que nadie inyectaba, asi que /health
+    habria anunciado un numero inventado. Ahora sale de un fichero que el propio
+    corte de release ya toca (ver docs/RELEASE.md).
+    """
+    from pathlib import Path
+
     from app.core.config import Settings
 
-    assert Settings.model_fields["SERVICE_VERSION"].default == "unknown"
+    en_el_repo = (Path(__file__).resolve().parents[1] / "VERSION").read_text().strip()
+
+    assert en_el_repo
+    assert Settings.model_fields["SERVICE_VERSION"].default == en_el_repo
+
+
+def test_sin_fichero_version_se_declara_desconocida(monkeypatch):
+    """Si el fichero no viaja en la imagen, se dice que no se sabe."""
+    from pathlib import Path
+
+    from app.core.config import _version_del_repo
+
+    def _explota(self, *args, **kwargs):
+        raise OSError("no such file")
+
+    monkeypatch.setattr(Path, "read_text", _explota)
+
+    assert _version_del_repo() == "unknown"
 
 
 def test_health_endpoint_ok_expone_la_revision(client, monkeypatch):
