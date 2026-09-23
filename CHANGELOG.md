@@ -7,28 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Los logs de los 500 salian sin `request_id` ni `trace_id`: el middleware que los pone quedaba por dentro del manejador de excepciones y su `finally` ya habia borrado el contexto. El orden de registro se decide ahora al final de `main.py`, con el porque escrito al lado
-- `api_errors_total` etiquetaba con el path crudo, UUIDs incluidos — cardinalidad sin techo en el backend de metricas. Ahora usa la plantilla de la ruta, y `unmatched` cuando no caso ninguna
-- `reset_telemetry_for_tests()` no limpiaba los instrumentos cacheados, asi que uno creado antes del setup se quedaba no-op para siempre
-
-### Changed
-
-- `SERVICE_VERSION` sale del fichero `VERSION` de la raiz, que el commit de release bumpea junto al corte del CHANGELOG. Antes dependia de una variable de entorno que nadie inyectaba. Si el fichero falta, el valor es `unknown`
-- El `x-request-id` entrante se valida (128 caracteres, juego limitado) y se descarta entero si no sirve, en vez de llegar tal cual a los logs y a la respuesta
-- CORS expone `X-Request-ID`, para que el browser pueda leer el identificador que se le devuelve
-
-### Added
-
-- Observabilidad OpenTelemetry (`app/observability/`): traces, logs JSON con
-  `trace_id` y scrubber de PII, métricas `auth_attempts_total` /
-  `active_sessions_total` / `api_errors_total`. Con `OTLP_ENDPOINT` vacío la
-  API no exporta nada. `GET /health` incluye `environment` y `version`; esta
-  ultima sale como `unknown` hasta que el proceso de release escriba la version
-  en el repo, porque hoy solo vive en el tag de git.
-
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
@@ -90,6 +68,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.39.0] - 2026-09-23
+
+Observabilidad OpenTelemetry, **inerte mientras `OTLP_ENDPOINT` este vacio**:
+sin endpoint no se registran providers y la API se comporta como antes. Se
+libera sola, antes de la FK de `users.organization_id`, justo para que su
+efecto sea facil de comprobar: si algo se movio, se movio por otra cosa.
+
+**Migraciones**
+
+Ninguna. La cabeza sigue en `029_estado_de_usuario`.
+
+**Rollback**: redesplegar el tag anterior. No toca el esquema.
+
+### Added
+
+- Observabilidad OpenTelemetry (`app/observability/`): traces, logs JSON con
+  `trace_id` y scrubber de PII, métricas `auth_attempts_total` /
+  `active_sessions_total` / `api_errors_total`. Con `OTLP_ENDPOINT` vacío la
+  API no exporta nada. `GET /health` incluye `environment` y `version`
+- Fichero `VERSION` en la raiz como fuente de la version del build, bumpeado por el commit de release junto al corte del CHANGELOG (`docs/RELEASE.md`)
+
+### Changed
+
+- `SERVICE_VERSION` sale de `VERSION` y ya no de una variable de entorno que nadie inyectaba. Si el fichero falta, el valor es `unknown`: declarar que no se sabe en vez de anunciar un numero inventado
+- El `x-request-id` entrante se valida (128 caracteres, juego limitado) y se descarta entero si no sirve, en vez de llegar tal cual a los logs y a la respuesta
+- CORS expone `X-Request-ID`, para que el browser pueda leer el identificador que se le devuelve
+- Los logs dejan de imprimir el email del usuario y pasan a `user_id`
+
+### Fixed
+
+- Los logs de los 500 salian sin `request_id` ni `trace_id`: el middleware que los pone quedaba por dentro del manejador de excepciones y su `finally` ya habia borrado el contexto
+- `api_errors_total` etiquetaba con el path crudo, UUIDs incluidos — cardinalidad sin techo en el backend de metricas. Ahora usa la plantilla de la ruta, y `unmatched` cuando no caso ninguna
+- `reset_telemetry_for_tests()` no limpiaba los instrumentos cacheados, asi que uno creado antes del setup se quedaba no-op para siempre
 
 ## [1.38.0] - 2026-09-23
 
