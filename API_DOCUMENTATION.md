@@ -1,3 +1,10 @@
+> **Aviso (22/09/2026).** Este documento menciona `POST /api/v1/auth/internal`, que **ya no
+> existe**. Firmaba un PASETO de servicio con el `role` que pidiera quien llamara, hasta 720 h,
+> y como única autorización un token de Cognito válido: **cualquiera con sesión en Nexus se
+> acuñaba un `GAC_ADMIN`**. Se borró en vez de restringirse porque no lo llamaba nadie — GAC
+> firma sus propios tokens con `create_app_token`, detrás de su `require_roles(["admin"])`.
+> Detalle en `docs/security/plano-de-control-abierto.md`.
+
 # 📘 SISCOM Admin API - Documentación Completa
 
 ## 🎯 Descripción General
