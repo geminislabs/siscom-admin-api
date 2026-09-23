@@ -19,7 +19,11 @@ from app.api.deps import AuthResult, get_identity_provider
 from app.api.v1.endpoints.internal import users as internal_users
 from app.main import app as fastapi_app
 from app.models.user import User, UserStatus
-from app.services.identity import ErrorDelProveedor, IdentityProvider
+from app.services.identity import (
+    CredencialNoEncontrada,
+    ErrorDelProveedor,
+    IdentityProvider,
+)
 
 
 @pytest.fixture
@@ -367,3 +371,61 @@ def test_un_usuario_normal_de_nexus_no_puede_desactivar_a_nadie(
     db_session.refresh(victima)
     assert victima.status == UserStatus.ACTIVE.value
     idp_falso.deshabilitar.assert_not_called()
+
+
+# ── Sin credencial en el proveedor ───────────────────────────────────────
+#
+# Dos de los siete huerfanos —`borrar@hotmail.com` y `kibewac890@emaxasp.com`,
+# el segundo sin un solo inicio de sesion— devolvieron UserNotFoundException el
+# 22/09/2026. "No pude deshabilitar" y "no habia nada que deshabilitar" no son
+# lo mismo, y el significado ademas **depende de la direccion**.
+
+
+def test_sin_credencial_la_baja_esta_cumplida(
+    authenticated_client, db_session, test_organization_data, como_gac, idp_falso
+):
+    """Hacia INACTIVE, que no exista credencial ES el estado deseado.
+
+    Sin credencial no hay forma de autenticarse, que es exactamente lo que la
+    baja persigue. Reportar "no sincronizado" mandaria a alguien a buscar una
+    credencial viva que no existe.
+    """
+    usuario = _usuario(db_session, test_organization_data.id, "fantasma@example.com")
+    idp_falso.deshabilitar.side_effect = CredencialNoEncontrada(
+        "User does not exist.", codigo="UserNotFoundException"
+    )
+
+    respuesta = authenticated_client.patch(
+        f"/api/v1/internal/users/{usuario.id}/status", json={"status": "INACTIVE"}
+    )
+
+    cuerpo = respuesta.json()
+    assert cuerpo["status"] == "INACTIVE"
+    assert cuerpo["proveedor_sincronizado"] is True
+    assert "nada que deshabilitar" in cuerpo["detalle"]
+
+
+def test_sin_credencial_el_alta_NO_esta_cumplida(
+    authenticated_client, db_session, test_organization_data, como_gac, idp_falso
+):
+    """Hacia ACTIVE es una divergencia de verdad: la fila dice que la persona
+    esta activa y no puede entrar. Y el arreglo no es reintentar esto, es
+    crearle credencial — por eso el detalle lo dice en vez de callarse."""
+    usuario = _usuario(
+        db_session,
+        test_organization_data.id,
+        "sincredencial@example.com",
+        UserStatus.INACTIVE,
+    )
+    idp_falso.habilitar.side_effect = CredencialNoEncontrada(
+        "User does not exist.", codigo="UserNotFoundException"
+    )
+
+    respuesta = authenticated_client.patch(
+        f"/api/v1/internal/users/{usuario.id}/status", json={"status": "ACTIVE"}
+    )
+
+    cuerpo = respuesta.json()
+    assert cuerpo["status"] == "ACTIVE"
+    assert cuerpo["proveedor_sincronizado"] is False
+    assert "no puede iniciar sesión" in cuerpo["detalle"]

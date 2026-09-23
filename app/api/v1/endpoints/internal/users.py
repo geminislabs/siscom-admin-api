@@ -47,7 +47,11 @@ from app.schemas.internal_user import (
     InternalUserStatusIn,
     InternalUserStatusOut,
 )
-from app.services.identity import ErrorDeIdentidad, IdentityProvider
+from app.services.identity import (
+    CredencialNoEncontrada,
+    ErrorDeIdentidad,
+    IdentityProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +212,36 @@ def set_internal_user_status(
             idp.deshabilitar(handle=usuario.external_id)
         else:
             idp.habilitar(handle=usuario.external_id)
+    except CredencialNoEncontrada:
+        # No hay credencial en el proveedor. **Y qué significa eso depende de
+        # la dirección**, así que no se aplanan las dos en el mismo saco.
+        #
+        # Hacia INACTIVE, el estado deseado ya se cumple: sin credencial no hay
+        # forma de autenticarse, que es exactamente lo que la baja persigue. No
+        # hay nada que cerrar y decir «no sincronizado» mandaría a alguien a
+        # buscar una credencial viva que no existe.
+        #
+        # Hacia ACTIVE **no** se cumple: la fila dice que la persona está
+        # activa y no puede entrar. Eso es una divergencia de verdad y hay que
+        # decirlo, porque el arreglo es darle credencial, no reintentar esto.
+        #
+        # Medido el 22/09/2026: dos de los siete huérfanos —`borrar@hotmail.com`
+        # y `kibewac890@emaxasp.com`, el segundo sin un solo inicio de sesión—
+        # devolvían `UserNotFoundException` en las dos direcciones.
+        if nuevo == UserStatus.INACTIVE.value:
+            detalle = (
+                "No hay credencial en el proveedor: nada que deshabilitar, "
+                "y sin credencial no hay acceso posible"
+            )
+            logger.info(f"[INTERNAL USER STATUS] user={user_id} {detalle}")
+        else:
+            sincronizado = False
+            detalle = (
+                "La fila quedó en ACTIVE, pero no existe credencial en el "
+                "proveedor: esta persona no puede iniciar sesión hasta que se "
+                "le cree una"
+            )
+            logger.error(f"[INTERNAL USER STATUS] user={user_id} {detalle}")
     except ErrorDeIdentidad as e:
         sincronizado = False
         detalle = f"La fila quedó en {nuevo}, pero el proveedor no se pudo actualizar [{e.codigo}]: {e.mensaje}"
