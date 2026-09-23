@@ -19,7 +19,11 @@ from app.api.deps import AuthResult, get_identity_provider
 from app.api.v1.endpoints.internal import users as internal_users
 from app.main import app as fastapi_app
 from app.models.user import User, UserStatus
-from app.services.identity import ErrorDelProveedor, IdentityProvider
+from app.services.identity import (
+    CredencialNoEncontrada,
+    ErrorDelProveedor,
+    IdentityProvider,
+)
 
 
 @pytest.fixture
@@ -209,12 +213,23 @@ def test_reactivar_vuelve_a_habilitar_la_credencial(
     idp_falso.habilitar.assert_called_once_with(handle="vuelve@example.com")
 
 
-def test_poner_el_estado_que_ya_tiene_no_llama_al_proveedor(
+def test_poner_el_estado_que_ya_tiene_RECONCILIA_el_proveedor(
     authenticated_client, db_session, test_organization_data, como_gac, idp_falso
 ):
-    """Idempotente, y sin trafico de mas: `deshabilitar` y `habilitar` aguantan
-    repeticiones, pero llamarlas de mas convierte cada refresco de una pantalla
-    de GAC en peticiones contra Cognito."""
+    """El inverso del test que vivio aqui hasta el 22/09/2026.
+
+    Aquel afirmaba que un PATCH sin cambio de estado **no** tocaba el
+    proveedor, para ahorrar trafico. El razonamiento confundia dos cosas:
+    refrescar una pantalla es un GET, no un PATCH.
+
+    Y el atajo tenia un fallo peor que el trafico que ahorraba: **cuando la
+    fila y el proveedor divergen, era lo unico que podia reconciliarlos, y se
+    negaba a intentarlo**. Ocurrio en produccion: seis bajas escribieron
+    INACTIVE en la base y fallaron contra Cognito por un permiso de IAM que
+    faltaba; al reintentar, el endpoint respondia "sin cambio, todo
+    sincronizado" —falso— y hubo que rodearlo a mano con un ciclo
+    ACTIVE/INACTIVE.
+    """
     usuario = _usuario(db_session, test_organization_data.id, "igual@example.com")
 
     respuesta = authenticated_client.patch(
@@ -222,9 +237,38 @@ def test_poner_el_estado_que_ya_tiene_no_llama_al_proveedor(
     )
 
     assert respuesta.status_code == status.HTTP_200_OK
-    assert "Sin cambio" in respuesta.json()["detalle"]
-    idp_falso.habilitar.assert_not_called()
-    idp_falso.deshabilitar.assert_not_called()
+    idp_falso.habilitar.assert_called_once_with(handle="igual@example.com")
+    assert respuesta.json()["proveedor_sincronizado"] is True
+
+
+def test_reconciliar_reporta_el_fallo_en_vez_de_esconderlo(
+    authenticated_client, db_session, test_organization_data, como_gac, idp_falso
+):
+    """El caso exacto de produccion: la fila ya esta INACTIVE, el proveedor no.
+
+    Antes esto respondia `proveedor_sincronizado: true` sin preguntar. Ahora
+    intenta, falla, y **lo dice** — que es lo unico que permite saber que
+    quedan credenciales vivas.
+    """
+    usuario = _usuario(
+        db_session,
+        test_organization_data.id,
+        "divergente@example.com",
+        UserStatus.INACTIVE,
+    )
+    idp_falso.deshabilitar.side_effect = ErrorDelProveedor(
+        codigo="AccessDeniedException", mensaje="no autorizado a AdminDisableUser"
+    )
+
+    respuesta = authenticated_client.patch(
+        f"/api/v1/internal/users/{usuario.id}/status", json={"status": "INACTIVE"}
+    )
+
+    assert respuesta.status_code == status.HTTP_200_OK
+    cuerpo = respuesta.json()
+    assert cuerpo["status"] == "INACTIVE"
+    assert cuerpo["proveedor_sincronizado"] is False
+    assert "AdminDisableUser" in cuerpo["detalle"]
 
 
 def test_si_el_proveedor_falla_la_baja_se_mantiene_y_se_dice(
@@ -327,3 +371,61 @@ def test_un_usuario_normal_de_nexus_no_puede_desactivar_a_nadie(
     db_session.refresh(victima)
     assert victima.status == UserStatus.ACTIVE.value
     idp_falso.deshabilitar.assert_not_called()
+
+
+# ── Sin credencial en el proveedor ───────────────────────────────────────
+#
+# Dos de los siete huerfanos —`borrar@hotmail.com` y `kibewac890@emaxasp.com`,
+# el segundo sin un solo inicio de sesion— devolvieron UserNotFoundException el
+# 22/09/2026. "No pude deshabilitar" y "no habia nada que deshabilitar" no son
+# lo mismo, y el significado ademas **depende de la direccion**.
+
+
+def test_sin_credencial_la_baja_esta_cumplida(
+    authenticated_client, db_session, test_organization_data, como_gac, idp_falso
+):
+    """Hacia INACTIVE, que no exista credencial ES el estado deseado.
+
+    Sin credencial no hay forma de autenticarse, que es exactamente lo que la
+    baja persigue. Reportar "no sincronizado" mandaria a alguien a buscar una
+    credencial viva que no existe.
+    """
+    usuario = _usuario(db_session, test_organization_data.id, "fantasma@example.com")
+    idp_falso.deshabilitar.side_effect = CredencialNoEncontrada(
+        "User does not exist.", codigo="UserNotFoundException"
+    )
+
+    respuesta = authenticated_client.patch(
+        f"/api/v1/internal/users/{usuario.id}/status", json={"status": "INACTIVE"}
+    )
+
+    cuerpo = respuesta.json()
+    assert cuerpo["status"] == "INACTIVE"
+    assert cuerpo["proveedor_sincronizado"] is True
+    assert "nada que deshabilitar" in cuerpo["detalle"]
+
+
+def test_sin_credencial_el_alta_NO_esta_cumplida(
+    authenticated_client, db_session, test_organization_data, como_gac, idp_falso
+):
+    """Hacia ACTIVE es una divergencia de verdad: la fila dice que la persona
+    esta activa y no puede entrar. Y el arreglo no es reintentar esto, es
+    crearle credencial — por eso el detalle lo dice en vez de callarse."""
+    usuario = _usuario(
+        db_session,
+        test_organization_data.id,
+        "sincredencial@example.com",
+        UserStatus.INACTIVE,
+    )
+    idp_falso.habilitar.side_effect = CredencialNoEncontrada(
+        "User does not exist.", codigo="UserNotFoundException"
+    )
+
+    respuesta = authenticated_client.patch(
+        f"/api/v1/internal/users/{usuario.id}/status", json={"status": "ACTIVE"}
+    )
+
+    cuerpo = respuesta.json()
+    assert cuerpo["status"] == "ACTIVE"
+    assert cuerpo["proveedor_sincronizado"] is False
+    assert "no puede iniciar sesión" in cuerpo["detalle"]
