@@ -161,7 +161,11 @@ class Settings(BaseSettings):
     OTLP_ENDPOINT: str = ""
     DEPLOY_ENV: str = "local"
     SERVICE_NAME: str = "siscom-admin-api"
-    SERVICE_VERSION: str = "0.1.0"
+    # Centinela a proposito: la version del build vive hoy solo en el tag de git
+    # y nada la inyecta todavia. Un "0.1.0" por defecto se lee como un dato
+    # legitimo y miente; "unknown" declara que no se sabe. Se rellena cuando el
+    # commit de release la escriba en el repo (ver docs/RELEASE.md).
+    SERVICE_VERSION: str = "unknown"
 
     # Stripe — None cuando no está configurado (initialize_gateways lo omite)
     STRIPE_SECRET_KEY: Optional[str] = None

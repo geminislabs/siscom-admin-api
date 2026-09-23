@@ -35,7 +35,7 @@ _TEST_ENV_DEFAULTS = {
     "OTLP_ENDPOINT": "",
     "DEPLOY_ENV": "test",
     "SERVICE_NAME": "siscom-admin-api",
-    "SERVICE_VERSION": "0.1.0",
+    "SERVICE_VERSION": "unknown",
 }
 
 

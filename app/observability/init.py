@@ -68,7 +68,7 @@ def setup_telemetry(settings: Any) -> None:
     resource = Resource.create(
         {
             "service.name": getattr(settings, "SERVICE_NAME", "siscom-admin-api"),
-            "service.version": getattr(settings, "SERVICE_VERSION", "0.1.0"),
+            "service.version": getattr(settings, "SERVICE_VERSION", "unknown"),
             "deployment.environment": getattr(settings, "DEPLOY_ENV", "local"),
             "host.name": socket.gethostname(),
         }
