@@ -161,3 +161,17 @@ puede firmar.
 |-------|---------|---------|
 | 2026-08-20 | 1.0 | Documento inicial |
 | 2026-08-21 | 1.1 | La secuencia de despliegue queda superada por ADR-005 antes de ejecutarse: `SHARE_LOCATION_KEY_B64` nunca se configuró en ningún entorno |
+
+---
+
+## Actualización · 22 de septiembre de 2026
+
+El endpoint `POST /api/v1/auth/internal` que este ADR cita como emisor de los tokens de
+servicio **se eliminó**. No se edita el cuerpo de arriba a propósito: un ADR registra una
+decisión en su momento, y reescribirlo borraría el rastro de por qué las cosas fueron así.
+
+Lo que cambia respecto a lo que dice el texto original: los tokens de servicio ya no se emiten
+por HTTP desde esta API. GAC los firma en su propio proceso (`create_app_token`), y
+`/internal/*` los acepta con `get_auth_solo_servicio`, que **no** admite Cognito — a diferencia
+de `get_auth_cognito_or_paseto`, que es lo que este ADR menciona y lo que resultó ser el
+agujero. Ver `docs/security/plano-de-control-abierto.md`.

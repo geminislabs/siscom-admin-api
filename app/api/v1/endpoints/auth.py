@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     BearerAuth,
-    get_current_user,
     get_current_user_full,
     get_data_token_issuer,
     get_identity_provider,
@@ -35,8 +34,6 @@ from app.schemas.user import (
     DataTokenResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
-    InternalTokenRequest,
-    InternalTokenResponse,
     LogoutResponse,
     RefreshTokenRequest,
     RefreshTokenResponse,
@@ -64,7 +61,6 @@ from app.services.notifications import (
     send_verification_email,
 )
 from app.utils.datetime import utcnow
-from app.utils.paseto_token import generate_service_token
 from app.utils.security import generate_temporary_password, generate_verification_token
 
 logger = logging.getLogger(__name__)
@@ -1351,54 +1347,29 @@ def logout_user(
 
 
 # ------------------------------------------
-# Token interno PASETO para servicios
+# Token interno PASETO — ENDPOINT ELIMINADO el 22/09/2026
 # ------------------------------------------
-@router.post(
-    "/internal",
-    response_model=InternalTokenResponse,
-    status_code=status.HTTP_200_OK,
-)
-def generate_internal_token(
-    request: InternalTokenRequest,
-    db: Session = Depends(get_db),
-    cognito_payload: dict = Depends(get_current_user),
-):
-    """
-    Genera un token PASETO para autenticación de servicios internos.
-
-    Requiere autenticación con token Cognito. El email del usuario autenticado
-    se incluye automáticamente en el token PASETO generado.
-
-    **Parámetros:**
-    - `service`: Nombre del servicio (ej: "gac")
-    - `role`: Rol del servicio (ej: "GAC_ADMIN")
-    - `expires_in_hours`: Horas de validez del token (default: 24, max: 720)
-
-    **Retorna:**
-    - `token`: Token PASETO generado
-    - `expires_at`: Fecha de expiración del token
-    - `token_type`: Tipo de token (Bearer)
-    """
-    cognito_sub = cognito_payload.get("sub")
-    user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
-
-    token, expires_at = generate_service_token(
-        service=request.service,
-        role=request.role,
-        expires_in_hours=request.expires_in_hours,
-        additional_claims={"email": user.email},
-    )
-
-    return InternalTokenResponse(
-        token=token,
-        expires_at=expires_at,
-        token_type="Bearer",
-    )
+#
+# Aqui vivia `POST /auth/internal`, que firmaba un PASETO de servicio con
+# `service` y `role` a eleccion de quien llamara, hasta 720 horas de validez,
+# y como unica autorizacion `get_current_user`: un token de Cognito valido.
+#
+# Es decir: **cualquiera con sesion en Nexus se acuñaba un GAC_ADMIN de
+# treinta dias** y entraba en todo `/internal/*`. Comprobado por ejecucion.
+# Eso ademas hacia esquivable el arreglo de la v1.36.0, que cerro
+# `/internal/*` a solo-PASETO: de poco sirve exigir PASETO si cualquiera
+# puede fabricarse uno.
+#
+# Se borra en vez de restringirse porque **no lo llamaba nadie**: cero
+# referencias en los nueve repositorios. GAC firma sus propios tokens con
+# `create_app_token` (gac-api), detras de `require_roles(["admin"])`, y esa
+# es la via legitima. Lo unico que lo mencionaba era documentacion vieja
+# —incluida una advertencia que pedia no exponerlo y que ningun codigo
+# sostenia— ya corregida.
+#
+# Para emitir un token de operacion a mano: entrar en GAC como admin.
+#
+# Registro completo en `docs/security/plano-de-control-abierto.md`.
 
 
 # ------------------------------------------
