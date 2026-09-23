@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     AuthResult,
-    get_auth_cognito_or_paseto,
+    get_auth_solo_servicio,
     get_identity_provider,
 )
 from app.db.session import get_db
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-get_auth_for_internal_users = get_auth_cognito_or_paseto(
+get_auth_for_internal_users = get_auth_solo_servicio(
     required_service="gac",
     required_role="GAC_ADMIN",
 )

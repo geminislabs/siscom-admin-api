@@ -9,7 +9,7 @@ existe justo para desactivar gente no puede desactivarlos.
 Al 21/09/2026 son siete de veintitres usuarios en produccion.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -273,15 +273,57 @@ def test_usuario_inexistente_da_404(authenticated_client, como_gac, idp_falso):
     assert respuesta.status_code == status.HTTP_404_NOT_FOUND
 
 
-def test_sin_token_de_gac_no_se_entra(authenticated_client, db_session):
-    """Sin el override de autenticacion, la dependencia real tiene que rechazar.
-
-    Es la mitad que no se puede olvidar: un endpoint que lista y desactiva
-    usuarios del sistema entero, sin pasar por organizacion, es exactamente el
-    que no puede quedarse abierto.
-    """
+def test_sin_token_no_se_entra(authenticated_client):
+    """La mitad facil: sin cabecera, fuera."""
     respuesta = authenticated_client.get("/api/v1/internal/users")
     assert respuesta.status_code in (
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN,
     )
+
+
+def test_un_usuario_normal_de_nexus_no_puede_listar(client, db_session, test_user_data):
+    """La mitad que importa, y que estuvo mal escrita hasta el 22/09/2026.
+
+    El test anterior mandaba la peticion **sin cabecera** y comprobaba el 401.
+    Pasaba en verde sin probar nada: la pregunta no era "¿rechaza a quien no
+    trae token?" sino "¿rechaza a quien trae **otro** token?".
+
+    Y la respuesta era que no. `get_auth_cognito_or_paseto` intentaba Cognito
+    primero y concedia acceso sin mirar ningun rol, asi que cualquiera que
+    pudiera iniciar sesion en Nexus entraba en las veinte rutas de escritura
+    del plano de control. Medido por ejecucion: un usuario normal recibia 200
+    de PATCH /internal/users/{id}/status y dejaba a la victima en INACTIVE.
+    """
+    with patch(
+        "app.api.deps.verify_cognito_token",
+        return_value={"sub": test_user_data.cognito_sub},
+    ):
+        respuesta = client.get(
+            "/api/v1/internal/users",
+            headers={"Authorization": "Bearer token-valido-de-un-usuario-normal"},
+        )
+
+    assert respuesta.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_un_usuario_normal_de_nexus_no_puede_desactivar_a_nadie(
+    client, db_session, test_organization_data, test_user_data, idp_falso
+):
+    """El mismo hueco sobre la ruta que de verdad hace daño."""
+    victima = _usuario(db_session, test_organization_data.id, "victima@example.com")
+
+    with patch(
+        "app.api.deps.verify_cognito_token",
+        return_value={"sub": test_user_data.cognito_sub},
+    ):
+        respuesta = client.patch(
+            f"/api/v1/internal/users/{victima.id}/status",
+            headers={"Authorization": "Bearer token-valido-de-un-usuario-normal"},
+            json={"status": "INACTIVE"},
+        )
+
+    assert respuesta.status_code == status.HTTP_403_FORBIDDEN
+    db_session.refresh(victima)
+    assert victima.status == UserStatus.ACTIVE.value
+    idp_falso.deshabilitar.assert_not_called()

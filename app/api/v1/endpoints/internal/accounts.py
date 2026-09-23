@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, get_auth_cognito_or_paseto
+from app.api.deps import AuthResult, get_auth_solo_servicio
 from app.db.session import get_db
 from app.models.account import Account, AccountStatus
 from app.models.account_user import AccountRole, AccountUser
@@ -42,7 +42,7 @@ from app.services.account_nexus_status import (
 router = APIRouter()
 
 # Dependencia para autenticación PASETO (o Cognito para flexibilidad)
-get_auth_for_internal_accounts = get_auth_cognito_or_paseto(
+get_auth_for_internal_accounts = get_auth_solo_servicio(
     required_service="gac",
     required_role="GAC_ADMIN",
 )
