@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `DEPLOY_ENV` traia `local` por defecto y nadie lo inyectaba, asi que la `v1.39.0` salio a produccion anunciando `"environment": "local"` en `/health`. El default pasa a `unknown` —declarar que no se sabe— y el deploy escribe `production` en el `.env` que el mismo genera. Importa mas de lo que parece: en cuanto haya collector, esa etiqueta va en cada traza y cada metrica, y es por donde se filtra un dashboard
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un

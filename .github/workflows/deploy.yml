@@ -170,6 +170,7 @@ jobs:
             echo "🔧 Configurando variables de entorno..."
             cat > .env << EOF
             PROJECT_NAME=${PROJECT_NAME}
+            DEPLOY_ENV=production
             AWS_REGION=${AWS_REGION}
             SNS_PLATFORM_APPLICATION_ARN_IOS=${SNS_PLATFORM_APPLICATION_ARN_IOS}
             SNS_PLATFORM_APPLICATION_ARN_ANDROID=${SNS_PLATFORM_APPLICATION_ARN_ANDROID}
