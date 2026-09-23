@@ -208,6 +208,25 @@ def test_service_version_sale_del_fichero_del_repo():
     assert Settings.model_fields["SERVICE_VERSION"].default == en_el_repo
 
 
+def test_deploy_env_por_defecto_no_dice_local(monkeypatch):
+    """El deploy escribe `production` en el .env que genera; el codigo no lo sabe.
+
+    Con `local` por defecto, la v1.39.0 salio a produccion anunciando
+    `"environment": "local"` en /health. El valor por defecto de un campo que
+    nadie inyecta tiene que declarar ignorancia, no inventarse un entorno: en
+    cuanto haya collector, esta etiqueta va en cada traza y cada metrica.
+    """
+    from app.core.config import Settings
+
+    assert Settings.model_fields["DEPLOY_ENV"].default == "unknown"
+
+
+def test_health_refleja_el_entorno_configurado(monkeypatch):
+    monkeypatch.setattr(settings, "DEPLOY_ENV", "production")
+
+    assert _health_body(monkeypatch)["environment"] == "production"
+
+
 def test_sin_fichero_version_se_declara_desconocida(monkeypatch):
     """Si el fichero no viaja en la imagen, se dice que no se sabe."""
     from pathlib import Path

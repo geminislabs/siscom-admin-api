@@ -175,7 +175,11 @@ class Settings(BaseSettings):
     # Observabilidad (OTLP). Vacío = telemetría silenciosa (no-op).
     # Se lee en runtime; no hornear en la imagen.
     OTLP_ENDPOINT: str = ""
-    DEPLOY_ENV: str = "local"
+    # Mismo criterio que SERVICE_VERSION: un default plausible miente. "local"
+    # por defecto hacia que produccion se anunciara como local en /health — y,
+    # en cuanto se encienda el collector, etiquetaria cada traza y cada metrica
+    # con `deployment.environment=local`, que es por donde uno filtra.
+    DEPLOY_ENV: str = "unknown"
     SERVICE_NAME: str = "siscom-admin-api"
     # La escribe el commit de release en el fichero VERSION, junto al corte del
     # CHANGELOG (ver docs/RELEASE.md). Si el fichero no esta o esta vacio, el

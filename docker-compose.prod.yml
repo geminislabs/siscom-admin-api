@@ -8,6 +8,9 @@ services:
     environment:
       # Configuración General
       PROJECT_NAME: ${PROJECT_NAME:-SISCOM Admin API}
+      # Sin esto el contenedor se queda con el default del codigo, que es
+      # "unknown" a proposito: mejor no saber que decir "local" en produccion.
+      DEPLOY_ENV: ${DEPLOY_ENV:-unknown}
 
       # Configuración de Base de Datos
       DB_HOST: ${DB_HOST}
