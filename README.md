@@ -157,6 +157,33 @@ uvicorn app.main:app --reload
 
 La API estará disponible en http://localhost:8000
 
+## Observabilidad (OpenTelemetry)
+
+Esta API exporta traces, logs y métricas por OTLP/HTTP hacia un Collector
+externo (puerto 4318). El Collector, Jaeger, Grafana, Loki y Prometheus viven
+en otro proyecto.
+
+| Variable | Default | Rol |
+|----------|---------|-----|
+| `OTLP_ENDPOINT` | (vacío) | URL base del Collector. Vacío = no-op: la API opera igual que sin telemetría. |
+| `DEPLOY_ENV` | `local` | `local` \| `test` \| `production`. Etiqueta `deployment.environment`. |
+| `SERVICE_NAME` | `siscom-admin-api` | `service.name` en Resource. |
+| `SERVICE_VERSION` | `0.1.0` | `service.version`; también en `GET /health`. |
+
+Se leen en **runtime** (`docker run -e` o secret de CI). No se hornean en la imagen.
+
+En local, si el Collector no está levantado, dejar `OTLP_ENDPOINT` vacío.
+En test/production, apuntar al Collector de ese entorno (por ejemplo
+`http://otel-collector:4318`). El valor de `OTLP_ENDPOINT` no se loguea ni se
+expone en respuestas.
+
+### Qué no se loguea (PII)
+
+No registrar: passwords, tokens, `Authorization`, cookies, `api_key`, números
+de tarjeta, CVV, SSN, CURP, RFC, access/refresh tokens, claves privadas,
+parámetros SQL, emails, ni el valor de `OTLP_ENDPOINT`. Los logs de nivel
+DEBUG solo se emiten cuando `DEPLOY_ENV=local`.
+
 ## Documentación de la API
 
 ### 📘 Documentación Principal

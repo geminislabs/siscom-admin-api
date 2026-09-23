@@ -15,7 +15,10 @@ from app.api.deps import (
 )
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.logging_config import setup_logging
+from app.observability.init import instrument_app, setup_telemetry
+from app.observability.logging import configure_json_logging
+from app.observability.metrics import record_api_error
+from app.observability.request_id import request_id_middleware
 from app.services.health import (
     check_database,
     check_kafka_accessibility,
@@ -23,7 +26,8 @@ from app.services.health import (
 )
 from app.startup import print_startup_banner
 
-setup_logging()
+configure_json_logging(settings)
+setup_telemetry(settings)
 logger = logging.getLogger(__name__)
 
 
@@ -49,11 +53,20 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
+    # Version del contrato de la API (OpenAPI), no la del build: son cosas
+    # distintas y mezclarlas hacia que SERVICE_VERSION tocara el esquema.
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+instrument_app(app)
+
+
+@app.middleware("http")
+async def attach_request_id(request: Request, call_next):
+    return await request_id_middleware(request, call_next)
 
 
 # Middleware para limitar el tamaño del body y prevenir ataques DoS
@@ -91,9 +104,11 @@ async def unhandled_exception_to_json(request: Request, call_next):
     """
     try:
         return await call_next(request)
-    except Exception:
+    except Exception as exc:
+        record_api_error(request.url.path, type(exc).__name__)
         logger.exception(
-            "Unhandled exception on %s %s", request.method, request.url.path
+            "http.unhandled_exception",
+            extra={"http_method": request.method, "http_path": request.url.path},
         )
         return JSONResponse(
             status_code=500,
@@ -131,7 +146,9 @@ def health_check(response: Response):
 
     payload = {
         "status": "healthy" if db_ok else "unhealthy",
-        "service": "siscom-admin-api",
+        "service": settings.SERVICE_NAME,
+        "environment": settings.DEPLOY_ENV,
+        "version": settings.SERVICE_VERSION,
         "database": "ok" if db_ok else "unreachable",
         # None significa que alembic nunca gestiono este esquema.
         "schema_revision": get_schema_revision() if db_ok else None,

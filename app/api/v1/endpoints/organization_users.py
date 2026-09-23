@@ -292,8 +292,13 @@ def add_user_to_organization(
     db.refresh(membership)
 
     logger.info(
-        f"[ORG_USER ADD] user={data.user_id} added to org={organization_id} "
-        f"with role={data.role.value} by actor={auth.user_id}"
+        "org_user.added",
+        extra={
+            "user_id": str(data.user_id),
+            "organization_id": str(organization_id),
+            "role": data.role.value,
+            "actor_user_id": str(auth.user_id),
+        },
     )
 
     return OrganizationUserOut(
@@ -419,8 +424,14 @@ def update_user_role(
     db.refresh(membership)
 
     logger.info(
-        f"[ORG_USER ROLE CHANGE] user={user_id} in org={organization_id} "
-        f"role changed from {old_role} to {data.role.value} by actor={auth.user_id}"
+        "org_user.role_changed",
+        extra={
+            "user_id": str(user_id),
+            "organization_id": str(organization_id),
+            "old_role": old_role,
+            "new_role": data.role.value,
+            "actor_user_id": str(auth.user_id),
+        },
     )
 
     return OrganizationUserOut(
@@ -561,14 +572,19 @@ def remove_user_from_organization(
             idp.deshabilitar(handle=target.external_id)
         except ErrorDeIdentidad as e:
             logger.error(
-                f"[ORG_USER REMOVE] user={user_id} quedo INACTIVE en la base pero "
-                f"no se pudo deshabilitar en el proveedor [{e.codigo}]: {e.mensaje}"
+                "org_user.disable_failed",
+                extra={"user_id": str(user_id), "error_code": e.codigo},
             )
 
     logger.info(
-        f"[ORG_USER REMOVE] user={user_id} removed from org={organization_id} "
-        f"(was role={current_role_str}) by actor={auth.user_id} "
-        f"desactivado={desactivado}"
+        "org_user.removed",
+        extra={
+            "user_id": str(user_id),
+            "organization_id": str(organization_id),
+            "previous_role": current_role_str,
+            "actor_user_id": str(auth.user_id),
+            "deactivated": desactivado,
+        },
     )
 
     return None

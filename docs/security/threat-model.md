@@ -129,3 +129,29 @@ volvía a investigarla desde cero.
 **Al revisar esta lista**: una excepción deja de ser válida en cuanto cambia el
 uso. Si algún día se firma con ECDSA o se acepta ES256 en `jwt.decode`, esta
 entrada se invalida y hay que quitar la dependencia.
+
+### `setuptools` 81 — exclusión de `MANIFEST.in` y Unicode
+
+- **Identificador**: `PYSEC-2026-3447`. Corregido en `setuptools` 83.0.0.
+- **Por qué se queda en 81**: `opentelemetry-instrumentation` 0.48b0 importa
+  `pkg_resources` al arrancar, y `setuptools` 82 lo eliminó. 83 arregla el
+  CVE y también carece de ese módulo: la API no levanta.
+- **Por qué no aplica aquí**: el fallo está al construir un sdist, cuando un
+  nombre de archivo en NFD se salta una regla NFC de `MANIFEST.in`. Este
+  servicio no empaqueta ni publica distribuciones.
+- **Dónde está la excepción**: `scripts/pip-audit-scan.sh` y
+  `osv-scanner.toml` (`GHSA-h35f-9h28-mq5c`).
+- **Qué la cerraría**: una instrumentación que no importe `pkg_resources`, y
+  entonces subir `setuptools` a 83 o más.
+
+### `protobuf` 4.25.9 — `ParseDict` y `Any` anidados
+
+- **Identificador**: `PYSEC-2026-1805`. Corregido en 5.29.6 y 6.33.5.
+- **Cómo llega**: `opentelemetry-proto` 1.27 exige `protobuf<5`.
+- **Por qué no aplica aquí**: el fallo es un DoS en
+  `google.protobuf.json_format.ParseDict` con `Any` anidados. La API no
+  expone ese parser a datos de clientes; protobuf se usa para el export OTLP.
+- **Dónde está la excepción**: `scripts/pip-audit-scan.sh` y
+  `osv-scanner.toml` (`GHSA-7gcm-g887-7qv7`).
+- **Qué la cerraría**: subir OpenTelemetry a una línea que acepte protobuf 5
+  o 6, y quitar el pin.

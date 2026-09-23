@@ -55,7 +55,8 @@ def _validate_user_password(idp: IdentityProvider, user: User, password: str) ->
         return False
     except ErrorDeIdentidad as e:
         logger.error(
-            f"[USER COMMANDS] Error validando credenciales en Cognito: {e.codigo}"
+            "user_commands.credential_check_failed",
+            extra={"error_code": e.codigo},
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -238,7 +239,10 @@ async def create_user_command(
 
         except Exception as e:
             kore_error = f"Error inesperado KORE: {str(e)}"
-            logger.exception(f"[USER COMMANDS] {kore_error}")
+            logger.exception(
+                "user_commands.kore_unexpected",
+                extra={"error_type": type(e).__name__},
+            )
 
         if kore_error:
             updated_metadata = dict(command.command_metadata or {})
@@ -338,8 +342,8 @@ async def sync_user_command(
         )
         if not diagnostic_command:
             logger.warning(
-                "[USER COMMANDS SYNC] command_id=%s no existe en commands",
-                command_id,
+                "user_commands.sync_not_found",
+                extra={"command_id": str(command_id)},
             )
         else:
             diagnostic_device = (
@@ -355,12 +359,13 @@ async def sync_user_command(
                 source_id = diagnostic_command.command_metadata.get("source_id")
 
             logger.warning(
-                "[USER COMMANDS SYNC] command_id=%s no accesible por filtros. "
-                "request_org_id=%s command_org_id=%s source_id=%s",
-                command_id,
-                current_user.organization_id,
-                diagnostic_org_id,
-                source_id,
+                "user_commands.sync_not_accessible",
+                extra={
+                    "command_id": str(command_id),
+                    "organization_id": str(current_user.organization_id),
+                    "command_org_id": diagnostic_org_id,
+                    "source_id": source_id,
+                },
             )
 
         raise HTTPException(
@@ -426,15 +431,24 @@ async def sync_user_command(
 
     except KoreAuthError as e:
         sync_error = f"Error de autenticación KORE: {str(e)}"
-        logger.error(f"[USER COMMANDS SYNC] {sync_error}")
+        logger.error(
+            "user_commands.sync_auth_failed",
+            extra={"error_type": type(e).__name__},
+        )
 
     except httpx.RequestError as e:
         sync_error = f"Error de conexión con KORE: {str(e)}"
-        logger.error(f"[USER COMMANDS SYNC] {sync_error}")
+        logger.error(
+            "user_commands.sync_network_error",
+            extra={"error_type": type(e).__name__},
+        )
 
     except Exception as e:
         sync_error = f"Error inesperado: {str(e)}"
-        logger.exception(f"[USER COMMANDS SYNC] {sync_error}")
+        logger.exception(
+            "user_commands.sync_unexpected",
+            extra={"error_type": type(e).__name__},
+        )
 
     if sync_response or sync_error:
         if command.command_metadata is None:

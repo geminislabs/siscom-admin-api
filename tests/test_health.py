@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import app.services.health as health_mod
+from app.core.config import settings
 
 
 def test_check_kafka_returns_false_when_kafka_import_missing(monkeypatch):
@@ -153,6 +154,50 @@ def test_health_endpoint_devuelve_503_con_la_base_caida(client, monkeypatch):
         assert filtracion not in cuerpo, f"{filtracion!r} se filtro en /health"
 
 
+def _health_body(monkeypatch):
+    """Invoca health_check sin fixture client: no necesita Postgres."""
+    from fastapi import Response
+
+    import app.main as main_mod
+
+    monkeypatch.setattr(main_mod, "check_database", lambda: (True, None))
+    monkeypatch.setattr(
+        main_mod, "get_schema_revision", lambda: "025_device_and_unit_refs"
+    )
+    return main_mod.health_check(Response())
+
+
+def test_health_payload_incluye_environment_y_version(monkeypatch):
+    monkeypatch.setattr(settings, "DEPLOY_ENV", "production")
+    monkeypatch.setattr(settings, "SERVICE_VERSION", "1.38.0")
+
+    body = _health_body(monkeypatch)
+
+    assert body["environment"] == "production"
+    assert body["version"] == "1.38.0"
+    assert body["status"] == "healthy"
+
+
+def test_health_declara_version_desconocida_si_nadie_la_inyecta(monkeypatch):
+    """El caso real de hoy: nada escribe SERVICE_VERSION en el entorno.
+
+    La prueba anterior comparaba el payload contra `settings.SERVICE_VERSION`,
+    asi que pasaba con cualquier valor — incluido un "0.1.0" por defecto que
+    habria dicho eso mismo con la v1.38.0 desplegada. Lo que hay que fijar es
+    que sin inyeccion el endpoint declara ignorancia, no un numero plausible.
+    """
+    body = _health_body(monkeypatch)
+
+    assert body["version"] == "unknown"
+
+
+def test_service_version_por_defecto_es_el_centinela():
+    """Cierra la decision donde vive: en el default del Settings, no en el .env."""
+    from app.core.config import Settings
+
+    assert Settings.model_fields["SERVICE_VERSION"].default == "unknown"
+
+
 def test_health_endpoint_ok_expone_la_revision(client, monkeypatch):
     import app.main as main_mod
 
@@ -160,6 +205,8 @@ def test_health_endpoint_ok_expone_la_revision(client, monkeypatch):
     monkeypatch.setattr(
         main_mod, "get_schema_revision", lambda: "025_device_and_unit_refs"
     )
+    monkeypatch.setattr(settings, "DEPLOY_ENV", "local")
+    monkeypatch.setattr(settings, "SERVICE_VERSION", "unknown")
 
     resp = client.get("/health")
 
@@ -168,3 +215,5 @@ def test_health_endpoint_ok_expone_la_revision(client, monkeypatch):
     assert body["status"] == "healthy"
     assert body["database"] == "ok"
     assert body["schema_revision"] == "025_device_and_unit_refs"
+    assert body["environment"] == "local"
+    assert body["version"] == "unknown"

@@ -2,10 +2,14 @@
 Utilidad para verificar reCAPTCHA v3 de Google.
 """
 
+import logging
+
 import httpx
 from fastapi import HTTPException
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 async def verify_recaptcha(token: str, min_score: float = 0.5) -> dict:
@@ -27,10 +31,7 @@ async def verify_recaptcha(token: str, min_score: float = 0.5) -> dict:
     """
     # Si no hay secret key configurada, saltamos la validación (solo desarrollo)
     if not settings.RECAPTCHA_SECRET_KEY:
-        print(
-            "[WARNING] RECAPTCHA_SECRET_KEY no configurada. "
-            "Saltando validación de reCAPTCHA."
-        )
+        logger.warning("recaptcha.skipped_unconfigured")
         return {
             "success": True,
             "score": 1.0,
@@ -57,15 +58,22 @@ async def verify_recaptcha(token: str, min_score: float = 0.5) -> dict:
         data = response.json()
 
         # Log para debug
-        print(
-            f"[RECAPTCHA] Verificación: success={data.get('success')}, "
-            f"score={data.get('score')}, action={data.get('action')}"
+        logger.info(
+            "recaptcha.verified",
+            extra={
+                "success": data.get("success"),
+                "score": data.get("score"),
+                "action": data.get("action"),
+            },
         )
 
         # Verificar si la respuesta fue exitosa
         if not data.get("success"):
             error_codes = data.get("error-codes", [])
-            print(f"[RECAPTCHA ERROR] Error codes: {error_codes}")
+            logger.warning(
+                "recaptcha.invalid",
+                extra={"error_codes": error_codes},
+            )
             raise HTTPException(
                 status_code=400,
                 detail="reCAPTCHA inválido. Por favor intenta nuevamente.",
@@ -74,8 +82,9 @@ async def verify_recaptcha(token: str, min_score: float = 0.5) -> dict:
         # Verificar el score
         score = data.get("score", 0.0)
         if score < min_score:
-            print(
-                f"[RECAPTCHA] Score bajo: {score} < {min_score}. Posible bot detectado."
+            logger.warning(
+                "recaptcha.low_score",
+                extra={"score": score, "min_score": min_score},
             )
             raise HTTPException(
                 status_code=400,
@@ -86,14 +95,17 @@ async def verify_recaptcha(token: str, min_score: float = 0.5) -> dict:
         return data
 
     except httpx.TimeoutException:
-        print("[RECAPTCHA ERROR] Timeout al conectar con Google reCAPTCHA")
+        logger.warning("recaptcha.timeout")
         raise HTTPException(
             status_code=503,
             detail="Servicio de verificación temporalmente no disponible. "
             "Por favor intenta más tarde.",
         )
     except httpx.RequestError as e:
-        print(f"[RECAPTCHA ERROR] Error de red: {str(e)}")
+        logger.warning(
+            "recaptcha.network_error",
+            extra={"error_type": type(e).__name__},
+        )
         raise HTTPException(
             status_code=503,
             detail="Error al verificar reCAPTCHA. Por favor intenta más tarde.",
@@ -101,8 +113,8 @@ async def verify_recaptcha(token: str, min_score: float = 0.5) -> dict:
     except HTTPException:
         # Re-raise HTTPException as-is
         raise
-    except Exception as e:
-        print(f"[RECAPTCHA ERROR] Error inesperado: {str(e)}")
+    except Exception:
+        logger.exception("recaptcha.unexpected_error")
         raise HTTPException(
             status_code=500, detail="Error interno al verificar reCAPTCHA"
         )

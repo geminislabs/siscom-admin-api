@@ -27,9 +27,14 @@ app/services/           # lógica de negocio
 app/models/             # SQLModel
 app/schemas/            # Pydantic DTOs
 app/db/migrations/      # Alembic
+app/observability/      # OpenTelemetry (traces, logs JSON, métricas) — no PII
 tests/                  # pytest contra PostgreSQL real (ver docs §20); base desechable en esquema_desechable.py
 docs/                   # guías y API docs
+observability/          # SLOs y alertas (contrato; el Collector vive fuera)
 ```
+
+Los cambios de `feature/observability` son solo instrumentación y logging estructurado.
+No mezclar lógica de negocio en el mismo PR.
 
 ## Convenciones
 

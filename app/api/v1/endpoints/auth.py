@@ -21,6 +21,7 @@ from app.models.organization import Organization, OrganizationStatus
 from app.models.organization_user import OrganizationRole, OrganizationUser
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 from app.models.user import User
+from app.observability.metrics import record_auth_attempt, record_session_delta
 from app.schemas.account import (
     AccountOut,
     AuthMeResponse,
@@ -221,11 +222,15 @@ def register_user(
         if cognito_sub:
             user.cognito_sub = cognito_sub
 
-        logger.info(f"[REGISTER] Credencial creada para: {data.email}")
+        logger.info(
+            "auth.register.credential_created",
+            extra={"user_id": str(user.id), "method": "cognito"},
+        )
 
     except ErrorDeIdentidad as e:
         logger.error(
-            f"[REGISTER ERROR] Identidad: {e.codigo} - {e.mensaje} - Email: {data.email}"
+            "auth.register.identity_failed",
+            extra={"user_id": str(user.id), "error_code": e.codigo},
         )
         db.rollback()
 
@@ -258,13 +263,20 @@ def register_user(
     try:
         email_sent = send_verification_email(data.email, verification_token_str)
         if email_sent:
-            logger.info(f"[REGISTER] Email de verificación enviado a: {data.email}")
+            logger.info(
+                "auth.register.verification_email_sent",
+                extra={"user_id": str(user.id)},
+            )
         else:
             logger.warning(
-                f"[REGISTER] No se pudo enviar email de verificación a: {data.email}"
+                "auth.register.verification_email_failed",
+                extra={"user_id": str(user.id)},
             )
     except Exception as e:
-        logger.warning(f"[REGISTER] Error enviando email de verificación: {e}")
+        logger.warning(
+            "auth.register.verification_email_error",
+            extra={"user_id": str(user.id), "error_type": type(e).__name__},
+        )
 
     return OnboardingResponse(
         account_id=account.id,
@@ -370,12 +382,14 @@ def login_user(
     user = db.query(User).filter(User.email == credentials.email).first()
 
     if not user:
+        record_auth_attempt("cognito", "failure")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
         )
 
     # 2️⃣ Verificar que el email esté verificado
     if not user.email_verified:
+        record_auth_attempt("cognito", "failure")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Email no verificado"
         )
@@ -394,18 +408,21 @@ def login_user(
     except AutenticacionIncompleta as e:
         # El proveedor pide un paso más antes de dar sesión (típicamente un
         # cambio de contraseña forzado). El nombre del reto es texto suyo.
+        record_auth_attempt("cognito", "failure")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Se requiere completar el challenge: {e.reto}",
         )
     except ErrorDeIdentidad as e:
-        print(
-            f"[AUTH ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {credentials.email}"
+        logger.warning(
+            "auth.login.identity_failed",
+            extra={"user_id": str(user.id), "error_code": e.codigo},
         )
 
         if isinstance(e, CredencialesInvalidas):
             # Sin mensaje del proveedor es el caso en que no hubo sesión ni
             # reto: se responde igual que siempre, sin el punto de más.
+            record_auth_attempt("cognito", "failure")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=(
@@ -415,21 +432,25 @@ def login_user(
                 ),
             )
         elif isinstance(e, CredencialNoEncontrada):
+            record_auth_attempt("cognito", "failure")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Usuario no encontrado en Cognito",
             )
         elif isinstance(e, CredencialSinConfirmar):
+            record_auth_attempt("cognito", "failure")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Usuario no confirmado en Cognito",
             )
         elif isinstance(e, ParametroInvalido):
+            record_auth_attempt("cognito", "error")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error de configuración: {e.mensaje}",
             )
         else:
+            record_auth_attempt("cognito", "error")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error de autenticación [{e.codigo}]: {e.mensaje}",
@@ -439,6 +460,13 @@ def login_user(
     user.last_login_at = utcnow()
     db.commit()
     db.refresh(user)
+
+    record_auth_attempt("cognito", "success")
+    record_session_delta(1)
+    logger.info(
+        "auth.login.success",
+        extra={"user_id": str(user.id), "method": "cognito"},
+    )
 
     # 5️⃣ Retornar la información del usuario y los tokens
     return UserLoginResponse(
@@ -483,7 +511,10 @@ def _try_issue_data_token(db, user, issuer, store) -> Optional[DataTokenResponse
         ScopeStoreUnavailable,
         RevocationIndexNotConfigured,
     ) as exc:
-        logger.warning("Login sin data token adjunto: %s", exc)
+        logger.warning(
+            "auth.login.data_token_skipped",
+            extra={"error_type": type(exc).__name__},
+        )
         return None
 
     return DataTokenResponse(
@@ -539,16 +570,18 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
         # 4️⃣ Enviar correo electrónico con el código de 6 dígitos
         email_sent = send_password_reset_email(user.email, reset_code)
         if email_sent:
-            print(
-                f"[PASSWORD RESET] Correo enviado a {user.email} con código: {reset_code}"
+            logger.info(
+                "auth.password_reset.email_sent",
+                extra={"user_id": str(user.id)},
             )
         else:
-            print(f"[PASSWORD RESET ERROR] No se pudo enviar el correo a {user.email}")
+            logger.warning(
+                "auth.password_reset.email_failed",
+                extra={"user_id": str(user.id)},
+            )
     else:
         # Por seguridad, no revelar que el usuario no existe
-        print(
-            f"[PASSWORD RESET] Intento de recuperación para email no registrado: {request.email}"
-        )
+        logger.info("auth.password_reset.unknown_user")
 
     # 5️⃣ Siempre retornar el mismo mensaje de éxito (por seguridad)
     return ForgotPasswordResponse(
@@ -631,11 +664,15 @@ def reset_password(
     try:
         idp.fijar_password(handle=user.external_id, password=request.new_password)
 
-        print(f"[PASSWORD RESET] Contraseña actualizada exitosamente para {user.email}")
+        logger.info(
+            "auth.password_reset.updated",
+            extra={"user_id": str(user.id)},
+        )
 
     except ErrorDeIdentidad as e:
-        print(
-            f"[PASSWORD RESET ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {user.email}"
+        logger.warning(
+            "auth.password_reset.identity_failed",
+            extra={"user_id": str(user.id), "error_code": e.codigo},
         )
 
         if isinstance(e, CredencialNoEncontrada):
@@ -667,9 +704,9 @@ def reset_password(
     try:
         _revocar_todas_las_sesiones(idp, store, user)
     except ErrorDeIdentidad as e:
-        print(
-            f"[PASSWORD RESET] No se pudieron revocar las sesiones de {user.email}: "
-            f"{e.codigo} {e.mensaje}"
+        logger.error(
+            "auth.password_reset.revoke_failed",
+            extra={"user_id": str(user.id), "error_code": e.codigo},
         )
         # La contraseña YA está cambiada. Callarse sería mentir sobre lo que se
         # consiguió, así que se dice — y se dice qué hacer.
@@ -775,13 +812,15 @@ def change_password(
             password=request.new_password,
         )
 
-        print(
-            f"[CHANGE PASSWORD] Contraseña actualizada exitosamente para {current_user.email}"
+        logger.info(
+            "auth.change_password.updated",
+            extra={"user_id": str(current_user.id)},
         )
 
     except ErrorDeIdentidad as e:
-        print(
-            f"[CHANGE PASSWORD ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {current_user.email}"
+        logger.warning(
+            "auth.change_password.identity_failed",
+            extra={"user_id": str(current_user.id), "error_code": e.codigo},
         )
 
         if isinstance(e, PasswordRechazada):
@@ -799,9 +838,9 @@ def change_password(
     try:
         _revocar_todas_las_sesiones(idp, store, current_user)
     except ErrorDeIdentidad as e:
-        print(
-            f"[CHANGE PASSWORD] No se pudieron revocar las sesiones de "
-            f"{current_user.email}: {e.codigo} {e.mensaje}"
+        logger.error(
+            "auth.change_password.revoke_failed",
+            extra={"user_id": str(current_user.id), "error_code": e.codigo},
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -828,9 +867,9 @@ def change_password(
             password=request.new_password,
         )
     except ErrorDeIdentidad as e:
-        print(
-            f"[CHANGE PASSWORD] Sesión no renovada para {current_user.email}: "
-            f"{e.codigo} {e.mensaje}"
+        logger.warning(
+            "auth.change_password.session_not_renewed",
+            extra={"user_id": str(current_user.id), "error_code": e.codigo},
         )
 
     # 5️⃣ Retornar mensaje de éxito
@@ -878,15 +917,16 @@ def resend_verification(
 
     # 2️⃣ Si no existe o ya está verificado, retornar mensaje genérico
     if not user:
-        print(
-            f"[RESEND VERIFICATION] Intento para email no registrado: {request.email}"
-        )
+        logger.info("auth.resend_verification.unknown_user")
         return ResendVerificationResponse(
             message="Si la cuenta existe, se ha reenviado el correo de verificación."
         )
 
     if user.email_verified:
-        print(f"[RESEND VERIFICATION] Usuario ya verificado: {request.email}")
+        logger.info(
+            "auth.resend_verification.already_verified",
+            extra={"user_id": str(user.id)},
+        )
         return ResendVerificationResponse(
             message="Si la cuenta existe, se ha reenviado el correo de verificación."
         )
@@ -911,20 +951,23 @@ def resend_verification(
         for prev_token in previous_tokens:
             if prev_token.password_temp:
                 password_temp = prev_token.password_temp
-                print(
-                    f"[RESEND VERIFICATION] Reutilizando password_temp existente para master: {user.email}"
+                logger.info(
+                    "auth.resend_verification.reused_temp_password",
+                    extra={"user_id": str(user.id)},
                 )
                 break
 
         # Si no se encontró password_temp previo, generar uno nuevo (caso excepcional)
         if not password_temp:
             password_temp = generate_temporary_password()
-            print(
-                f"[RESEND VERIFICATION] Generando nuevo password_temp para master (no existía previo): {user.email}"
+            logger.info(
+                "auth.resend_verification.new_temp_password",
+                extra={"user_id": str(user.id)},
             )
     else:
-        print(
-            f"[RESEND VERIFICATION] Token sin password_temp para usuario normal: {user.email}"
+        logger.info(
+            "auth.resend_verification.no_temp_password",
+            extra={"user_id": str(user.id)},
         )
 
     # c) Invalidar tokens anteriores no usados del usuario
@@ -951,9 +994,15 @@ def resend_verification(
     # f) Enviar correo electrónico con el token
     email_sent = send_verification_email(user.email, verification_token)
     if email_sent:
-        print(f"[RESEND VERIFICATION] Correo enviado a {user.email}")
+        logger.info(
+            "auth.resend_verification.email_sent",
+            extra={"user_id": str(user.id)},
+        )
     else:
-        print(f"[RESEND VERIFICATION ERROR] No se pudo enviar el correo a {user.email}")
+        logger.warning(
+            "auth.resend_verification.email_failed",
+            extra={"user_id": str(user.id)},
+        )
 
     # 4️⃣ Retornar mensaje genérico
     return ResendVerificationResponse(
@@ -1060,8 +1109,9 @@ def verify_email(
         token_record.used = True
         db.commit()
 
-        print(
-            f"[VERIFY EMAIL - FLUJO C] Email verificado para usuario normal: {user.email}"
+        logger.info(
+            "auth.verify_email.member_verified",
+            extra={"user_id": str(user.id)},
         )
 
         return ConfirmEmailResponse(
@@ -1074,8 +1124,9 @@ def verify_email(
 
     # FLUJO B - Usuario master sin password_temp
     if not token_record.password_temp:
-        print(
-            f"[VERIFY EMAIL - FLUJO B] Token sin password_temp para usuario master: {user.email}"
+        logger.warning(
+            "auth.verify_email.master_missing_temp_password",
+            extra={"user_id": str(user.id)},
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1106,9 +1157,9 @@ def verify_email(
         )
 
     user_exists = cognito_sub is not None
-    print(
-        f"[VERIFY EMAIL - FLUJO A] Usuario master "
-        f"{'ya existe' if user_exists else 'no existe'} en Cognito: {user.email}"
+    logger.info(
+        "auth.verify_email.master_lookup",
+        extra={"user_id": str(user.id), "credential_exists": user_exists},
     )
 
     try:
@@ -1120,8 +1171,9 @@ def verify_email(
                 email_verificado=True,
             )
 
-            print(
-                f"[VERIFY EMAIL - FLUJO A] Usuario master creado en Cognito: {user.email}"
+            logger.info(
+                "auth.verify_email.master_created",
+                extra={"user_id": str(user.id)},
             )
 
         # Establecer contraseña permanente del usuario (ya sea nuevo o existente)
@@ -1140,13 +1192,15 @@ def verify_email(
                 detail="No se pudo obtener el cognito_sub del usuario",
             )
 
-        print(
-            f"[VERIFY EMAIL - FLUJO A] Contraseña establecida para master: {user.email}"
+        logger.info(
+            "auth.verify_email.master_password_set",
+            extra={"user_id": str(user.id)},
         )
 
     except ErrorDeIdentidad as e:
-        print(
-            f"[VERIFY EMAIL ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {user.email}"
+        logger.warning(
+            "auth.verify_email.identity_failed",
+            extra={"user_id": str(user.id), "error_code": e.codigo},
         )
 
         if isinstance(e, PasswordRechazada):
@@ -1173,8 +1227,9 @@ def verify_email(
 
     db.commit()
 
-    print(
-        f"[VERIFY EMAIL - FLUJO A] Organización activada exitosamente: {organization.name}"
+    logger.info(
+        "auth.verify_email.organization_activated",
+        extra={"user_id": str(user.id), "organization_id": str(organization.id)},
     )
 
     return ConfirmEmailResponse(
@@ -1235,7 +1290,7 @@ def refresh_token(
         # nada en los logs que lo explique.
         nuevo_refresh_token = sesion.refresh_token
 
-        print(f"[REFRESH TOKEN] Tokens renovados exitosamente para {request.email}")
+        logger.info("auth.refresh.success")
 
     except AutenticacionIncompleta:
         raise HTTPException(
@@ -1249,16 +1304,18 @@ def refresh_token(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="No se pudo renovar el token",
             )
-        print(
-            f"[REFRESH TOKEN ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {request.email}"
+        logger.warning(
+            "auth.refresh.rejected",
+            extra={"error_code": e.codigo},
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Refresh token inválido o expirado: {e.mensaje}",
         )
     except ErrorDeIdentidad as e:
-        print(
-            f"[REFRESH TOKEN ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {request.email}"
+        logger.warning(
+            "auth.refresh.identity_failed",
+            extra={"error_code": e.codigo},
         )
 
         if isinstance(e, ParametroInvalido):
@@ -1324,11 +1381,16 @@ def logout_user(
     try:
         idp.revocar_sesiones(access_token=access_token)
 
-        print(f"[LOGOUT] Sesión cerrada exitosamente para {current_user.email}")
+        record_session_delta(-1)
+        logger.info(
+            "auth.logout.success",
+            extra={"user_id": str(current_user.id)},
+        )
 
     except ErrorDeIdentidad as e:
-        print(
-            f"[LOGOUT ERROR] Code: {e.codigo}, Message: {e.mensaje}, Email: {current_user.email}"
+        logger.warning(
+            "auth.logout.identity_failed",
+            extra={"user_id": str(current_user.id), "error_code": e.codigo},
         )
 
         if isinstance(e, CredencialesInvalidas):
@@ -1427,7 +1489,10 @@ def issue_data_token(
         ScopeStoreUnavailable,
         RevocationIndexNotConfigured,
     ) as exc:
-        logger.error("Data token no disponible: %s", exc)
+        logger.error(
+            "auth.data_token.unavailable",
+            extra={"user_id": str(current_user.id), "error_type": type(exc).__name__},
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="El servicio de datos no está disponible temporalmente",
