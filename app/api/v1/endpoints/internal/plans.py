@@ -27,7 +27,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, get_auth_cognito_or_paseto
+from app.api.deps import AuthResult, get_auth_solo_servicio
 from app.db.session import get_db
 from app.models.capability import Capability, PlanCapability
 from app.models.plan import Plan
@@ -240,7 +240,7 @@ def list_plans(
         True, description="Incluir planes inactivos (por defecto: True)"
     ),
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Lista todos los planes con información administrativa.
@@ -272,7 +272,7 @@ def list_plans(
 def create_plan(
     data: PlanCreate,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Crea un nuevo plan con toda su configuración.
@@ -352,7 +352,7 @@ def update_plan(
     plan_id: UUID,
     data: PlanUpdate,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Actualiza un plan con toda su configuración.
@@ -427,7 +427,7 @@ def update_plan(
 def delete_plan(
     plan_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Elimina un plan.
@@ -476,7 +476,7 @@ def delete_plan(
 def list_plan_capabilities(
     plan_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Lista todas las capabilities de un plan.
@@ -525,7 +525,7 @@ def add_plan_capability(
     capability_code: str,
     data: PlanCapabilityInput,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Agrega o actualiza una capability individual en un plan.
@@ -591,7 +591,7 @@ def remove_plan_capability(
     plan_id: UUID,
     capability_code: str,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Elimina una capability de un plan.
@@ -640,7 +640,7 @@ def remove_plan_capability(
 def list_plan_products(
     plan_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Lista todos los productos de un plan.
@@ -675,7 +675,7 @@ def add_product_to_plan(
     plan_id: UUID,
     product_code: str,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Agrega un producto a un plan.
@@ -731,7 +731,7 @@ def remove_product_from_plan(
     plan_id: UUID,
     product_code: str,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Elimina un producto de un plan.
@@ -786,7 +786,7 @@ def remove_product_from_plan(
 def list_products(
     include_inactive: bool = Query(False, description="Incluir productos inactivos"),
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Lista todos los productos disponibles.
@@ -815,7 +815,7 @@ def list_products(
 def create_product(
     data: ProductCreate,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Crea un nuevo producto en el catálogo.
@@ -851,7 +851,7 @@ def create_product(
 def get_product(
     product_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Obtiene un producto por ID.
@@ -869,7 +869,7 @@ def update_product(
     product_id: UUID,
     data: ProductUpdate,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Actualiza un producto.
@@ -897,7 +897,7 @@ def update_product(
 def delete_product(
     product_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Elimina un producto.
@@ -936,7 +936,7 @@ def delete_product(
 )
 def list_capabilities(
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Lista todas las capabilities disponibles en el sistema.
@@ -974,7 +974,7 @@ def list_capabilities(
 def get_plan(
     plan_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(get_auth_cognito_or_paseto(required_service="gac")),
+    auth: AuthResult = Depends(get_auth_solo_servicio(required_service="gac")),
 ):
     """
     Obtiene un plan con toda su información administrativa.

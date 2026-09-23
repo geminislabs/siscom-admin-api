@@ -398,6 +398,59 @@ def get_current_user_with_role(
     return user, role
 
 
+def get_auth_solo_servicio(
+    required_service: Optional[str] = None,
+    required_role: Optional[str] = None,
+):
+    """Dependencia para el plano de control: **sólo tokens PASETO de servicio**.
+
+    POR QUE EXISTE, Y QUE AGUJERO CIERRA
+    ====================================
+    `get_auth_cognito_or_paseto` intenta Cognito primero y, si el token es
+    válido y el usuario existe en la base, **concede acceso sin mirar ningún
+    rol**: `required_service` y `required_role` se aplican únicamente al camino
+    PASETO. Sobre un endpoint de usuario eso es correcto y deliberado —`trips`
+    y `commands` sirven a la vez a personas y a GAC—, pero bajo `/internal/*`
+    significaba que **cualquiera que pudiera iniciar sesión en Nexus podía
+    llamar a las veinte rutas de escritura del plano de control**: crear y
+    suspender organizaciones, cancelar suscripciones, borrar planes, y
+    desactivar a cualquier usuario.
+
+    Comprobado por ejecución el 22/09/2026, no deducido: un usuario normal con
+    su token corriente recibió 200 de `PATCH /internal/users/{id}/status` y
+    dejó a la víctima en INACTIVE.
+
+    LA REGLA, DICHA UNA VEZ
+    =======================
+    Un endpoint interno es **servicio a servicio**. No hay persona detrás, así
+    que no hay token de persona que valga. Si algún día una interfaz necesita
+    entrar aquí con credenciales de usuario, la respuesta no es reabrir esta
+    puerta sino darle un endpoint propio con su autorización por rol.
+    """
+
+    def _verificar(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+    ) -> AuthResult:
+        payload = decode_service_token(
+            credentials.credentials,
+            required_service=required_service,
+            required_role=required_role,
+        )
+        if payload:
+            return AuthResult(
+                auth_type="paseto",
+                payload=payload,
+                service=payload.get("service"),
+                role=payload.get("role"),
+            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Esta ruta es de servicio a servicio: requiere un token PASETO válido.",
+        )
+
+    return _verificar
+
+
 def get_auth_cognito_or_paseto(
     required_service: Optional[str] = None,
     required_role: Optional[str] = None,

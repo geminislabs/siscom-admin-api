@@ -7,7 +7,7 @@ Requiere: Token PASETO con service="gac" y role="GAC_ADMIN"
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, get_auth_cognito_or_paseto
+from app.api.deps import AuthResult, get_auth_solo_servicio
 from app.db.session import get_db
 from app.schemas.manual_payment import ManualPaymentCreate, ManualPaymentResponse
 from app.services import renewal_service
@@ -15,7 +15,7 @@ from app.services.manual_payment_service import register_manual_payment
 
 router = APIRouter()
 
-get_auth_for_internal_billing = get_auth_cognito_or_paseto(
+get_auth_for_internal_billing = get_auth_solo_servicio(
     required_service="gac",
     required_role="GAC_ADMIN",
 )

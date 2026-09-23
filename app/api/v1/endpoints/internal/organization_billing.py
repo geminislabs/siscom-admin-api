@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, get_auth_cognito_or_paseto
+from app.api.deps import AuthResult, get_auth_solo_servicio
 from app.api.v1.endpoints.billing import (
     _fetch_stripe_receipt,
     _get_account_id,
@@ -43,7 +43,7 @@ from app.utils.datetime import utcnow
 
 router = APIRouter()
 
-get_auth_for_internal_org_billing = get_auth_cognito_or_paseto(
+get_auth_for_internal_org_billing = get_auth_solo_servicio(
     required_service="gac",
     required_role="GAC_ADMIN",
 )

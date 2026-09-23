@@ -60,6 +60,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **El plano de control estaba abierto a cualquier usuario autenticado.** `get_auth_cognito_or_paseto`
+  intenta Cognito primero y, si el token es válido y el usuario existe, concede acceso **sin mirar
+  ningún rol**: `required_service` y `required_role` se aplicaban sólo al camino PASETO. Cualquiera
+  que pudiera iniciar sesión en Nexus podía llamar a las **20 rutas de escritura** de `/internal/*`
+  — desactivar a cualquier usuario, suspender organizaciones, cancelar suscripciones, borrar planes
+  - **Verificado por ejecución**: un usuario normal recibió `200` de
+    `PATCH /internal/users/{id}/status` y dejó a la víctima en `INACTIVE`
+  - Se cierra con `get_auth_solo_servicio`, que **sólo acepta PASETO**, en los ocho módulos internos
+  - **`trips` y `commands` no se tocan, a propósito**: declaran el mismo `required_service` pero son
+    endpoints de usuario — `nexus-web` llama a `/units/{id}/trips` con token de Cognito y los
+    móviles también. Cerrar la factory entera habría roto la pantalla de viajes
+  - **El test que debía cubrirlo preguntaba lo que no era**: mandaba la petición *sin cabecera* y
+    comprobaba el 401. La pregunta no era «¿rechaza a quien no trae token?» sino «¿rechaza a quien
+    trae **otro** token?». Ahora existen las dos
+  - Detalle completo en `docs/security/plano-de-control-abierto.md`
 - Gitleaks + Semgrep + pip-audit + OSV-Scanner in CI `security` job
 - `POST /api/v1/mobility/locations` y `/batch` exigen JWT y validan que el `device_id` pertenezca a un dispositivo activo del usuario autenticado. Antes aceptaban cualquier `device_id` sin autenticación, lo que permitía inyectar ubicaciones de terceros al tópico de Kafka
 - PASETO: los tokens de compartir ubicación se firman con `SHARE_LOCATION_KEY_B64`, una clave dedicada, en lugar de con `PASETO_SECRET_KEY`. El verificador de esos tokens vive en siscom-api; entregarle la clave de servicio le permitía firmar tokens `internal-*` y llamar a la API interna como administrador. Sin la clave nueva configurada, `/units/{id}/share-location` responde `503` en vez de degradar a la clave de servicio (ver ADR-004)
