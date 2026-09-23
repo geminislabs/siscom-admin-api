@@ -167,23 +167,33 @@ def set_internal_user_status(
         )
 
     nuevo = data.status.value
-    if usuario.status == nuevo:
-        # Sin cambio no se toca el proveedor: `deshabilitar` y `habilitar` son
-        # idempotentes, pero llamarlas de más convierte cada refresco de una
-        # pantalla en tráfico contra Cognito.
-        return InternalUserStatusOut(
-            id=usuario.id,
-            email=usuario.email,
-            status=usuario.status,
-            proveedor_sincronizado=True,
-            detalle="Sin cambio: ya estaba en ese estado",
-        )
-
     anterior = usuario.status
-    usuario.status = nuevo
-    db.add(usuario)
-    db.commit()
-    db.refresh(usuario)
+    sin_cambio_en_la_fila = anterior == nuevo
+
+    # El proveedor se reconcilia SIEMPRE, aunque la fila ya estuviera en ese
+    # estado — y esto es una corrección, no un descuido.
+    #
+    # La versión anterior cortaba aquí y respondía `proveedor_sincronizado:
+    # True` sin haber hablado con nadie, razonando que llamar de más generaba
+    # tráfico contra Cognito. El razonamiento confundía dos cosas: refrescar
+    # una pantalla es un GET, no un PATCH, así que ese tráfico nunca llegaba
+    # por aquí. Un PATCH es una petición explícita de dejar el sistema en un
+    # estado.
+    #
+    # Y el atajo tenía un fallo peor que el tráfico que ahorraba: **cuando la
+    # fila y el proveedor divergen, era lo único que podía reconciliarlos, y
+    # se negaba a intentarlo**. Ocurrió el 22/09/2026: seis bajas escribieron
+    # INACTIVE en la base y fallaron contra Cognito por un permiso de IAM que
+    # faltaba (`AdminDisableUser`). Al reintentar, el endpoint respondía «sin
+    # cambio, todo sincronizado» — una respuesta falsa sobre un estado roto—
+    # y hubo que rodearlo con un ciclo ACTIVE/INACTIVE a mano.
+    #
+    # Lo que se ahorra en llamadas no compensa mentir sobre el estado.
+    if not sin_cambio_en_la_fila:
+        usuario.status = nuevo
+        db.add(usuario)
+        db.commit()
+        db.refresh(usuario)
 
     # El refuerzo va **después** del commit y su fallo no revierte nada: la
     # fuente de verdad es `users.status`, ya escrito (§9, regla 1). Si esto
@@ -204,12 +214,16 @@ def set_internal_user_status(
         logger.error(f"[INTERNAL USER STATUS] user={user_id} {detalle}")
 
     logger.info(
-        f"[INTERNAL USER STATUS] user={user_id} {anterior} -> {nuevo} "
+        f"[INTERNAL USER STATUS] user={user_id} {anterior} -> {nuevo}"
+        f"{' (sin cambio en la fila, solo reconciliacion)' if sin_cambio_en_la_fila else ''} "
         f"por actor={auth.user_id or 'servicio'} "
         f"motivo={data.motivo or '(sin motivo)'} "
         f"proveedor_sincronizado={sincronizado} "
         f"ip={request.client.host if request.client else None}"
     )
+
+    if detalle is None and sin_cambio_en_la_fila:
+        detalle = "La fila ya estaba en ese estado; se reconcilió el proveedor"
 
     return InternalUserStatusOut(
         id=usuario.id,
