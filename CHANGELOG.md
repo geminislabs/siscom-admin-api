@@ -16,29 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`PATCH /internal/users/{id}/status` reconcilia el proveedor siempre, aunque la fila ya esté en
-  ese estado.** Antes cortaba en seco y respondía `proveedor_sincronizado: true` **sin haber
-  hablado con nadie**, para ahorrar tráfico contra Cognito
-  - El razonamiento confundía dos cosas: refrescar una pantalla es un `GET`, no un `PATCH`. Ese
-    tráfico nunca llegaba por aquí
-  - Y el atajo tenía un fallo peor que el tráfico que ahorraba: **cuando la fila y el proveedor
-    divergen, era lo único que podía reconciliarlos y se negaba a intentarlo**. Pasó en producción
-    el 22/09: seis bajas escribieron `INACTIVE` en la base y fallaron contra Cognito por un permiso
-    de IAM que faltaba (`AdminDisableUser`, sobre el rol `EC2-SISCOM-SES-Role`). Al reintentar, el
-    endpoint respondía «sin cambio, todo sincronizado» —falso sobre un estado roto— y hubo que
-    rodearlo a mano con un ciclo `ACTIVE`/`INACTIVE`
-  - El test que lo cubría afirmaba justo lo contrario, así que se sustituye por su inverso, más
-    uno para el caso de divergencia que se dio de verdad
-- **«No pude deshabilitar» y «no había nada que deshabilitar» dejan de ser lo mismo**, y el
-  significado depende de la dirección
-  - Hacia `INACTIVE`, que no exista credencial **es** el estado deseado: sin credencial no hay
-    forma de autenticarse. Se reporta como sincronizado, porque decir lo contrario mandaría a
-    alguien a buscar una credencial viva que no existe
-  - Hacia `ACTIVE` **no** lo es: la fila diría que la persona está activa y no podría entrar. Eso
-    es divergencia real, y el arreglo es crearle credencial, no reintentar
-  - Medido el 22/09: dos de los siete huérfanos —`borrar@hotmail.com` y `kibewac890@emaxasp.com`,
-    el segundo sin un solo inicio de sesión— devolvían `UserNotFoundException` en las dos
-    direcciones
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
@@ -91,6 +68,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.37.0] - 2026-09-22
+
+**Migraciones.** **Ninguna.** Revisión `029_estado_de_usuario` antes y después; la señal correcta
+es la **ausencia** de `Running upgrade`.
+
+**Rollback.** Redesplegar `v1.36.0`. Se pierde la reconciliación del proveedor y vuelve el atajo
+que responde «sincronizado» sin preguntar.
+
+**De dónde sale esta release.** De ejecutar las bajas de los seis huérfanos y ver qué se rompía.
+Ninguno de estos dos arreglos se habría encontrado leyendo el código: salieron de usarlo contra
+producción, y los dos los destapó que el endpoint **informe** `proveedor_sincronizado` en la
+respuesta en vez de mandar el fallo al log.
+
+**Qué se arregló fuera del código, y no viaja en este tag.** Al rol `EC2-SISCOM-SES-Role` le
+faltaba `cognito-idp:AdminDisableUser`; las seis primeras bajas escribieron `INACTIVE` en la base y
+dejaron las credenciales vivas. El permiso se añadió en AWS el mismo día. **Conviene auditar esa
+política entera**: es un rol de SES al que se le han ido colgando responsabilidades de Cognito, y
+los permisos que nunca se han ejercido pueden estar fallando en silencio — `AdminEnableUser` lo
+estaba, y sin él `accept_invitation` habría devuelto `500` al readmitir a cualquiera.
+
+### Fixed
+
+- **`PATCH /internal/users/{id}/status` reconcilia el proveedor siempre, aunque la fila ya esté en
+  ese estado.** Antes cortaba en seco y respondía `proveedor_sincronizado: true` **sin haber
+  hablado con nadie**, para ahorrar tráfico contra Cognito
+  - El razonamiento confundía dos cosas: refrescar una pantalla es un `GET`, no un `PATCH`. Ese
+    tráfico nunca llegaba por aquí
+  - Y el atajo tenía un fallo peor que el tráfico que ahorraba: **cuando la fila y el proveedor
+    divergen, era lo único que podía reconciliarlos y se negaba a intentarlo**. Pasó en producción
+    el 22/09: seis bajas escribieron `INACTIVE` en la base y fallaron contra Cognito por un permiso
+    de IAM que faltaba (`AdminDisableUser`, sobre el rol `EC2-SISCOM-SES-Role`). Al reintentar, el
+    endpoint respondía «sin cambio, todo sincronizado» —falso sobre un estado roto— y hubo que
+    rodearlo a mano con un ciclo `ACTIVE`/`INACTIVE`
+  - El test que lo cubría afirmaba justo lo contrario, así que se sustituye por su inverso, más
+    uno para el caso de divergencia que se dio de verdad
+- **«No pude deshabilitar» y «no había nada que deshabilitar» dejan de ser lo mismo**, y el
+  significado depende de la dirección
+  - Hacia `INACTIVE`, que no exista credencial **es** el estado deseado: sin credencial no hay
+    forma de autenticarse. Se reporta como sincronizado, porque decir lo contrario mandaría a
+    alguien a buscar una credencial viva que no existe
+  - Hacia `ACTIVE` **no** lo es: la fila diría que la persona está activa y no podría entrar. Eso
+    es divergencia real, y el arreglo es crearle credencial, no reintentar
+  - Medido el 22/09: dos de los siete huérfanos —`borrar@hotmail.com` y `kibewac890@emaxasp.com`,
+    el segundo sin un solo inicio de sesión— devolvían `UserNotFoundException` en las dos
+    direcciones
 
 ## [1.36.0] - 2026-09-22
 
