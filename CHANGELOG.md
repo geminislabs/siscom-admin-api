@@ -7,31 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Migración `033`: **17 columnas pasan a `NOT NULL` y entran 8 claves foráneas**, con lo que el esquema alcanza a lo que los modelos declaraban. El `ON DELETE` de cada una sale de la metadata del modelo, no de lo que parezca razonable: cuatro declaran `CASCADE` y cuatro no declaran nada, y `NO ACTION` es una decisión tan válida como la otra
-- Se borran **45 filas de `plan_capabilities`** que apuntaban a planes inexistentes: configuración inalcanzable, porque a una `plan_capability` se llega por su plan. El borrado está acotado — si aparecen muchas más de las 45 medidas, la migración se planta en vez de decidir sola
-- `trips.device_id` entra **`NOT VALID`**: dos viajes de equipos dados de baja, y el historial vale más que la validez retroactiva
-
-### Changed
-
-- `tests/schema/deriva-conocida.toml` **queda vacío**. Nació con 32 entradas el 23/09 y se drenó entero: 4 en #113, una en #114 y las 25 restantes aquí. A partir de ahora, cualquier columna que el modelo declare distinto de la base se ve el mismo día
-
-### Fixed
-
-- Un viaje sin terminar devolvía **500**. `TripBase.end_timestamp` era obligatorio y `build_trip_out` le pasaba `trip.end_time` tal cual, así que Pydantic reventaba al serializar. En producción hay **cuatro** viajes así. Ahora el campo admite nulo, que es lo que significa un viaje en curso — y lo que el propio código ya suponía en la línea de encima, donde se protege con `if trip.start_time and trip.end_time` para calcular la duración
-
-### Fixed
-
-- `alert_rules.created_by` era `NOT NULL` **y** su clave foránea `ON DELETE SET NULL`: las dos cosas no pueden cumplirse a la vez, así que borrar a quien creó una regla fallaba con `null value in column "created_by"`. La migración `032` quita el `NOT NULL`, que es lo que el modelo ya decía por escrito. Ningún endpoint borra filas de `users` hoy, así que era una trampa para quien lo hiciera a mano
-- `alert_rules.fingerprint` y los `created_at` de `account_users` y `capabilities` se declaraban opcionales en el modelo y obligatorios en la base. Ahora el modelo dice la verdad. Al hacerlo salió un test que insertaba `fingerprint` nulo y pasaba **sólo porque el harness construye el esquema desde los modelos** — contra producción habría fallado
-- Cuatro entradas menos en `tests/schema/deriva-conocida.toml`: quedan 26
-
-### Added
-
-- `OTLP_ENDPOINT` viaja del workflow al `.env` que él mismo genera en la EC2 y de ahí al contenedor. Hasta ahora la API no tenía forma de encenderse sin tocar código: el corte 2 cableó el sitio y dejó esta punta sin hacer. **Vacía o sin definir = silencio**, que sigue siendo el valor por defecto
-- `docs/runbook.md` dice ahora **dónde** se define la variable — entorno `test` de cada repositorio, junto a las demás — en vez de «setearla en runtime»
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
@@ -93,6 +68,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.42.0] - 2026-09-24
+
+Cierra la deriva entre los modelos y el esquema, y arregla un 500 vivo. **Es la
+migración más grande de la serie.**
+
+**Migraciones**
+
+- `032_alert_rules_created_by`
+- `033_el_esquema_alcanza`
+
+Cabeza: `031_fk_organizacion_unidad` → `033_el_esquema_alcanza`
+
+**Rollback**: `alembic downgrade 031_fk_organizacion_unidad` —desde la imagen
+nueva, antes de desplegar un tag anterior—. Quita las restricciones, pero
+**no devuelve las 45 filas borradas**: un borrado no se deshace, y si hicieran
+falta salen de una copia de seguridad.
+
+**Qué verificar en el log**, en este orden:
+
+1. `🔎 plan_capabilities apuntando a un plan inexistente: 45`. Si el número se dispara por encima de 200, la migración **se planta sin borrar nada** — es el techo puesto a propósito, no un fallo que haya que forzar.
+2. `🧹 borradas 45 filas de configuracion inalcanzable`.
+3. `Running upgrade` para la `032` y la `033`, una vez cada una.
+4. Si aparece un fallo por `lock_timeout` o `statement_timeout`: los 17 `SET NOT NULL` recorren su tabla bajo `ACCESS EXCLUSIVE`, y en `commands` o `devices` eso puede no caber en la ventana. La migración aborta **entera**, el contenedor anterior sigue sirviendo, y se reintenta en un momento más tranquilo.
+5. `/health` responde `1.42.0` y `schema_revision: 033_el_esquema_alcanza`.
+
+### Fixed
+
+- Un viaje sin terminar devolvía **500**. `TripBase.end_timestamp` era obligatorio y `build_trip_out` le pasaba `trip.end_time` tal cual, así que Pydantic reventaba al serializar. En producción hay **cuatro** viajes así. Ahora el campo admite nulo, que es lo que significa un viaje en curso — y lo que el propio código ya suponía en la línea de encima, donde se protege con `if trip.start_time and trip.end_time` para calcular la duración
+- `alert_rules.created_by` era `NOT NULL` **y** su clave foránea `ON DELETE SET NULL`: las dos cosas no pueden cumplirse a la vez, así que borrar a quien creó una regla fallaba con `null value in column "created_by"`. La `032` quita el `NOT NULL`, que es lo que el modelo ya decía por escrito
+- `alert_rules.fingerprint` y los `created_at` de `account_users` y `capabilities` se declaraban opcionales en el modelo y obligatorios en la base. Ahora el modelo dice la verdad. Al hacerlo salió un test que insertaba `fingerprint` nulo y pasaba **sólo porque el harness construye el esquema desde los modelos** — contra producción habría fallado
+
+### Added
+
+- Migración `033`: **17 columnas pasan a `NOT NULL` y entran 8 claves foráneas**, con lo que el esquema alcanza a lo que los modelos declaraban. El `ON DELETE` de cada una sale de la metadata del modelo, no de lo que parezca razonable: cuatro declaran `CASCADE` y cuatro no declaran nada
+- Se borran **45 filas de `plan_capabilities`** que apuntaban a planes inexistentes: configuración inalcanzable, porque a una `plan_capability` se llega por su plan. El borrado está acotado — por encima de 200 la migración se planta en vez de decidir sola
+- `trips.device_id` entra **`NOT VALID`**: dos viajes de equipos dados de baja, y el historial vale más que la validez retroactiva
+- `OTLP_ENDPOINT` viaja del workflow al `.env` que él mismo genera en la EC2 y de ahí al contenedor. Hasta ahora la API no tenía forma de encenderse sin tocar código: el corte 2 cableó el sitio y dejó esta punta sin hacer. **Vacía o sin definir = silencio**, que sigue siendo el valor por defecto
+- `docs/runbook.md` dice ahora **dónde** se define la variable — entorno `test` de cada repositorio — en vez de «setearla en runtime»
+
+### Changed
+
+- `tests/schema/deriva-conocida.toml` **queda vacío**. Nació el 23/09 con 32 entradas, al enseñarle al comparador a mirar restricciones, y esta release lo drena entero. A partir de ahora, cualquier columna que el modelo declare distinto de la base se ve el mismo día, en la CI del PR que la introduzca
 
 ## [1.41.0] - 2026-09-24
 
