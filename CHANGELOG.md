@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `alert_rules.created_by` era `NOT NULL` **y** su clave foránea `ON DELETE SET NULL`: las dos cosas no pueden cumplirse a la vez, así que borrar a quien creó una regla fallaba con `null value in column "created_by"`. La migración `032` quita el `NOT NULL`, que es lo que el modelo ya decía por escrito. Ningún endpoint borra filas de `users` hoy, así que era una trampa para quien lo hiciera a mano
+- `alert_rules.fingerprint` y los `created_at` de `account_users` y `capabilities` se declaraban opcionales en el modelo y obligatorios en la base. Ahora el modelo dice la verdad. Al hacerlo salió un test que insertaba `fingerprint` nulo y pasaba **sólo porque el harness construye el esquema desde los modelos** — contra producción habría fallado
+- Cuatro entradas menos en `tests/schema/deriva-conocida.toml`: quedan 26
+
 ### Added
 
 - `OTLP_ENDPOINT` viaja del workflow al `.env` que él mismo genera en la EC2 y de ahí al contenedor. Hasta ahora la API no tenía forma de encenderse sin tocar código: el corte 2 cableó el sitio y dejó esta punta sin hacer. **Vacía o sin definir = silencio**, que sigue siendo el valor por defecto
