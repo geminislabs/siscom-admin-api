@@ -15,6 +15,24 @@ aplica las migraciones y comprueba el resultado. Es la comprobación que habría
 cantado la deriva de septiembre de 2026 en el PR que la introdujo, en vez de
 descubrirse meses después por un dump pedido a mano.
 
+## `deriva-conocida.toml`
+
+La línea base de restricciones que lee `scripts/verificar-deriva.py`. **No es una
+lista de cosas aceptadas**: es la fotografía de lo que hoy no coincide entre los
+modelos y el esquema migrado, para que deje de ser invisible.
+
+Falla en las dos direcciones, y la segunda es la que la mantiene honesta:
+
+| Situación | Qué pasa |
+|---|---|
+| Aparece una divergencia que no está en la lista | La CI falla. O se arregla, o entra con su porqué |
+| Una de la lista deja de ocurrir | La CI falla igual: hay que quitarla, porque una lista que no se poda deja de describir el presente |
+
+Nació el 23/09/2026 con 32 entradas, al descubrir —poniendo la FK de
+`users.organization_id`— que el comparador sólo miraba nombres de tablas y
+columnas. Llevaba meses diciendo «sin deriva» con esa columna declarada
+`NOT NULL` en el modelo y `NULL` en la base.
+
 ## Qué hay aquí
 
 | Fichero | Origen |
