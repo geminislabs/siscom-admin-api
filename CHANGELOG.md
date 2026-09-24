@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- El despliegue de la `v1.42.0` **falló y no llegó a producción**: `must be owner of table api_alerts`. `ALTER TABLE` exige ser dueño de la tabla y el rol de migración no lo era de `api_platform.api_alerts` ni de `public.trips` — las dos pertenecían a `postgres`. Se les cambió el dueño fuera de banda, como `postgres`, tras comprobar que no tenían chunks ni secuencias asociadas
+- La `033` pregunta ahora **por todas las tablas que va a alterar antes de empezar**, y si hay alguna ajena aborta nombrándolas todas. Fallar de una en una son tantos despliegues fallidos como tablas; preguntar de golpe cuesta una consulta. Va antes del borrado, así que un fallo ahí no deja nada a medias
+- El mensaje de la limpieza decía `🧹 borradas 45 filas` **dentro de la transacción**, así que al revertir el log afirmaba algo que no había ocurrido. Ahora habla en futuro hasta que la migración termina
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
