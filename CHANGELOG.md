@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- El comparador de deriva mira ahora **nulabilidad y claves foráneas**, contra la línea base de `tests/schema/deriva-conocida.toml`. Hasta hoy sólo comparaba presencia de tablas y columnas por nombre, así que su «sin deriva» llevaba meses siendo cierto y a la vez engañoso: `users.organization_id` era `NULL` sin restricción mientras el modelo la declaraba `NOT NULL` con `ForeignKey`
+- La línea base nace con **32 divergencias medidas**, 23 de nulabilidad y 9 claves foráneas que el modelo declara y la base no tiene — entre ellas `units.organization_id`, la otra mitad del predicado de aislamiento. Falla si aparece una nueva **y también** si una deja de ocurrir y nadie la quita de la lista
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
