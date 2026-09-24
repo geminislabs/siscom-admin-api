@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- El despliegue de la `v1.42.0` **falló y no llegó a producción**: `must be owner of table api_alerts`. `ALTER TABLE` exige ser dueño de la tabla y el rol de migración no lo era de `api_platform.api_alerts` ni de `public.trips` — las dos pertenecían a `postgres`. Se les cambió el dueño fuera de banda, como `postgres`, tras comprobar que no tenían chunks ni secuencias asociadas
-- La `033` pregunta ahora **por todas las tablas que va a alterar antes de empezar**, y si hay alguna ajena aborta nombrándolas todas. Fallar de una en una son tantos despliegues fallidos como tablas; preguntar de golpe cuesta una consulta. Va antes del borrado, así que un fallo ahí no deja nada a medias
-- El mensaje de la limpieza decía `🧹 borradas 45 filas` **dentro de la transacción**, así que al revertir el log afirmaba algo que no había ocurrido. Ahora habla en futuro hasta que la migración termina
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
@@ -75,7 +69,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
 
+## [1.42.1] - 2026-09-24
+
+**Lo que la `1.42.0` no consiguió entregar.** Esta versión contiene todo lo de
+aquella —que se etiquetó pero nunca llegó a producción— más el arreglo que lo
+impedía.
+
+**Migraciones**
+
+- `032_alert_rules_created_by`
+- `033_el_esquema_alcanza`
+
+Cabeza: `031_fk_organizacion_unidad` → `033_el_esquema_alcanza`. La `1.42.0` no
+movió el esquema: revirtió entero.
+
+**Rollback**: `alembic downgrade 031_fk_organizacion_unidad`, desde la imagen
+nueva. Quita las restricciones pero **no devuelve las 45 filas borradas**.
+
+**Qué verificar en el log**, en este orden:
+
+1. Que **no** aparezca el error de propiedad. Si aparece, la migración aborta nombrando todas las tablas ajenas de golpe, antes de tocar nada — no hace falta un despliegue por tabla para descubrirlas.
+2. `🔎 plan_capabilities apuntando a un plan inexistente: 45`. Por encima de 200 se planta sola.
+3. `🧹 marcadas para borrar 45 filas…` — en futuro a propósito: hasta que la migración termina, nada está confirmado.
+4. `Running upgrade` para la `032` y la `033`, una vez cada una.
+5. `/health` responde `1.42.1` y `schema_revision: 033_el_esquema_alcanza`.
+
+### Fixed
+
+- El despliegue de la `v1.42.0` **falló y no llegó a producción**: `must be owner of table api_alerts`. `ALTER TABLE` exige ser dueño de la tabla y el rol de migración no lo era de `api_platform.api_alerts` ni de `public.trips` — las dos pertenecían a `postgres`. Se les cambió el dueño fuera de banda, como `postgres`, tras comprobar que no tenían chunks ni secuencias asociadas
+- La `033` pregunta ahora **por todas las tablas que va a alterar antes de empezar**, y si hay alguna ajena aborta nombrándolas todas. Fallar de una en una son tantos despliegues fallidos como tablas; preguntar de golpe cuesta una consulta. Va antes del borrado, así que un fallo ahí no deja nada a medias
+- El mensaje de la limpieza decía `🧹 borradas 45 filas` **dentro de la transacción**, así que al revertir el log afirmaba algo que no había ocurrido. Ahora habla en futuro hasta que la migración termina
+
 ## [1.42.0] - 2026-09-24
+
+> **Esta versión se etiquetó pero nunca llegó a producción.** Su despliegue
+> falló en las migraciones con `must be owner of table api_alerts`, y como las
+> migraciones corren antes de sustituir el contenedor, el anterior siguió
+> sirviendo y el esquema se quedó en la `031`. Lo que sigue describe lo que
+> entrega de verdad la **`1.42.1`**.
 
 Cierra la deriva entre los modelos y el esquema, y arregla un 500 vivo. **Es la
 migración más grande de la serie.**
