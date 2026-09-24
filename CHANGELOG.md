@@ -7,15 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Migración `030`: `users.organization_id` pasa a `NOT NULL` y recibe su clave foránea a `organizations`, que el modelo declaraba desde hace meses y la base no tenía. La `014` sí la creaba, pero empieza con un `return` temprano si no existe `users.client_id` — y en producción el rename se había hecho por fuera de alembic, así que pasó de largo sin hacer nada y sin fallar
-- La restricción entra como `NOT VALID`: se exige a **todo INSERT y UPDATE** desde el primer momento, y sólo se salta la verificación de las siete filas anteriores que apuntan a una organización inexistente. Queda consultable en `pg_constraint.convalidated`, y se cierra con `VALIDATE CONSTRAINT` el día que se decida qué hacer con ellas
-
-### Fixed
-
-- `DEPLOY_ENV` traia `local` por defecto y nadie lo inyectaba, asi que la `v1.39.0` salio a produccion anunciando `"environment": "local"` en `/health`. El default pasa a `unknown` —declarar que no se sabe— y el deploy escribe `production` en el `.env` que el mismo genera. Importa mas de lo que parece: en cuanto haya collector, esa etiqueta va en cada traza y cada metrica, y es por donde se filtra un dashboard
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
@@ -77,6 +68,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.40.0] - 2026-09-23
+
+Dos cosas, y la primera toca el esquema de `users`, que se lee en **cada
+peticion autenticada**.
+
+**Migraciones**
+
+- `030_fk_organizacion_usuario`
+
+Cabeza: `029_estado_de_usuario` → `030_fk_organizacion_usuario`
+
+**Rollback**: `alembic downgrade 029_estado_de_usuario` —desde la imagen nueva,
+antes de desplegar un tag anterior— quita la restriccion y la obligatoriedad. No
+reescribe datos ni toca filas.
+
+**Que verificar en el log del despliegue**, en este orden:
+
+1. `🔎 users.organization_id: 0 sin valor, 7 apuntando a una organizacion inexistente`. Si los numeros no son esos, algo cambio desde la medicion del 23/09 y hay que parar.
+2. `Running upgrade 029_estado_de_usuario -> 030_fk_organizacion_usuario`, exactamente una vez.
+3. Si aparece un fallo por `lock_timeout`, el despliegue aborta sin tocar nada y el contenedor anterior sigue sirviendo. Es el comportamiento correcto: se reintenta, no se fuerza.
+4. `/health` responde `1.40.0`, `environment: production` y `schema_revision: 030_fk_organizacion_usuario`.
+
+### Added
+
+- Migración `030`: `users.organization_id` pasa a `NOT NULL` y recibe su clave foránea a `organizations`, que el modelo declaraba desde hace meses y la base no tenía. La `014` sí la creaba, pero empieza con un `return` temprano si no existe `users.client_id` — y en producción el rename se había hecho por fuera de alembic, así que pasó de largo sin hacer nada y sin fallar
+- La restricción entra como `NOT VALID`: se exige a **todo INSERT y UPDATE** desde el primer momento, y sólo se salta la verificación de las siete filas anteriores que apuntan a una organización inexistente. Queda consultable en `pg_constraint.convalidated`, y se cierra con `VALIDATE CONSTRAINT` el día que se decida qué hacer con ellas
+
+### Fixed
+
+- `DEPLOY_ENV` traía `local` por defecto y nadie lo inyectaba, así que la `v1.39.0` salió a producción anunciando `"environment": "local"` en `/health`. El default pasa a `unknown` —declarar que no se sabe— y el deploy escribe `production` en el `.env` que él mismo genera. Importa más de lo que parece: en cuanto haya collector, esa etiqueta va en cada traza y cada métrica, y es por donde se filtra un dashboard
 
 ## [1.39.0] - 2026-09-23
 
