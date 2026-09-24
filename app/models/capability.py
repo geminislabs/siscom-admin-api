@@ -56,7 +56,7 @@ class Capability(SQLModel, table=True):
     created_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(
-            DateTime(timezone=True), server_default=text("now()"), nullable=True
+            DateTime(timezone=True), server_default=text("now()"), nullable=False
         ),
     )
 

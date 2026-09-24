@@ -45,7 +45,7 @@ class AlertRule(SQLModel, table=True):
 
     fingerprint: Optional[str] = Field(
         default=None,
-        sa_column=Column(Text, nullable=True, unique=True),
+        sa_column=Column(Text, nullable=False, unique=True),
     )
 
     is_active: bool = Field(

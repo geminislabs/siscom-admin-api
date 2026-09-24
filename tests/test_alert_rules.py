@@ -197,6 +197,12 @@ def test_alert_rules_hidden_when_organization_inactive(
         name="Regla visible solo org activa",
         type="ignition_off",
         config={"event": "Engine OFF"},
+        # Obligatorio en la base desde siempre. Este test insertaba NULL y
+        # pasaba porque el harness construye el esquema desde los modelos, y el
+        # modelo lo declaraba opcional: contra produccion habria fallado con
+        # `null value in column "fingerprint"`. El endpoint real lo genera
+        # siempre (`alert_rules.py:247`).
+        fingerprint=f"prueba-{uuid4()}",
         is_active=True,
     )
     db_session.add(rule)

@@ -34,10 +34,6 @@
 
 nulabilidad = [
   "api_platform.api_alerts.enabled: modelo=NOT NULL base=NULL",
-  "public.account_users.created_at: modelo=NULL base=NOT NULL",
-  "public.alert_rules.created_by: modelo=NULL base=NOT NULL",
-  "public.alert_rules.fingerprint: modelo=NULL base=NOT NULL",
-  "public.capabilities.created_at: modelo=NULL base=NOT NULL",
   "public.commands.requested_at: modelo=NOT NULL base=NULL",
   "public.commands.updated_at: modelo=NOT NULL base=NULL",
   "public.devices.created_at: modelo=NOT NULL base=NULL",
