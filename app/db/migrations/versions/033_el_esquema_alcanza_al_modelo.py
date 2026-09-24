@@ -65,6 +65,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # Lo medido el 24/09. Si la realidad se aleja de esto, la migracion se planta
 # en vez de seguir: el numero es parte de la decision, no un detalle.
+# Todas las tablas que esta migracion altera. Existe para poder preguntar por
+# todas antes de empezar; el esquema importa, `api_platform` no es `public`.
+_TABLAS_QUE_SE_ALTERAN = [
+    ("api_platform", "api_alerts"),
+    ("public", "commands"),
+    ("public", "devices"),
+    ("public", "invitations"),
+    ("public", "order_items"),
+    ("public", "orders"),
+    ("public", "plan_capabilities"),
+    ("public", "plans"),
+    ("public", "subscriptions"),
+    ("public", "tokens_confirmacion"),
+    ("public", "trips"),
+    ("public", "unit_profile"),
+    ("public", "user_devices"),
+    ("public", "vehicle_profile"),
+]
+
 HUERFANAS_ESPERADAS = 45
 TECHO_DE_LIMPIEZA = 200
 
@@ -81,7 +100,45 @@ def upgrade() -> None:
     conn = op.get_bind()
 
     # ------------------------------------------------------------------
-    # 2. La limpieza de plan_capabilities, acotada
+    # 2. Preguntar si se puede, antes de empezar
+    # ------------------------------------------------------------------
+    # `ALTER TABLE` exige ser **dueño** de la tabla. Postgres no tiene un
+    # `GRANT ALTER` intermedio: o eres el dueño (o miembro de su rol), o no
+    # puedes, tengas los permisos de escritura que tengas.
+    #
+    # El primer intento de desplegar esto (v1.42.0, 24/09/2026) aborto con
+    # `must be owner of table api_alerts` **en la primera tabla de la lista**.
+    # Ese es el problema que resuelve este bloque: fallar de una en una son N
+    # despliegues fallidos para descubrir N tablas. Preguntar por todas cuesta
+    # una consulta.
+    #
+    # Va antes del borrado a proposito: un fallo aqui no deja nada a medias.
+    ajenas = conn.execute(
+        sa.text("""
+            SELECT n.nspname || '.' || c.relname AS tabla,
+                   pg_get_userbyid(c.relowner)   AS dueno
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relkind = 'r'
+               AND (n.nspname, c.relname) IN :tablas
+               AND NOT pg_has_role(current_user, c.relowner, 'USAGE')
+             ORDER BY 1
+            """).bindparams(sa.bindparam("tablas", expanding=True)),
+        {"tablas": _TABLAS_QUE_SE_ALTERAN},
+    ).all()
+
+    if ajenas:
+        detalle = ", ".join(f"{t} (dueno: {d})" for t, d in ajenas)
+        raise RuntimeError(
+            "El rol de migracion no es dueño de estas tablas y no puede "
+            f"alterarlas: {detalle}. No hay permiso intermedio en Postgres: o "
+            "se les cambia el dueño (`ALTER TABLE ... OWNER TO`, como "
+            "`postgres`), o esas columnas salen de aqui y entran en "
+            "tests/schema/deriva-conocida.toml con su razon."
+        )
+
+    # ------------------------------------------------------------------
+    # 3. La limpieza de plan_capabilities, acotada
     # ------------------------------------------------------------------
     huerfanas = conn.execute(sa.text("""
             SELECT count(*) FROM public.plan_capabilities pc
@@ -106,10 +163,16 @@ def upgrade() -> None:
                  WHERE NOT EXISTS (SELECT 1 FROM public.plans p
                                     WHERE p.id = pc.plan_id)
                 """))
-        print(f"🧹 borradas {huerfanas} filas de configuracion inalcanzable")
+        # En pasado solo cuando este confirmado. El despliegue fallido de la
+        # v1.42.0 imprimio "borradas 45 filas" y luego revirtio la transaccion
+        # entera: el log afirmaba algo que no habia ocurrido.
+        print(
+            f"🧹 marcadas para borrar {huerfanas} filas de configuracion "
+            "inalcanzable (se confirman al terminar la migracion)"
+        )
 
     # ------------------------------------------------------------------
-    # 3. Las diecisiete columnas que pasan a obligatorias
+    # 4. Las diecisiete columnas que pasan a obligatorias
     # ------------------------------------------------------------------
     # Todas midieron cero nulos. `SET NOT NULL` recorre la tabla una vez bajo
     # ACCESS EXCLUSIVE; en las grandes (`commands`, `devices`) eso es lo unico
@@ -140,7 +203,7 @@ def upgrade() -> None:
     )
 
     # ------------------------------------------------------------------
-    # 4. Las siete claves foraneas, validadas
+    # 5. Las siete claves foraneas, validadas
     # ------------------------------------------------------------------
     # El `ON DELETE` de cada una sale de lo que declara el modelo, no de lo que
     # parezca razonable: la mitad no declara ninguno, y NO ACTION es una
@@ -198,7 +261,7 @@ def upgrade() -> None:
         """)
 
     # ------------------------------------------------------------------
-    # 5. La de trips, sin validar lo viejo
+    # 6. La de trips, sin validar lo viejo
     # ------------------------------------------------------------------
     # Dos viajes de equipos dados de baja. No se borran: el historial vale mas
     # que la validez retroactiva de la restriccion.
