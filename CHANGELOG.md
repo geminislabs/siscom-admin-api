@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Un viaje sin terminar devolvía **500**. `TripBase.end_timestamp` era obligatorio y `build_trip_out` le pasaba `trip.end_time` tal cual, así que Pydantic reventaba al serializar. En producción hay **cuatro** viajes así. Ahora el campo admite nulo, que es lo que significa un viaje en curso — y lo que el propio código ya suponía en la línea de encima, donde se protege con `if trip.start_time and trip.end_time` para calcular la duración
+
+### Fixed
+
 - `alert_rules.created_by` era `NOT NULL` **y** su clave foránea `ON DELETE SET NULL`: las dos cosas no pueden cumplirse a la vez, así que borrar a quien creó una regla fallaba con `null value in column "created_by"`. La migración `032` quita el `NOT NULL`, que es lo que el modelo ya decía por escrito. Ningún endpoint borra filas de `users` hoy, así que era una trampa para quien lo hiciera a mano
 - `alert_rules.fingerprint` y los `created_at` de `account_users` y `capabilities` se declaraban opcionales en el modelo y obligatorios en la base. Ahora el modelo dice la verdad. Al hacerlo salió un test que insertaba `fingerprint` nulo y pasaba **sólo porque el harness construye el esquema desde los modelos** — contra producción habría fallado
 - Cuatro entradas menos en `tests/schema/deriva-conocida.toml`: quedan 26
