@@ -43,8 +43,10 @@ class Trip(SQLModel, table=True):
         sa_column=Column(TIMESTAMP(timezone=True), nullable=False)
     )
 
-    end_time: datetime = Field(
-        sa_column=Column(TIMESTAMP(timezone=True), nullable=False)
+    # Un viaje en curso no tiene fin. La base siempre lo admitio y el modelo
+    # decia lo contrario; en produccion hay cuatro asi.
+    end_time: Optional[datetime] = Field(
+        default=None, sa_column=Column(TIMESTAMP(timezone=True), nullable=True)
     )
 
     start_lat: Optional[float] = Field(

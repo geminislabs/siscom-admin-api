@@ -93,7 +93,9 @@ class TripBase(BaseModel):
     trip_id: UUID = Field(..., description="ID único del viaje")
     device_id: str = Field(..., description="ID del dispositivo que realizó el viaje")
     start_timestamp: datetime = Field(..., description="Timestamp de inicio del viaje")
-    end_timestamp: datetime = Field(..., description="Timestamp de fin del viaje")
+    end_timestamp: Optional[datetime] = Field(
+        None, description="Timestamp de fin del viaje; nulo si el viaje sigue abierto"
+    )
     duration_minutes: Optional[float] = Field(
         None, description="Duración del viaje en minutos"
     )

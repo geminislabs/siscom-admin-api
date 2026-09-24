@@ -45,7 +45,6 @@ nulabilidad = [
   "public.orders.created_at: modelo=NOT NULL base=NULL",
   "public.orders.organization_id: modelo=NOT NULL base=NULL",
   "public.plans.is_active: modelo=NOT NULL base=NULL",
-  "public.trips.end_time: modelo=NOT NULL base=NULL",
   "public.unit_profile.created_at: modelo=NOT NULL base=NULL",
   "public.unit_profile.updated_at: modelo=NOT NULL base=NULL",
   "public.user_devices.is_active: modelo=NOT NULL base=NULL",
