@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Migración `030`: `users.organization_id` pasa a `NOT NULL` y recibe su clave foránea a `organizations`, que el modelo declaraba desde hace meses y la base no tenía. La `014` sí la creaba, pero empieza con un `return` temprano si no existe `users.client_id` — y en producción el rename se había hecho por fuera de alembic, así que pasó de largo sin hacer nada y sin fallar
+- La restricción entra como `NOT VALID`: se exige a **todo INSERT y UPDATE** desde el primer momento, y sólo se salta la verificación de las siete filas anteriores que apuntan a una organización inexistente. Queda consultable en `pg_constraint.convalidated`, y se cierra con `VALIDATE CONSTRAINT` el día que se decida qué hacer con ellas
+
 ### Fixed
 
 - `DEPLOY_ENV` traia `local` por defecto y nadie lo inyectaba, asi que la `v1.39.0` salio a produccion anunciando `"environment": "local"` en `/health`. El default pasa a `unknown` —declarar que no se sabe— y el deploy escribe `production` en el `.env` que el mismo genera. Importa mas de lo que parece: en cuanto haya collector, esa etiqueta va en cada traza y cada metrica, y es por donde se filtra un dashboard

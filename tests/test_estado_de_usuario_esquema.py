@@ -150,6 +150,14 @@ def datos(engine):
     Los datos se **commitean**: alembic corre en otro proceso y no veria una
     transaccion abierta.
     """
+    # El escenario se monta **con la base bajada a la 028**, no en head. Desde
+    # la `030` hay clave foranea en `users.organization_id`, asi que el huerfano
+    # de mas abajo ya no se puede insertar por encima de ella — y ese es
+    # justamente el punto de la FK. Bajar primero reproduce el orden real: esas
+    # filas existian en produccion **antes** de que las migraciones corrieran.
+    if desechable.alembic(BASE, "downgrade", REVISION_ANTERIOR) != 0:
+        raise RuntimeError("fallo el downgrade a la 028")
+
     with engine.connect() as c:
         tx = c.begin()
         cuenta = _cuenta(c, "Cuenta del relleno")
@@ -169,16 +177,14 @@ def datos(engine):
         normal = _usuario(c, "normal@example.com", org_normal, master=False)
 
         # El caso que tumbo el despliegue de v1.32.1: un master cuya
-        # organizacion **no existe**. Se puede insertar porque
-        # `users.organization_id` no tiene FK en produccion — solo un indice — y
-        # esta base sale del snapshot productivo, asi que reproduce ese hueco.
+        # organizacion **no existe**. Se puede insertar aqui porque la base esta
+        # en la 028, por debajo de la clave foranea que anade la `030` — igual
+        # que en produccion, donde estas filas son anteriores a la migracion.
         org_fantasma = uuid4()
         huerfano = _usuario(c, "huerfano@example.com", org_fantasma, master=True)
 
         tx.commit()
 
-    if desechable.alembic(BASE, "downgrade", REVISION_ANTERIOR) != 0:
-        raise RuntimeError("fallo el downgrade a la 028")
     if desechable.alembic(BASE, "upgrade", "head") != 0:
         raise RuntimeError("fallo el upgrade a head")
 

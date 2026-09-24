@@ -75,6 +75,29 @@ def _cuenta(conn, nombre: str) -> UUID:
     return cid
 
 
+def _organizacion(conn) -> UUID:
+    """Una organizacion real, reutilizada por todos los usuarios del fichero.
+
+    Desde la `030`, `users.organization_id` es NOT NULL con clave foranea, asi
+    que un usuario suelto ya no se puede insertar. A estos tests la organizacion
+    les da igual —van de identidad— pero tienen que declarar una que exista.
+    """
+    fila = conn.execute(text("SELECT id FROM organizations LIMIT 1")).first()
+    if fila:
+        return fila[0]
+
+    cuenta = _cuenta(conn, "Cuenta de las pruebas de identidad")
+    oid = uuid4()
+    conn.execute(
+        text("""
+            INSERT INTO organizations (id, name, account_id)
+            VALUES (:id, 'Org de las pruebas de identidad', :cuenta)
+            """),
+        {"id": str(oid), "cuenta": str(cuenta)},
+    )
+    return oid
+
+
 def _usuario(
     conn,
     correo: str,
@@ -86,8 +109,8 @@ def _usuario(
     conn.execute(
         text("""
             INSERT INTO users (id, email, brand_account_id, external_id,
-                               identity_provider)
-            VALUES (:id, :correo, :marca, :ext, :prov)
+                               identity_provider, organization_id)
+            VALUES (:id, :correo, :marca, :ext, :prov, :org)
             """),
         {
             "id": str(uid),
@@ -95,6 +118,7 @@ def _usuario(
             "marca": str(marca) if marca else None,
             "ext": external_id,
             "prov": proveedor,
+            "org": str(_organizacion(conn)),
         },
     )
     return uid
