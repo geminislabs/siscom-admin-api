@@ -11,6 +11,8 @@ services:
       # Sin esto el contenedor se queda con el default del codigo, que es
       # "unknown" a proposito: mejor no saber que decir "local" en produccion.
       DEPLOY_ENV: ${DEPLOY_ENV:-unknown}
+      # Sin valor no se registran providers: la API opera igual que sin OTel.
+      OTLP_ENDPOINT: ${OTLP_ENDPOINT:-}
 
       # Configuración de Base de Datos
       DB_HOST: ${DB_HOST}

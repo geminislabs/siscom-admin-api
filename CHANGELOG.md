@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OTLP_ENDPOINT` viaja del workflow al `.env` que él mismo genera en la EC2 y de ahí al contenedor. Hasta ahora la API no tenía forma de encenderse sin tocar código: el corte 2 cableó el sitio y dejó esta punta sin hacer. **Vacía o sin definir = silencio**, que sigue siendo el valor por defecto
+- `docs/runbook.md` dice ahora **dónde** se define la variable — entorno `test` de cada repositorio, junto a las demás — en vez de «setearla en runtime»
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un

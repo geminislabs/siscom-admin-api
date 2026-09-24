@@ -3,9 +3,20 @@
 ## OTLP_ENDPOINT vacío
 
 No es un error. La API arranca igual y no exporta traces, logs ni métricas.
-`GET /health` sigue respondiendo. Para ver datos en Jaeger hay que setear
-`OTLP_ENDPOINT` en runtime (no reconstruir la imagen) a la URL del Collector
-del entorno.
+`GET /health` sigue respondiendo.
+
+**Cómo se enciende**, que no requiere tocar código ni reconstruir la imagen:
+se define la variable **`OTLP_ENDPOINT`** en el entorno **`test`** de
+`geminislabs/siscom-admin-api` —donde viven `ALLOWED_ORIGINS`, `FRONTEND_URL` y
+las demás— con la URL del Collector, y se redespliega. El workflow la escribe en
+el `.env` que él mismo genera en la EC2.
+
+Para el sitio es la misma variable, en el entorno `test` de
+`geminislabs/geminis-labs-web-page`. Ahí además viaja al build, porque el bundle
+del navegador la hornea: sin ella, la telemetría de browser queda apagada aunque
+la del servidor esté encendida.
+
+Vacía o sin definir = silencio. Es el valor por defecto a propósito.
 
 ## Verificar que los spans llegan
 
