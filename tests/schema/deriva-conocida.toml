@@ -1,7 +1,13 @@
 # Deriva conocida entre los modelos y el esquema de produccion
 #
 # La lee `scripts/verificar-deriva.py`. No es una lista de cosas aceptadas: es
-# la fotografia de lo que hoy no coincide, para que deje de ser invisible.
+# la fotografia de lo que hoy no coincide.
+#
+# **Hoy esta vacia**, y conviene que se note: no significa que el fichero
+# sobre, significa que no queda deriva conocida de nulabilidad ni de claves
+# foraneas. Nacio el 23/09/2026 con 32 entradas y se drenó entera entre el 23 y
+# el 24 — cuatro donde mandaba la base (#113), un 500 vivo que resulto no ser
+# deuda de esquema (#114), y las 25 restantes en la `033`.
 #
 # COMO SE USA
 # ===========
@@ -10,55 +16,10 @@
 # - Una de aqui deja de ocurrir               -> la CI falla igual. Hay que
 #   quitarla: una linea base que no se poda deja de describir el presente.
 #
-# DE DONDE SALE
-# =============
-# Medida el 23/09/2026 al poner la FK de `users.organization_id` (#109). Hasta
-# ese dia el comparador solo miraba nombres de tablas y columnas, asi que estas
-# 32 divergencias nunca se habian reportado: su "sin deriva" era cierto para
-# lo que comparaba y se leia como "todo coincide".
-#
-# Ninguna esta investigada todavia. Entran aqui tal cual se midieron, sin
-# inventarles una justificacion que nadie ha comprobado.
-#
-# LO QUE HAY, POR SI SE VA A ATACAR
-# =================================
-# - Las cuatro claves foraneas sobre `organization_id` (`units`, `invitations`,
-#   `orders`, `tokens_confirmacion`) son la misma forma del hueco que cerro la
-#   `030` en `users`. `units.organization_id` es la otra mitad del predicado de
-#   aislamiento, repetido a mano en mas de veinte endpoints.
-# - Cada una necesita su propia medicion de datos contra produccion antes de
-#   ponerle la restriccion: pueden tener sus propias filas apuntando al vacio, y
-#   `units` tiene muchas mas filas que las 23 de `users`.
-# - Casi toda la nulabilidad son `created_at` / `updated_at` que el modelo
-#   declara obligatorios y la base dejo opcionales.
+# Estando vacia, la primera regla es la unica que puede dispararse, y eso es
+# exactamente lo que se quiere: a partir de ahora, cualquier columna que el
+# modelo declare distinto de la base **se ve el mismo dia**.
 
-nulabilidad = [
-  "api_platform.api_alerts.enabled: modelo=NOT NULL base=NULL",
-  "public.commands.requested_at: modelo=NOT NULL base=NULL",
-  "public.commands.updated_at: modelo=NOT NULL base=NULL",
-  "public.devices.created_at: modelo=NOT NULL base=NULL",
-  "public.devices.updated_at: modelo=NOT NULL base=NULL",
-  "public.invitations.organization_id: modelo=NOT NULL base=NULL",
-  "public.order_items.description: modelo=NOT NULL base=NULL",
-  "public.order_items.item_type: modelo=NOT NULL base=NULL",
-  "public.order_items.total_price: modelo=NOT NULL base=NULL",
-  "public.orders.created_at: modelo=NOT NULL base=NULL",
-  "public.orders.organization_id: modelo=NOT NULL base=NULL",
-  "public.plans.is_active: modelo=NOT NULL base=NULL",
-  "public.unit_profile.created_at: modelo=NOT NULL base=NULL",
-  "public.unit_profile.updated_at: modelo=NOT NULL base=NULL",
-  "public.user_devices.is_active: modelo=NOT NULL base=NULL",
-  "public.vehicle_profile.created_at: modelo=NOT NULL base=NULL",
-  "public.vehicle_profile.updated_at: modelo=NOT NULL base=NULL",
-]
+nulabilidad = []
 
-claves_foraneas = [
-  "public.invitations.organization_id -> organizations.id",
-  "public.orders.organization_id -> organizations.id",
-  "public.orders.payment_id -> payments.id",
-  "public.plan_capabilities.plan_id -> plans.id",
-  "public.subscriptions.organization_id -> organizations.id",
-  "public.subscriptions.plan_id -> plans.id",
-  "public.tokens_confirmacion.organization_id -> organizations.id",
-  "public.trips.device_id -> devices.device_id",
-]
+claves_foraneas = []

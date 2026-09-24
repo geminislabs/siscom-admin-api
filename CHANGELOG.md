@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Migración `033`: **17 columnas pasan a `NOT NULL` y entran 8 claves foráneas**, con lo que el esquema alcanza a lo que los modelos declaraban. El `ON DELETE` de cada una sale de la metadata del modelo, no de lo que parezca razonable: cuatro declaran `CASCADE` y cuatro no declaran nada, y `NO ACTION` es una decisión tan válida como la otra
+- Se borran **45 filas de `plan_capabilities`** que apuntaban a planes inexistentes: configuración inalcanzable, porque a una `plan_capability` se llega por su plan. El borrado está acotado — si aparecen muchas más de las 45 medidas, la migración se planta en vez de decidir sola
+- `trips.device_id` entra **`NOT VALID`**: dos viajes de equipos dados de baja, y el historial vale más que la validez retroactiva
+
+### Changed
+
+- `tests/schema/deriva-conocida.toml` **queda vacío**. Nació con 32 entradas el 23/09 y se drenó entero: 4 en #113, una en #114 y las 25 restantes aquí. A partir de ahora, cualquier columna que el modelo declare distinto de la base se ve el mismo día
+
 ### Fixed
 
 - Un viaje sin terminar devolvía **500**. `TripBase.end_timestamp` era obligatorio y `build_trip_out` le pasaba `trip.end_time` tal cual, así que Pydantic reventaba al serializar. En producción hay **cuatro** viajes así. Ahora el campo admite nulo, que es lo que significa un viaje en curso — y lo que el propio código ya suponía en la línea de encima, donde se protege con `if trip.start_time and trip.end_time` para calcular la duración
