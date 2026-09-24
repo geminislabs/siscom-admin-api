@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Migración `031`: `units.organization_id` pasa a `NOT NULL` y recibe su clave foránea a `organizations`. Es la otra mitad del predicado de aislamiento (`Unit.organization_id == current_user.organization_id`), escrito a mano en más de veinte endpoints — hasta hoy la base admitía una unidad apuntando a una organización inexistente
-- A diferencia de la `030`, la restricción entra **validada**: la medición contra producción dio `0 sin valor, 0 apuntando al vacío` sobre 26 filas, así que no hay nada que perdonar ni deuda que anotar. Si la medición saliera distinta en otro entorno, la migración se planta antes de tocar nada
-- `units.organization_id` sale de `tests/schema/deriva-conocida.toml`: quedan 30 divergencias conocidas
-
-### Added
-
-- El comparador de deriva mira ahora **nulabilidad y claves foráneas**, contra la línea base de `tests/schema/deriva-conocida.toml`. Hasta hoy sólo comparaba presencia de tablas y columnas por nombre, así que su «sin deriva» llevaba meses siendo cierto y a la vez engañoso: `users.organization_id` era `NULL` sin restricción mientras el modelo la declaraba `NOT NULL` con `ForeignKey`
-- La línea base nace con **32 divergencias medidas**, 23 de nulabilidad y 9 claves foráneas que el modelo declara y la base no tiene — entre ellas `units.organization_id`, la otra mitad del predicado de aislamiento. Falla si aparece una nueva **y también** si una deja de ocurrir y nadie la quita de la lista
-
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
@@ -79,6 +68,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.41.0] - 2026-09-24
+
+Cierra el aislamiento por los dos lados y le pone ojos al comparador. **Toca el
+esquema de `units`.**
+
+**Migraciones**
+
+- `031_fk_organizacion_unidad`
+
+Cabeza: `030_fk_organizacion_usuario` → `031_fk_organizacion_unidad`
+
+**Rollback**: `alembic downgrade 030_fk_organizacion_usuario` —desde la imagen
+nueva, antes de desplegar un tag anterior— quita la restriccion y la
+obligatoriedad. No reescribe datos ni toca filas.
+
+**Que verificar en el log del despliegue**, en este orden:
+
+1. `🔎 units.organization_id: 0 sin valor, 0 apuntando a una organizacion inexistente`. Si no son ceros, **la migracion se planta sola** sin tocar nada: el despliegue aborta con el contenedor anterior sirviendo, y hay que mirar esas filas antes de reintentar.
+2. `Running upgrade 030_fk_organizacion_usuario -> 031_fk_organizacion_unidad`, exactamente una vez.
+3. `/health` responde `1.41.0` y `schema_revision: 031_fk_organizacion_unidad`.
+
+### Added
+
+- Migración `031`: `units.organization_id` pasa a `NOT NULL` y recibe su clave foránea a `organizations`. Es la otra mitad del predicado de aislamiento (`Unit.organization_id == current_user.organization_id`), escrito a mano en más de veinte endpoints — hasta ahora la base admitía una unidad apuntando a una organización inexistente, o a ninguna
+- A diferencia de la `030`, la restricción entra **validada**: la medición contra producción dio `0 sin valor, 0 apuntando al vacío` sobre 26 filas, así que no hay nada que perdonar ni deuda que anotar. Y su guardia es más estricto justamente por eso: si encuentra una fila rota se planta, en vez de tolerarla
+- El comparador de deriva mira ahora **nulabilidad y claves foráneas**, contra la línea base de `tests/schema/deriva-conocida.toml`. Hasta hoy sólo comparaba presencia de tablas y columnas por nombre, así que su «sin deriva» llevaba meses siendo cierto y a la vez engañoso: `users.organization_id` era `NULL` sin restricción mientras el modelo la declaraba `NOT NULL` con `ForeignKey`
+- La línea base se midió con **32 divergencias** —23 de nulabilidad y 9 claves foráneas que el modelo declara y la base no tiene— y esta misma release ya poda dos de ellas al cerrar `units`, así que **queda en 30**. Falla si aparece una nueva **y también** si una deja de ocurrir y nadie la quita de la lista
 
 ## [1.40.0] - 2026-09-23
 
