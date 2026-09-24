@@ -52,7 +52,6 @@ nulabilidad = [
   "public.trips.end_time: modelo=NOT NULL base=NULL",
   "public.unit_profile.created_at: modelo=NOT NULL base=NULL",
   "public.unit_profile.updated_at: modelo=NOT NULL base=NULL",
-  "public.units.organization_id: modelo=NOT NULL base=NULL",
   "public.user_devices.is_active: modelo=NOT NULL base=NULL",
   "public.vehicle_profile.created_at: modelo=NOT NULL base=NULL",
   "public.vehicle_profile.updated_at: modelo=NOT NULL base=NULL",
@@ -67,5 +66,4 @@ claves_foraneas = [
   "public.subscriptions.plan_id -> plans.id",
   "public.tokens_confirmacion.organization_id -> organizations.id",
   "public.trips.device_id -> devices.device_id",
-  "public.units.organization_id -> organizations.id",
 ]
