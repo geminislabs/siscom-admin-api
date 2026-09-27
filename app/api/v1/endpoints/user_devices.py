@@ -204,13 +204,40 @@ def register_user_device(
 def deactivate_user_device(
     payload: DeviceDeactivateIn,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
     user_devices_kafka_producer: UserDevicesKafkaProducer = Depends(
         get_user_devices_kafka_producer
     ),
 ):
+    # Este endpoint no pedía credencial ninguna, y la omisión no era visible:
+    # no la declaraba ni la firma ni el montaje del router.
+    #
+    # Medido el 26/09/2026, y las dos mitades importan. Contra **producción**,
+    # una petición sin cabecera con un token inventado devolvió `404
+    # «Dispositivo no encontrado»` mientras `GET /users/me` devolvía 401: la
+    # búsqueda se ejecutaba, así que no había guardián. Contra **este mismo
+    # código** con la fila presente, los dos tests hostiles de abajo devolvían
+    # `200`. O sea: el 404 era sólo la rama del token inexistente, y con un
+    # token que existe **la baja se ejecutaba**. No era un oráculo, era una
+    # escritura sin autenticar — y el 404/200 servía además para saber si un
+    # token existe.
+    #
+    # La fila se busca por el **par** `(device_token, user_id)`, no sólo por el
+    # token, y eso es la mitad del arreglo:
+    #
+    #   1. Exigir sesión sin acotar el alcance cambiaría «cualquiera» por
+    #      «cualquier usuario», que no es cerrar nada: una credencial válida de
+    #      quien no es dueño seguiría dando de baja el aparato de otro.
+    #   2. Es la forma que pide el multi-cuenta. Hoy el token tiene un solo
+    #      dueño porque `register` lo reasigna, y ese es el defecto que hace que
+    #      entrar con la segunda cuenta apague el push de la primera. Cuando la
+    #      clave pase a ser el par, esta consulta ya está bien escrita.
     device = (
         db.query(UserDevice)
-        .filter(UserDevice.device_token == payload.device_token)
+        .filter(
+            UserDevice.device_token == payload.device_token,
+            UserDevice.user_id == current_user.id,
+        )
         .first()
     )
     if not device:
@@ -225,12 +252,14 @@ def deactivate_user_device(
     db.add(device)
     db.commit()
 
-    owner = db.query(User).filter(User.id == device.user_id).first()
+    # El dueño de la fila es quien pide la baja —lo impone el filtro de arriba—,
+    # así que la consulta que resolvía la organización desde `device.user_id`
+    # sobra: es la misma.
     publish_control_event(
         user_devices_kafka_producer,
         _user_device_payload(
             event_type="DELETE",
-            organization_id=owner.organization_id if owner else None,
+            organization_id=current_user.organization_id,
             device=device,
         ),
         key=str(device.id),
