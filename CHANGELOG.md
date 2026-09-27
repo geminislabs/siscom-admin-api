@@ -16,7 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `POST /auth/refresh` resuelve la identidad desde la cabecera `Authorization` —el access token que el cliente ya tiene, **admitiendo que esté vencido**— en vez de pedir el correo en el cuerpo. Es el contrato **D2** de §24, y el que sobrevive a la rebanada B2: el handle con el que se firma el `SECRET_HASH` pasa a ser el `external_id` de la fila, que es opaco. **Contrato dual durante la transición**: `email` deja de ser obligatorio pero se sigue aceptando, así que `nexus-web` no cambia; si vienen los dos, gana la cabecera. Sin ninguno de los dos se responde `422`, el mismo código que hoy reciben iOS y Android, que mandan sólo el refresh token. El camino del correo se borra **antes** de que B2 escriba el primer handle UUID
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
 - Middleware HTTP que convierte excepciones no manejadas en JSON `{"detail":"Internal server error"}` **dentro** de CORS, para que un 500 no se reporte en el browser como error de CORS
 - Engineering foundation (PR-1): blocking CI (`quality` + `security` jobs)
@@ -62,8 +61,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 
-- `verificar_access_token_para_refresco` valida el access token de Cognito relajando **sólo** `exp`, y por eso comprueba a mano lo que la verificación normal deja pasar: `iss`, `token_use == "access"` y `client_id`. Medido contra `python-jose 3.5.0`: un token **sin** `aud` se acepta aunque se pase `audience=` —el `raise` está comentado en el paquete— y los access tokens de Cognito llevan `client_id`, no `aud`, de modo que el `audience=COGNITO_CLIENT_ID` de `verify_cognito_token` es un no-op para ellos; `token_use` no lo mira nadie. Vive en una función aparte y no tras un parámetro `verify_exp=False`, para que la relajación no quede a un argumento de distancia del camino normal
-- `POST /user-devices/deactivate` exige credencial, y sólo apaga el aparato de quien la presenta. No declaraba dependencia de autenticación **ni en el endpoint ni en el montaje del router**: medido contra producción el 26/09/2026, una petición sin cabecera con un `device_token` que existiera apagaba las notificaciones de ese aparato, y con uno inexistente devolvía `404`, lo que servía además de oráculo de existencia. La fila se busca ahora por el par `(device_token, user_id)`: una credencial válida de quien no es dueño recibe `404` y no toca nada. Los dos clientes móviles ya mandaban el access token —y lo hacen antes de cerrar sesión, cuando todavía es válido—, así que no cambia nada para ellos
 - Gitleaks + Semgrep + pip-audit + OSV-Scanner in CI `security` job
 - `POST /api/v1/mobility/locations` y `/batch` exigen JWT y validan que el `device_id` pertenezca a un dispositivo activo del usuario autenticado. Antes aceptaban cualquier `device_id` sin autenticación, lo que permitía inyectar ubicaciones de terceros al tópico de Kafka
 - PASETO: los tokens de compartir ubicación se firman con `SHARE_LOCATION_KEY_B64`, una clave dedicada, en lugar de con `PASETO_SECRET_KEY`. El verificador de esos tokens vive en siscom-api; entregarle la clave de servicio le permitía firmar tokens `internal-*` y llamar a la API interna como administrador. Sin la clave nueva configurada, `/units/{id}/share-location` responde `503` en vez de degradar a la clave de servicio (ver ADR-004)
@@ -71,6 +68,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/paseto_key_fingerprint.py` imprime la huella SHA-256 (12 hex) del material de clave **efectivo**, para comparar entre servicios sin transmitir la clave
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
+
+## [1.43.0] - 2026-09-26
+
+**Migraciones**
+
+Ninguna. La cabeza sigue en `033_el_esquema_alcanza`.
+
+**Rollback**: redesplegar el tag anterior. No toca el esquema.
+
+### Changed
+
+- `POST /auth/refresh` resuelve la identidad desde la cabecera `Authorization` —el access token que el cliente ya tiene, **admitiendo que esté vencido**— en vez de pedir el correo en el cuerpo. Es el contrato **D2** de §24, y el que sobrevive a la rebanada B2: el handle con el que se firma el `SECRET_HASH` pasa a ser el `external_id` de la fila, que es opaco. **Contrato dual durante la transición**: `email` deja de ser obligatorio pero se sigue aceptando, así que `nexus-web` no cambia; si vienen los dos, gana la cabecera. Sin ninguno de los dos se responde `422`, el mismo código que hoy reciben iOS y Android, que mandan sólo el refresh token. El camino del correo se borra **antes** de que B2 escriba el primer handle UUID
+
+### Security
+
+- `verificar_access_token_para_refresco` valida el access token de Cognito relajando **sólo** `exp`, y por eso comprueba a mano lo que la verificación normal deja pasar: `iss`, `token_use == "access"` y `client_id`. Medido contra `python-jose 3.5.0`: un token **sin** `aud` se acepta aunque se pase `audience=` —el `raise` está comentado en el paquete— y los access tokens de Cognito llevan `client_id`, no `aud`, de modo que el `audience=COGNITO_CLIENT_ID` de `verify_cognito_token` es un no-op para ellos; `token_use` no lo mira nadie. Vive en una función aparte y no tras un parámetro `verify_exp=False`, para que la relajación no quede a un argumento de distancia del camino normal
+- `POST /user-devices/deactivate` exige credencial, y sólo apaga el aparato de quien la presenta. No declaraba dependencia de autenticación **ni en el endpoint ni en el montaje del router**: medido contra producción el 26/09/2026, una petición sin cabecera con un `device_token` que existiera apagaba las notificaciones de ese aparato, y con uno inexistente devolvía `404`, lo que servía además de oráculo de existencia. La fila se busca ahora por el par `(device_token, user_id)`: una credencial válida de quien no es dueño recibe `404` y no toca nada. Los dos clientes móviles ya mandaban el access token —y lo hacen antes de cerrar sesión, cuando todavía es válido—, así que no cambia nada para ellos
 
 ## [1.42.1] - 2026-09-24
 
