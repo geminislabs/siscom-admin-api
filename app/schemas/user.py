@@ -378,15 +378,24 @@ class LogoutResponse(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    """Schema para la petición de refresh token."""
+    """Schema para la petición de refresh token.
 
-    email: EmailStr = Field(..., description="Correo electrónico del usuario")
+    `email` es **opcional desde el contrato D2** (§24): la identidad sale de la
+    cabecera `Authorization`, aunque el access token esté vencido. El campo se
+    mantiene porque `nexus-web` todavía manda el correo, y desaparece antes de
+    que la rebanada B2 escriba el primer handle UUID — en cuanto el handle deje
+    de ser el correo, este camino no puede firmar el `SECRET_HASH`.
+    """
+
+    email: Optional[EmailStr] = Field(
+        default=None,
+        description="Camino heredado. Innecesario si se manda la cabecera Authorization",
+    )
     refresh_token: str = Field(..., description="Refresh token obtenido en el login")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "email": "usuario@example.com",
                 "refresh_token": "eyJjdHkiOiJ...",
             }
         }

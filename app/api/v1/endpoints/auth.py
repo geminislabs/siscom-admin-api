@@ -3,7 +3,7 @@ import random
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.api.deps import (
     get_identity_provider,
     get_scope_store,
 )
+from app.core.security import verificar_access_token_para_refresco
 from app.db.session import get_db
 from app.models.account import Account, AccountStatus
 from app.models.account_user import AccountRole, AccountUser
@@ -1240,44 +1241,114 @@ def verify_email(
 # ------------------------------------------
 # Refresh Token - Renovar access token usando refresh token
 # ------------------------------------------
+def _token_de_la_cabecera(authorization: Optional[str]) -> Optional[str]:
+    """Extrae el token de un `Authorization: Bearer <token>`, o None."""
+    if not authorization:
+        return None
+    partes = authorization.split(None, 1)
+    if len(partes) != 2 or partes[0].lower() != "bearer":
+        return None
+    token = partes[1].strip()
+    return token or None
+
+
+def _handle_para_renovar(
+    *,
+    authorization: Optional[str],
+    email: Optional[str],
+    db: Session,
+) -> str:
+    """Resuelve el *handle* con el que se firma el SECRET_HASH de la renovación.
+
+    Dos caminos, y el orden importa: **gana la cabecera**. Es el contrato D2 de
+    §24, y el que sobrevive a la rebanada B2.
+
+    - **Con cabecera** (camino nuevo): se valida el access token admitiendo que
+      esté vencido, se saca el `sub` y se resuelve la fila. El handle es su
+      `external_id`, que es opaco — correo para los usuarios de antes, UUID para
+      los que cree B2. Este camino no le pide nada nuevo al cliente: manda el
+      token que ya tiene guardado.
+    - **Con correo** (camino heredado): se usa tal cual, como hasta hoy, **sin
+      consultar la base**. Se deja byte-idéntico a propósito. Resolver la fila
+      por correo sería «mejor», pero añadiría una novena consulta global por
+      `User.email` a la lista que la rebanada B3 tiene que acotar por marca — y
+      este camino tiene fecha de muerte: se borra antes de que B2 escriba el
+      primer handle UUID, porque a partir de ahí el correo no firma nada.
+
+    Sin ninguno de los dos se responde **422**, el mismo código que devolvía
+    antes cuando el correo era obligatorio. Es deliberado: iOS y Android hoy
+    mandan sólo el refresh token y reciben 422 (§13); después de este cambio
+    reciben exactamente lo mismo. Una app vieja nunca queda peor de lo que está.
+    """
+    token = _token_de_la_cabecera(authorization)
+
+    if token is not None:
+        payload = verificar_access_token_para_refresco(token)
+        usuario = db.query(User).filter(User.cognito_sub == payload["sub"]).first()
+        # 401 y no 404: este endpoint es público, así que distinguir «ese sub no
+        # existe» de «ese refresh token no vale» sería un oráculo sobre quién
+        # tiene cuenta.
+        if usuario is None or not usuario.external_id:
+            logger.warning("auth.refresh.sub_sin_fila")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No se pudo renovar el token",
+            )
+        return usuario.external_id
+
+    if email:
+        return email
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Falta la cabecera Authorization o el campo email",
+    )
+
+
 @router.post(
     "/refresh", response_model=RefreshTokenResponse, status_code=status.HTTP_200_OK
 )
 def refresh_token(
     request: RefreshTokenRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(default=None),
     idp: IdentityProvider = Depends(get_identity_provider),
 ):
     """
     Renueva el access token y el id token usando un refresh token válido.
 
     Proceso:
-    1. Recibe el refresh token y el email del cliente
-    2. Genera el SECRET_HASH usando el email como USERNAME
+    1. Recibe el refresh token, y la identidad en la cabecera `Authorization`
+       —el access token que el cliente ya tiene, **aunque esté vencido**—
+    2. Resuelve la fila del usuario y toma su `external_id` como handle
     3. Llama a initiate_auth de Cognito con el flujo REFRESH_TOKEN_AUTH
     4. Retorna los nuevos access token e id token
 
     Notas:
     - Si el proveedor devuelve un refresh token nuevo —rotación—, se reenvía al
       cliente en `refresh_token`. Hoy este pool no rota y el campo sale `null`
-    - Este endpoint NO requiere autenticación (es público)
-    - Se requiere el email para generar el SECRET_HASH cuando el App Client tiene Client Secret habilitado
+    - Este endpoint NO requiere autenticación (es público): la cabecera se usa
+      como prueba de identidad, no como autorización, y por eso se admite
+      vencida
+    - El campo `email` del cuerpo es el camino heredado y desaparece antes de la
+      rebanada B2
 
     Códigos de error:
-    - 401: Refresh token inválido, expirado o revocado
-    - 400: Parámetros inválidos
+    - 401: Refresh token inválido, expirado o revocado, o cabecera no válida
+    - 422: No vino ni cabecera ni email
     - 500: Error al renovar los tokens en Cognito
     """
 
+    handle = _handle_para_renovar(
+        authorization=authorization,
+        email=request.email,
+        db=db,
+    )
+
     # 1️⃣ Pedirle al proveedor una sesión nueva
     try:
-        # El handle aquí sale del cuerpo de la petición y no de la base: este
-        # endpoint es público y no hay usuario autenticado del que sacarlo.
-        # Mientras el handle sea el correo eso funciona; **la rebanada B2 lo
-        # rompe**, porque un usuario nuevo tendrá handle UUID y su correo no
-        # firmará el SECRET_HASH. Cuando llegue, este endpoint tiene que
-        # resolver la fila por (marca, correo) como hará `/auth/login`.
         sesion = idp.renovar(
-            handle=request.email,
+            handle=handle,
             refresh_token=request.refresh_token,
         )
 
