@@ -15,62 +15,24 @@ Cada rechazo comprueba además que **no se llamó al proveedor**. Un 401 despué
 de haber hablado con Cognito sería otro fallo con la misma pinta.
 """
 
+import time
 from unittest.mock import MagicMock
 
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import status
-from jose import jwk, jwt
 
 from app.api.deps import get_identity_provider
 from app.core import security
-from app.core.config import settings
-from app.core.security import _issuer_esperado
 from app.main import app as fastapi_app
 from app.services.identity import IdentityProvider, Sesion
-from app.utils.datetime import utcnow
-
-KID = "kid-de-prueba"
-
-
-def _clave():
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
-
-
-def _pem_privado(clave):
-    return clave.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
-
-
-def _jwks_de(clave):
-    pem = (
-        clave.public_key()
-        .public_bytes(
-            serialization.Encoding.PEM,
-            serialization.PublicFormat.SubjectPublicKeyInfo,
-        )
-        .decode()
-    )
-    entrada = jwk.construct(pem, "RS256").to_dict()
-    entrada["kid"] = KID
-    # `to_dict()` devuelve `n` y `e` en bytes; el decodificador los quiere como
-    # texto, igual que vienen del endpoint real de Cognito.
-    return {
-        "keys": [
-            {k: (v.decode() if isinstance(v, bytes) else v) for k, v in entrada.items()}
-        ]
-    }
+from tests import jwt_del_pool
 
 
 @pytest.fixture
 def clave_del_pool(monkeypatch):
     """Sustituye las JWKS de Cognito por una clave local."""
-    clave = _clave()
-    monkeypatch.setattr(security, "_get_jwks", lambda: _jwks_de(clave))
+    clave = jwt_del_pool.clave()
+    monkeypatch.setattr(security, "_get_jwks", lambda: jwt_del_pool.jwks_de(clave))
     return clave
 
 
@@ -89,19 +51,17 @@ def idp_falso():
 
 
 def _access_token(clave, **sobrescribe):
-    """Un access token con la forma que emite Cognito. Vencido a propósito."""
-    claims = {
-        "sub": "test-cognito-sub-123",
-        "token_use": "access",
-        "client_id": settings.COGNITO_CLIENT_ID,
-        "iss": _issuer_esperado(),
-        "exp": int(utcnow().timestamp()) - 3600,
-        "iat": int(utcnow().timestamp()) - 7200,
-    }
-    claims.update(sobrescribe)
-    return jwt.encode(
-        claims, _pem_privado(clave), algorithm="RS256", headers={"kid": KID}
-    )
+    """Un access token con la forma que emite Cognito. **Vencido a propósito**:
+    es la condición que este endpoint admite y ningún otro.
+
+    El `exp` se calcula desde `time.time()` y no desde `utcnow().timestamp()`,
+    que adelanta seis horas en UTC-6 y dejaba el token *vigente* al correr los
+    tests en local — vencía sólo en la CI. Ver `tests/jwt_del_pool.py`.
+    """
+    ahora = int(time.time())
+    sobrescribe.setdefault("exp", ahora - 3600)
+    sobrescribe.setdefault("iat", ahora - 7200)
+    return jwt_del_pool.access_token(clave, **sobrescribe)
 
 
 def _renovar(client, token=None, cuerpo=None):
@@ -158,7 +118,7 @@ def test_firma_de_otra_clave_es_401(
     client, db_session, test_user_data, clave_del_pool, idp_falso
 ):
     """Mismo `kid`, otra clave: la firma es lo único que lo distingue."""
-    respuesta = _renovar(client, _access_token(_clave()))
+    respuesta = _renovar(client, _access_token(jwt_del_pool.clave()))
 
     assert respuesta.status_code == status.HTTP_401_UNAUTHORIZED
     idp_falso.renovar.assert_not_called()
