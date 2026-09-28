@@ -69,6 +69,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Telemetría: el acceso a un dispositivo deja de ser un booleano y pasa a ser un conjunto de rangos temporales autorizados. Un dispositivo reasignado a otra organización deja de ser legible por la anterior fuera de la ventana en que estuvo asignado
 - El resolver de alcance es explícito por sujeto (`ScopeSubject`): `accessible_device_ids`, que decidía a partir del usuario implícito, se elimina
 
+## [1.44.0] - 2026-09-28
+
+**Migraciones**
+
+Ninguna. La cabeza sigue en `033_el_esquema_alcanza`.
+
+**Rollback**: redesplegar el tag anterior. No toca el esquema.
+
+### Security
+
+- `verify_cognito_token` —la puerta de **toda** la API autenticada— exige ahora `iss`, `token_use == "access"` y `client_id`, las mismas comprobaciones que ya hacía el camino del refresco y que ahora comparten las dos. Antes sólo se exigían de verdad la firma y `exp`, así que **un id token del mismo pool autenticaba igual que un access token**: los dos llevan `sub`, y el `sub` es lo único que `deps.py` usa para encontrar la fila del usuario. Un id token viaja a más sitios —es el que lleva el perfil— y no es el token que esta API espera. Medido contra el código anterior: de los siete tests nuevos, **cinco fallan**, incluido el que va por HTTP —un id token abría `GET /api/v1/alerts` con 200—. Pasaban también un token emitido para otra app del mismo pool y uno que declaraba otro `iss`. Revisados los cinco clientes locales (web, Android, iOS, gac-web, orion-web): todos mandan el access token, así que no cambia nada para ellos; si apareciera un cliente que no, lo dice el log `auth.token.token_use_incorrecto` en vez de pasar en silencio
+- Tests: `tests/jwt_del_pool.py` centraliza los tokens firmados de verdad y calcula los claims de tiempo con `time.time()`. `utcnow().timestamp()` interpreta el naive UTC como hora local y adelanta seis horas en UTC-6, de modo que el token «vencido a propósito» de `test_auth_refresh_d2` **no vencía** al correr los tests en local y sí en la CI: la relajación de `exp` que ese endpoint necesita sólo se ejercitaba en una de las dos máquinas
+
 ## [1.43.0] - 2026-09-26
 
 **Migraciones**
@@ -83,8 +96,6 @@ Ninguna. La cabeza sigue en `033_el_esquema_alcanza`.
 
 ### Security
 
-- `verify_cognito_token` —la puerta de **toda** la API autenticada— exige ahora `iss`, `token_use == "access"` y `client_id`, las mismas comprobaciones que ya hacía el camino del refresco y que ahora comparten las dos. Antes sólo se exigían de verdad la firma y `exp`, así que **un id token del mismo pool autenticaba igual que un access token**: los dos llevan `sub`, y el `sub` es lo único que `deps.py` usa para encontrar la fila del usuario. Un id token viaja a más sitios —es el que lleva el perfil— y no es el token que esta API espera. Medido contra el código anterior: de los siete tests nuevos, **cinco fallan**, incluido el que va por HTTP —un id token abría `GET /api/v1/alerts` con 200—. Pasaban también un token emitido para otra app del mismo pool y uno que declaraba otro `iss`. Revisados los cinco clientes locales (web, Android, iOS, gac-web, orion-web): todos mandan el access token, así que no cambia nada para ellos; si apareciera un cliente que no, lo dice el log `auth.token.token_use_incorrecto` en vez de pasar en silencio
-- Tests: `tests/jwt_del_pool.py` centraliza los tokens firmados de verdad y calcula los claims de tiempo con `time.time()`. `utcnow().timestamp()` interpreta el naive UTC como hora local y adelanta seis horas en UTC-6, de modo que el token «vencido a propósito» de `test_auth_refresh_d2` **no vencía** al correr los tests en local y sí en la CI: la relajación de `exp` que ese endpoint necesita sólo se ejercitaba en una de las dos máquinas
 - `verificar_access_token_para_refresco` valida el access token de Cognito relajando **sólo** `exp`, y por eso comprueba a mano lo que la verificación normal deja pasar: `iss`, `token_use == "access"` y `client_id`. Medido contra `python-jose 3.5.0`: un token **sin** `aud` se acepta aunque se pase `audience=` —el `raise` está comentado en el paquete— y los access tokens de Cognito llevan `client_id`, no `aud`, de modo que el `audience=COGNITO_CLIENT_ID` de `verify_cognito_token` es un no-op para ellos; `token_use` no lo mira nadie. Vive en una función aparte y no tras un parámetro `verify_exp=False`, para que la relajación no quede a un argumento de distancia del camino normal
 - `POST /user-devices/deactivate` exige credencial, y sólo apaga el aparato de quien la presenta. No declaraba dependencia de autenticación **ni en el endpoint ni en el montaje del router**: medido contra producción el 26/09/2026, una petición sin cabecera con un `device_token` que existiera apagaba las notificaciones de ese aparato, y con uno inexistente devolvía `404`, lo que servía además de oráculo de existencia. La fila se busca ahora por el par `(device_token, user_id)`: una credencial válida de quien no es dueño recibe `404` y no toca nada. Los dos clientes móviles ya mandaban el access token —y lo hacen antes de cerrar sesión, cuando todavía es válido—, así que no cambia nada para ellos
 
