@@ -57,10 +57,59 @@ def _get_jwks() -> dict:
     return _jwks_cache
 
 
+def _token_invalido() -> HTTPException:
+    """El 401 que ven todos los rechazos de credencial.
+
+    Qué comprobación falló va al log y no a la respuesta: al cliente le sirve
+    igual para reautenticarse, y a quien prueba tokens ajenos no le regala en
+    qué se equivocó.
+    """
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token inválido",
+    )
+
+
+def _exigir_access_token_del_pool(payload: dict, *, log: str) -> None:
+    """Lo que la firma **no** dice: de dónde viene el token, para qué se emitió
+    y para quién.
+
+    La firma sólo acredita que lo emitió este pool. No que sea un access token
+    —un id token del mismo pool la pasa igual de bien— ni que se emitiera para
+    este cliente. Medido contra `python-jose 3.5.0` el 26/09/2026:
+    `audience=COGNITO_CLIENT_ID` no cubre lo último, porque los access tokens de
+    Cognito llevan `client_id` y no `aud`, y el paquete acepta un token *sin*
+    `aud` aunque se le pase `audience=` — el `raise` está comentado en el
+    paquete. De ahí que estas comprobaciones estén escritas a mano.
+    """
+    if payload.get("iss") != _issuer_esperado():
+        logger.warning("%s.issuer_ajeno", log)
+        raise _token_invalido()
+
+    if payload.get("token_use") != "access":
+        logger.warning("%s.token_use_incorrecto: %s", log, payload.get("token_use"))
+        raise _token_invalido()
+
+    if payload.get("client_id") != settings.COGNITO_CLIENT_ID:
+        logger.warning("%s.client_id_ajeno", log)
+        raise _token_invalido()
+
+    if not payload.get("sub"):
+        logger.warning("%s.sin_sub", log)
+        raise _token_invalido()
+
+
 def verify_cognito_token(token: str) -> dict:
     """
     Valida un JWT de Cognito usando JWKS cacheadas.
     Firma original preservada para compatibilidad con deps.py.
+
+    Exige un **access token de este pool**, con las mismas comprobaciones que
+    `verificar_access_token_para_refresco` — la única diferencia entre las dos
+    es `exp`, que allí se relaja a propósito y aquí no. Antes sólo se exigían de
+    verdad la firma y `exp`, así que un id token servía donde se espera un
+    access token: los dos llevan `sub`, y el `sub` es lo único que `deps.py`
+    usa para encontrar al usuario.
     """
     try:
         jwks = _get_jwks()
@@ -73,15 +122,20 @@ def verify_cognito_token(token: str) -> dict:
             token,
             key,
             algorithms=["RS256"],
-            audience=settings.COGNITO_CLIENT_ID,
+            # `verify_aud` fuera: para un access token es un no-op medido, y
+            # quien comprueba de verdad para quién se emitió el token es la
+            # exigencia de `client_id` de abajo.
+            options={"verify_aud": False},
         )
-        return payload
 
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
         )
+
+    _exigir_access_token_del_pool(payload, log="auth.token")
+    return payload
 
 
 def _issuer_esperado() -> str:
@@ -112,19 +166,11 @@ def verificar_access_token_para_refresco(token: str) -> dict:
     por error: quien quiera saltarse `exp` tiene que llamar a una función que lo
     dice en el nombre.
 
-    Y porque relaja `exp`, **endurece todo lo demás**. Lo que sigue está medido
-    contra `python-jose 3.5.0` el 26/09/2026, no deducido, y es la razón de que
-    estas tres comprobaciones estén escritas a mano:
-
-    - **`aud` no protege nada aquí.** Los access tokens de Cognito no llevan
-      `aud` sino `client_id`, y python-jose acepta un token *sin* `aud` aunque se
-      le pase `audience=` — el `raise` correspondiente está comentado en el
-      paquete. `verify_cognito_token` pasa `audience=COGNITO_CLIENT_ID` y para un
-      access token eso es un no-op.
-    - **`token_use` no lo mira nadie.** Sin esa comprobación, un id token del
-      mismo pool sirve igual que un access token.
-    - Quitado `exp`, lo único que quedaría en pie sería la firma. Y la firma sólo
-      dice «lo emitió este pool», no «es el token que este endpoint espera».
+    Y porque relaja `exp`, **endurece todo lo demás** con
+    `_exigir_access_token_del_pool`: quitado `exp`, lo único que quedaría en pie
+    sería la firma, y la firma sólo dice «lo emitió este pool», no «es el token
+    que este endpoint espera». Esas comprobaciones nacieron aquí y hoy las
+    comparte `verify_cognito_token`, que las necesitaba igual.
 
     El detalle que se devuelve al cliente es siempre el mismo — qué comprobación
     falló va al log y no a la respuesta.
@@ -153,31 +199,5 @@ def verificar_access_token_para_refresco(token: str) -> dict:
             detail="Token inválido",
         ) from e
 
-    esperado = _issuer_esperado()
-    if payload.get("iss") != esperado:
-        logger.warning("auth.refresh.token.issuer_ajeno")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido"
-        )
-
-    if payload.get("token_use") != "access":
-        logger.warning(
-            "auth.refresh.token.token_use_incorrecto: %s", payload.get("token_use")
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido"
-        )
-
-    if payload.get("client_id") != settings.COGNITO_CLIENT_ID:
-        logger.warning("auth.refresh.token.client_id_ajeno")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido"
-        )
-
-    if not payload.get("sub"):
-        logger.warning("auth.refresh.token.sin_sub")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido"
-        )
-
+    _exigir_access_token_del_pool(payload, log="auth.refresh.token")
     return payload
