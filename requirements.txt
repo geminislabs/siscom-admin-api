@@ -111,4 +111,4 @@ opentelemetry-instrumentation-httpx==0.48b0
 opentelemetry-instrumentation-requests==0.48b0
 opentelemetry-instrumentation-logging==0.48b0
 # 0.48b0 importa pkg_resources, que setuptools>=82 ya no incluye.
-setuptools==81.0.0
+setuptools==84.0.0
