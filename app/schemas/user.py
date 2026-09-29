@@ -380,17 +380,20 @@ class LogoutResponse(BaseModel):
 class RefreshTokenRequest(BaseModel):
     """Schema para la petición de refresh token.
 
-    `email` es **opcional desde el contrato D2** (§24): la identidad sale de la
-    cabecera `Authorization`, aunque el access token esté vencido. El campo se
-    mantiene porque `nexus-web` todavía manda el correo, y desaparece antes de
-    que la rebanada B2 escriba el primer handle UUID — en cuanto el handle deje
-    de ser el correo, este camino no puede firmar el `SECRET_HASH`.
+    **Sólo el refresh token.** La identidad va en la cabecera `Authorization`
+    —contrato D2 de §24—, donde se admite el access token aunque esté vencido.
+
+    Aquí hubo un campo `email`, el camino heredado por el que se firmaba el
+    `SECRET_HASH` cuando handle == correo. Se borró el 28/09/2026, una vez que
+    los tres clientes mandaban la cabecera: `nexus-web` desde su `v1.18.0` y los
+    dos móviles desde el pase de esa misma fecha. Tenía que irse **antes** de que
+    B2 escriba el primer handle UUID, porque a partir de ahí el correo no firma
+    nada — y borrarlo después habría sido arreglar un camino ya roto.
+
+    Un cuerpo que todavía traiga `email` no falla: el campo sobra y se ignora. Si
+    además no trae cabecera, la respuesta es 422, igual que antes.
     """
 
-    email: Optional[EmailStr] = Field(
-        default=None,
-        description="Camino heredado. Innecesario si se manda la cabecera Authorization",
-    )
     refresh_token: str = Field(..., description="Refresh token obtenido en el login")
 
     class Config:

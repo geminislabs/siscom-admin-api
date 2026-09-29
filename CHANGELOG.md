@@ -14,6 +14,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > `1.30.0`, `1.30.1`, `1.31.0`, `1.32.0`, `1.32.1` y `1.32.2` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
+### Removed
+
+- **`POST /auth/refresh` ya no acepta `email` en el cuerpo.** La identidad sale
+  sólo de la cabecera `Authorization`, que admite el access token vencido
+  (contrato D2, §24). Era el camino heredado por el que se firmaba el
+  `SECRET_HASH` cuando handle == correo, y tenía que irse **antes** del primer
+  handle UUID de la rebanada B2: en cuanto el handle deja de ser el correo, ese
+  camino firma con un valor que el proveedor no reconoce y falla con un 401
+  indistinguible de un refresh token inválido.
+  - **Se pudo borrar porque ya no lo usa nadie**: `nexus-web` dejó de mandarlo
+    en su `v1.18.0` y los dos clientes móviles adoptaron la cabecera el
+    28/09/2026. Antes de eso nunca mandaron ninguna de las dos cosas.
+  - **Quién lo nota**: un cliente que mande el correo **y** la cabecera renueva
+    igual — el campo sobra y Pydantic lo descarta. Quien mande el correo **sin**
+    cabecera pasa de 200 a **422**; en la práctica, una pestaña del panel abierta
+    desde antes de la `v1.18.0`, que se arregla recargando. Quien no mandaba
+    ninguna de las dos seguía recibiendo 422 y sigue igual.
+  - **Cómo revertirlo**: sin migraciones, así que basta con desplegar el tag
+    anterior. El contrato es aditivo hacia atrás — volver a aceptar el correo no
+    rompe a ningún cliente que ya mande la cabecera.
+
 ### Changed
 
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres

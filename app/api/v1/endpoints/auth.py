@@ -1255,54 +1255,46 @@ def _token_de_la_cabecera(authorization: Optional[str]) -> Optional[str]:
 def _handle_para_renovar(
     *,
     authorization: Optional[str],
-    email: Optional[str],
     db: Session,
 ) -> str:
     """Resuelve el *handle* con el que se firma el SECRET_HASH de la renovación.
 
-    Dos caminos, y el orden importa: **gana la cabecera**. Es el contrato D2 de
-    §24, y el que sobrevive a la rebanada B2.
+    **Un solo camino: la cabecera.** Es el contrato D2 de §24. Se valida el
+    access token admitiendo que esté vencido —si no lo estuviera, el cliente no
+    estaría renovando—, se saca el `sub` y se resuelve la fila. El handle es su
+    `external_id`, que es opaco: correo para los usuarios de antes, UUID para los
+    que cree B2. No le pide nada nuevo al cliente, que manda el token que ya
+    tiene guardado.
 
-    - **Con cabecera** (camino nuevo): se valida el access token admitiendo que
-      esté vencido, se saca el `sub` y se resuelve la fila. El handle es su
-      `external_id`, que es opaco — correo para los usuarios de antes, UUID para
-      los que cree B2. Este camino no le pide nada nuevo al cliente: manda el
-      token que ya tiene guardado.
-    - **Con correo** (camino heredado): se usa tal cual, como hasta hoy, **sin
-      consultar la base**. Se deja byte-idéntico a propósito. Resolver la fila
-      por correo sería «mejor», pero añadiría una novena consulta global por
-      `User.email` a la lista que la rebanada B3 tiene que acotar por marca — y
-      este camino tiene fecha de muerte: se borra antes de que B2 escriba el
-      primer handle UUID, porque a partir de ahí el correo no firma nada.
+    Aquí había un segundo camino, por el campo `email` del cuerpo. Se borró el
+    28/09/2026, cuando los tres clientes ya mandaban la cabecera. Tenía que irse
+    antes del primer handle UUID de B2: en cuanto el handle deja de ser el
+    correo, ese camino firma con un valor que el proveedor no reconoce, y el
+    fallo sería indistinguible de un refresh token inválido.
 
-    Sin ninguno de los dos se responde **422**, el mismo código que devolvía
-    antes cuando el correo era obligatorio. Es deliberado: iOS y Android hoy
-    mandan sólo el refresh token y reciben 422 (§13); después de este cambio
-    reciben exactamente lo mismo. Una app vieja nunca queda peor de lo que está.
+    Sin cabecera se responde **422**, el mismo código que ya recibía quien no
+    mandaba nada. Una app vieja no queda peor de lo que estaba.
     """
     token = _token_de_la_cabecera(authorization)
 
-    if token is not None:
-        payload = verificar_access_token_para_refresco(token)
-        usuario = db.query(User).filter(User.cognito_sub == payload["sub"]).first()
-        # 401 y no 404: este endpoint es público, así que distinguir «ese sub no
-        # existe» de «ese refresh token no vale» sería un oráculo sobre quién
-        # tiene cuenta.
-        if usuario is None or not usuario.external_id:
-            logger.warning("auth.refresh.sub_sin_fila")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No se pudo renovar el token",
-            )
-        return usuario.external_id
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Falta la cabecera Authorization",
+        )
 
-    if email:
-        return email
-
-    raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        detail="Falta la cabecera Authorization o el campo email",
-    )
+    payload = verificar_access_token_para_refresco(token)
+    usuario = db.query(User).filter(User.cognito_sub == payload["sub"]).first()
+    # 401 y no 404: este endpoint es público, así que distinguir «ese sub no
+    # existe» de «ese refresh token no vale» sería un oráculo sobre quién tiene
+    # cuenta.
+    if usuario is None or not usuario.external_id:
+        logger.warning("auth.refresh.sub_sin_fila")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No se pudo renovar el token",
+        )
+    return usuario.external_id
 
 
 @router.post(
@@ -1330,18 +1322,18 @@ def refresh_token(
     - Este endpoint NO requiere autenticación (es público): la cabecera se usa
       como prueba de identidad, no como autorización, y por eso se admite
       vencida
-    - El campo `email` del cuerpo es el camino heredado y desaparece antes de la
-      rebanada B2
+    - El campo `email` del cuerpo, que era el camino heredado, **ya no existe**
+      desde el 28/09/2026. Un cuerpo que todavía lo traiga no falla: sobra y se
+      ignora
 
     Códigos de error:
     - 401: Refresh token inválido, expirado o revocado, o cabecera no válida
-    - 422: No vino ni cabecera ni email
+    - 422: No vino la cabecera Authorization
     - 500: Error al renovar los tokens en Cognito
     """
 
     handle = _handle_para_renovar(
         authorization=authorization,
-        email=request.email,
         db=db,
     )
 

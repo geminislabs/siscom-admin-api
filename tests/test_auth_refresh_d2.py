@@ -3,6 +3,9 @@
 La identidad sale de la cabecera `Authorization`, **admitiendo que el access
 token esté vencido**: si no lo estuviera, el cliente no estaría renovando.
 
+Desde el 28/09/2026 es el **único** camino: el campo `email` del cuerpo, por el
+que se firmaba cuando handle == correo, está borrado.
+
 POR QUÉ ESTOS TESTS FIRMAN DE VERDAD
 ====================================
 Se genera una clave RSA y se sustituye el JWKS de Cognito por el suyo, en vez de
@@ -92,10 +95,15 @@ def test_cabecera_vencida_renueva_con_el_external_id_de_la_fila(
     )
 
 
-def test_la_cabecera_gana_al_email_del_cuerpo(
+def test_un_email_en_el_cuerpo_se_ignora(
     client, db_session, test_user_data, clave_del_pool, idp_falso
 ):
-    """Durante la transición los dos campos pueden venir; manda el firmado."""
+    """Un cliente viejo que todavía mande el correo no se rompe: sobra.
+
+    El campo se borró del esquema el 28/09/2026 y Pydantic descarta lo que
+    sobra, así que un cuerpo heredado con cabecera renueva igual — y **nunca**
+    con el correo como handle, que es lo que este test vigila.
+    """
     respuesta = _renovar(
         client,
         _access_token(clave_del_pool),
@@ -172,45 +180,120 @@ def test_sub_que_no_tiene_fila_es_401_y_no_404(
     idp_falso.renovar.assert_not_called()
 
 
-def test_cabecera_mal_formada_cae_al_camino_del_email(
+def test_cabecera_mal_formada_es_422_y_no_se_toma_por_token(
     client, db_session, test_user_data, clave_del_pool, idp_falso
 ):
-    """Un esquema que no es Bearer se ignora; no se toma el valor como token."""
+    """Un esquema que no es Bearer se ignora; no se toma el valor como token.
+
+    Antes esto caía al camino del correo y devolvía 200. Ahora no hay dónde
+    caer: sin cabecera válida es 422, y el valor de un `Basic` **no** llega a
+    tratarse como un token.
+    """
     respuesta = client.post(
         "/api/v1/auth/refresh",
-        json={"email": "usuario@example.com", "refresh_token": "refresh-guardado"},
+        json={"refresh_token": "refresh-guardado"},
         headers={"Authorization": "Basic dXN1YXJpbzpjbGF2ZQ=="},
     )
 
-    assert respuesta.status_code == status.HTTP_200_OK
-    _, kwargs = idp_falso.renovar.call_args
-    assert kwargs["handle"] == "usuario@example.com"
+    assert respuesta.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    idp_falso.renovar.assert_not_called()
 
 
-# ── El camino heredado, que no se rompe ───────────────────────────────────
+# ── El camino heredado, ya borrado ────────────────────────────────────────
 
 
-def test_solo_email_sigue_funcionando(client, db_session, idp_falso):
-    """`nexus-web` manda esto hoy, y quita la cabecera a propósito."""
+def test_solo_email_ya_no_renueva(client, db_session, idp_falso):
+    """El correo dejó de ser identidad el 28/09/2026.
+
+    Es el test que invierte a `test_solo_email_sigue_funcionando`, y es el que
+    prueba que el camino se fue de verdad: antes esto devolvía 200 firmando el
+    `SECRET_HASH` con el correo. Ahora es 422 y **no se llama al proveedor** —
+    que importa, porque firmar con un handle que ya no existe daría un 401
+    indistinguible de un refresh token inválido.
+    """
     respuesta = _renovar(
         client,
         cuerpo={"email": "usuario@example.com", "refresh_token": "refresh-guardado"},
     )
 
-    assert respuesta.status_code == status.HTTP_200_OK
-    idp_falso.renovar.assert_called_once_with(
-        handle="usuario@example.com",
-        refresh_token="refresh-guardado",
-    )
+    assert respuesta.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    idp_falso.renovar.assert_not_called()
 
 
-def test_sin_cabecera_y_sin_email_sigue_siendo_422(client, db_session, idp_falso):
-    """iOS y Android mandan sólo el refresh token y hoy reciben 422 (§13).
+def test_sin_cabecera_sigue_siendo_422(client, db_session, idp_falso):
+    """El código no cambia para quien no manda nada.
 
-    Después de este cambio reciben exactamente lo mismo: una app vieja no queda
-    peor de lo que estaba.
+    Es lo que recibían iOS y Android antes del pase del 28/09 (§13), y lo que
+    siguen recibiendo las versiones que están en la calle: una app vieja no
+    queda peor de lo que estaba.
     """
     respuesta = _renovar(client)
 
     assert respuesta.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     idp_falso.renovar.assert_not_called()
+
+
+# ── El token rotado ───────────────────────────────────────────────────────
+#
+# Cognito sabe rotar refresh tokens y en este pool está apagado
+# (`RefreshTokenRotation: null`). El día que se encienda devolverá uno nuevo en
+# cada renovación y el anterior dejará de valer pasado el periodo de gracia. El
+# endpoint tiene que reenviarlo **antes** de que eso pase: si no, todo el mundo
+# acaba en la pantalla de login. Por eso estos dos tests son el paso 1 del orden
+# de §24 y no van después de activar la rotación.
+#
+# Vivían en `test_auth.py` y renovaban por el camino del correo. Al borrarse ese
+# camino se mudan aquí, que es donde están las fixtures que firman de verdad.
+
+
+def test_refresh_reenvia_el_token_rotado(
+    client, db_session, test_user_data, clave_del_pool, idp_falso
+):
+    """Si el proveedor devuelve un refresh token nuevo, el cliente lo recibe."""
+    idp_falso.renovar.return_value = Sesion(
+        access_token="access-nuevo",
+        id_token="id-nuevo",
+        refresh_token="refresh-rotado",
+        expires_in=3600,
+    )
+
+    respuesta = _renovar(
+        client,
+        _access_token(clave_del_pool),
+        cuerpo={"refresh_token": "refresh-viejo"},
+    )
+
+    assert respuesta.status_code == status.HTTP_200_OK
+    cuerpo = respuesta.json()
+    assert cuerpo["refresh_token"] == "refresh-rotado"
+    assert cuerpo["access_token"] == "access-nuevo"
+    idp_falso.renovar.assert_called_once_with(
+        handle=test_user_data.external_id, refresh_token="refresh-viejo"
+    )
+
+
+def test_refresh_sin_rotacion_devuelve_el_campo_nulo(
+    client, db_session, test_user_data, clave_del_pool, idp_falso
+):
+    """Es el comportamiento de hoy, y tiene que seguir siendo válido.
+
+    Sin rotación Cognito no manda `RefreshToken`, así que el campo sale `null`
+    en vez de ausente o vacío: el cliente distingue «no hay uno nuevo» de «toma
+    éste» sin adivinar. Los tres clientes ya lo tratan así — la web desde
+    `setSession()`, y los móviles desde el pase del 28/09.
+    """
+    idp_falso.renovar.return_value = Sesion(
+        access_token="access-nuevo",
+        id_token="id-nuevo",
+        refresh_token=None,
+        expires_in=3600,
+    )
+
+    respuesta = _renovar(
+        client,
+        _access_token(clave_del_pool),
+        cuerpo={"refresh_token": "refresh-viejo"},
+    )
+
+    assert respuesta.status_code == status.HTTP_200_OK
+    assert respuesta.json()["refresh_token"] is None
