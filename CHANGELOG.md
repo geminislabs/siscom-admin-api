@@ -14,6 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > `1.30.0`, `1.30.1`, `1.31.0`, `1.32.0`, `1.32.1` y `1.32.2` sí se
 > repartieron, derivadas de `git log <tag-anterior>..<tag>`.
 
+## [1.46.0] - 2026-09-30
+
+**Migraciones**
+
+- `034_estado_de_membresia`
+
+**Rollback**: casi siempre basta revertir la imagen (aditiva). Si hace falta
+revertir el esquema, `alembic downgrade 033_el_esquema_alcanza` **antes** de
+desplegar el tag anterior.
+
+### Added
+
+- `organization_users.status` (034, solo esquema): la baja es la membresía, no la cuenta — semántica cerrada el 28/09. Distinta de `users.status` (029), que decide si la credencial sigue siendo válida
+- `PATCH /organizations/{org}/users/{user_id}/status` pausa o reactiva una membresía puntual sin borrarla y sin tocar `users.status` ni el proveedor de identidad. No reemplaza a `DELETE` —que sigue haciendo la baja completa y sostiene la re-invitación por correo— sino que cubre el caso que `DELETE` no resolvía bien: alguien con membresía en dos organizaciones no pierde acceso a la otra por que lo pausen en una
+- `_count_owners()` cuenta ahora solo owners **activos**: un owner pausado ya no cuenta como red de seguridad contra vaciar la organización
+
+### Fixed
+
+- `UserOut` expone `status` — faltaba desde que la 029 creó la columna en `users` (v1.32.2). `AdminDashboard.svelte` en `nexus-web-page` comprobaba un campo que nunca llegaba
+
 ### Changed
 
 - `GET /internal/accounts` deja de usar `DISTINCT ON` (Postgres-only): el owner se resuelve con `GROUP BY` + `min(email)` para que el query sea válido en SQLite (CI) y en Postgres
