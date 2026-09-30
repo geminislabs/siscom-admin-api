@@ -390,6 +390,16 @@ class TeamService:
         )
 
     @staticmethod
+    def resolve_account_id(db: Session, organization_id: UUID) -> UUID:
+        """Cuenta comercial dueña de una organización. Mismo fallback que
+        create_team: si la organización no existe (dato inconsistente), trata
+        su id como si fuera ya el account_id en vez de fallar."""
+        from app.models.organization import Organization
+
+        org = db.query(Organization).filter(Organization.id == organization_id).first()
+        return org.account_id if org else organization_id
+
+    @staticmethod
     def add_member(
         db: Session,
         team: Team,
@@ -404,7 +414,13 @@ class TeamService:
             )
 
         target_user = db.query(User).filter(User.id == payload.user_id).first()
-        if not target_user:
+        if not target_user or (
+            TeamService.resolve_account_id(db, target_user.organization_id)
+            != team.account_id
+        ):
+            # Mismo 404 en los dos casos: que el usuario no exista o que sea
+            # de otra cuenta no debe distinguirse desde afuera — si no, el
+            # código de respuesta sirve para enumerar cuentas ajenas.
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Usuario no encontrado",
