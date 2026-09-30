@@ -12,7 +12,15 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -35,6 +43,20 @@ class OrganizationRole(str, enum.Enum):
     ADMIN = "admin"
     BILLING = "billing"
     MEMBER = "member"
+
+
+class MembershipStatus(str, enum.Enum):
+    """Estado de la membresía. Gemelo de `ck_organization_users_status`
+    (migración 034).
+
+    Distinto de `users.status`: éste dice si *esta* membresía está activa, no
+    si la persona puede autenticarse en el sistema. Alguien puede tener una
+    membresía INACTIVE aquí y seguir activo en otra organización — apagar una
+    no apaga la credencial ni las demás.
+    """
+
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
 
 
 class OrganizationUser(SQLModel, table=True):
@@ -78,6 +100,14 @@ class OrganizationUser(SQLModel, table=True):
             nullable=False,
             default=OrganizationRole.MEMBER.value,
         ),
+    )
+    # La creó la 034. Se declara como `str` y no como el enum de Python porque
+    # en la base es `text` con CHECK, no un tipo ENUM — ver la 034 sobre por
+    # qué, y ver `MembershipStatus` sobre por qué no es lo mismo que
+    # `users.status`.
+    status: str = Field(
+        default=MembershipStatus.ACTIVE.value,
+        sa_column=Column(Text, nullable=False, server_default=text("'ACTIVE'")),
     )
     created_at: Optional[datetime] = Field(
         default=None,

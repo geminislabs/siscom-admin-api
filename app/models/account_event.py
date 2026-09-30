@@ -34,6 +34,7 @@ class EventType(str, enum.Enum):
     ORG_USER_ADDED = "org_user_added"
     ORG_USER_REMOVED = "org_user_removed"
     ORG_USER_ROLE_CHANGED = "org_user_role_changed"
+    ORG_USER_STATUS_CHANGED = "org_user_status_changed"
 
     # Organization Capabilities
     ORG_CAPABILITY_CREATED = "org_capability_created"

@@ -188,6 +188,34 @@ class AuditService:
             **kwargs,
         )
 
+    @staticmethod
+    def log_org_user_status_changed(
+        db: Session,
+        account_id: UUID,
+        organization_id: UUID,
+        actor_user_id: UUID,
+        target_user_id: UUID,
+        old_status: str,
+        new_status: str,
+        **kwargs: Any,
+    ) -> AccountEvent:
+        """Registra cuando se pausa o reactiva una membresía (no la cuenta)."""
+        return AuditService.log_event(
+            db=db,
+            account_id=account_id,
+            organization_id=organization_id,
+            actor_user_id=actor_user_id,
+            event_type=EventType.ORG_USER_STATUS_CHANGED.value,
+            target_type=TargetType.ORGANIZATION_USER.value,
+            target_id=target_user_id,
+            metadata={
+                "user_id": str(target_user_id),
+                "old_status": old_status,
+                "new_status": new_status,
+            },
+            **kwargs,
+        )
+
     # =========================================================================
     # Organization Capabilities Events
     # =========================================================================
