@@ -9,11 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **`urllib3` 2.7.0 → 2.8.0** (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689). Publicadas después del último verde de `develop`, así que bloqueaban el check `security` de este PR sin relación con `alembic`/`sqlmodel`, que es lo que el grupo *sqlalchemy-stack* venía a subir — mismo patrón que `anyio` en #81 y `brace-expansion`/`fast-uri`/`js-yaml` en `nexus-web-page#77`
+- **`opentelemetry-instrumentation-*` 0.48b0 → 0.66b0** (con `opentelemetry-api`/`sdk`/`exporter-otlp-proto-http` 1.27.0 → 1.45.0). El salto deja de importar `pkg_resources` al arrancar, así que cierra los dos riesgos aceptados que dependían de él:
+  - **`setuptools` 81.0.0 → 84.0.0** (`PYSEC-2026-3447`), pinneado desde la `v1.44.0` porque la instrumentación vieja no arrancaba con `pkg_resources` removido
+  - **`protobuf`** resuelve ahora a 7.36.2 vía `opentelemetry-proto`, que deja de exigir `<5` (`PYSEC-2026-1805`)
+  - Las dos entradas se quitan de `osv-scanner.toml`, `scripts/pip-audit-scan.sh` y `docs/security/threat-model.md` — verificado con `pip-audit` y `osv-scanner` en verde sin necesitar la excepción
+- **`boto3` 1.43.6 → 1.43.102, `botocore` 1.43.6 → 1.43.102, `s3transfer` 0.17.0 → 0.19.2**: Dependabot los agrupó en dos PR que no mergeaban por separado (#122 solo subía `boto3`, exigiendo `botocore>=1.43.102`; #124 subía `botocore`/`s3transfer` dejando `boto3` atrás, y `s3transfer` 0.19.2 rompe con `boto3` viejo). Van juntos aquí. Cierra #122 y #124
+- **`cryptography` 50.0.0 → 50.0.1, `pyseto` 1.9.3 → 1.10.0** (venían en #122, agrupados con el bump de `boto3`)
+- Resto de bumps de parche/minor agrupados por Dependabot en #124 (annotated-types, anyio, black, certifi, fastapi-cli, pydantic, pytest, sentry-sdk, uvicorn, entre ~45 más) — sin novedad de superficie
+- **`pydantic_core` fijado a 2.46.5, no 2.49.0**: la versión que traía el grupo #124 no es la que `pydantic` 2.13.5 exige (`==2.46.5`); `pip` no lo detectaba porque el conflicto de `boto3`/`botocore` fallaba primero
+- **`SQLAlchemy` se queda en 2.0.36**, no sube a 2.1.1 como proponía #124: `sqlmodel` 0.0.22 exige `SQLAlchemy<2.1.0`, y ese paquete no estaba en el grupo. Queda para cuando `sqlmodel` lo permita
+- **`urllib3` 2.7.0 → 2.8.0** (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689), de #121 — publicadas después del último verde de `develop`, sin relación con `alembic`/`sqlmodel` de ese PR — mismo patrón que `anyio` en #81 y `brace-expansion`/`fast-uri`/`js-yaml` en `nexus-web-page#77`
 
 ### Changed
 
-- **`alembic` 1.13.1 → 1.20.0, `sqlmodel` 0.0.22 → 0.0.47** (grupo *sqlalchemy-stack* de Dependabot)
+- **`alembic` 1.13.1 → 1.20.0, `sqlmodel` 0.0.22 → 0.0.47** (grupo *sqlalchemy-stack* de Dependabot, #121). `sqlmodel` 0.0.47 sigue exigiendo `SQLAlchemy<2.1.0` — comprobado instalándolo junto a `SQLAlchemy` 2.1.1 — así que el tope de arriba sigue vigente
+- **`fastapi` 0.136.1 → 0.141.1** (grupo *fastapi-stack*, #120)
+- **`filelock` 3.29.0 → 4.0.3** (#126)
 
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
