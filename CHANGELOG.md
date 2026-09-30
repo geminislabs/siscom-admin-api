@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **`POST /teams/{id}/members` ya valida que el usuario agregado pertenezca a la misma cuenta que el team.** Antes aceptaba cualquier `users.id` existente en el sistema — un ADMIN/OWNER de un team podía agregar a alguien de otra cuenta, sin que hubiera ninguna comprobación de tenancy en el camino. Mismo 404 tanto si el usuario no existe como si es de otra cuenta, para no convertir la respuesta en un oráculo. Hallazgo de la revisión del 26/09, cerrado en `team_service.py`. **Queda abierto**: el consentimiento del usuario agregado — la membresía sigue siendo unilateral, sin que medie una invitación aceptada, a diferencia del flujo de `TeamInvite`
+
+### Fixed
+
+- **`POST /user-devices/register` ya no reasigna en silencio un `device_token` compartido.** En un aparato con más de una cuenta (familia, flotilla), entrar con la segunda cuenta reasignaba la fila de la primera sin avisar — el usuario anterior dejaba de recibir push sin ningún rastro, ni un evento en Kafka. Ahora, si el token pertenece a otro usuario y sigue activo, esa fila se desactiva explícitamente (evento `DELETE` propio) y se crea una fila nueva para quien se loguea — nunca se reasigna una fila ajena. El comentario de `/deactivate` que ya anticipaba este arreglo (26/09) queda actualizado
 - **`opentelemetry-instrumentation-*` 0.48b0 → 0.66b0** (con `opentelemetry-api`/`sdk`/`exporter-otlp-proto-http` 1.27.0 → 1.45.0). El salto deja de importar `pkg_resources` al arrancar, así que cierra los dos riesgos aceptados que dependían de él:
   - **`setuptools` 81.0.0 → 84.0.0** (`PYSEC-2026-3447`), pinneado desde la `v1.44.0` porque la instrumentación vieja no arrancaba con `pkg_resources` removido
   - **`protobuf`** resuelve ahora a 7.36.2 vía `opentelemetry-proto`, que deja de exigir `<5` (`PYSEC-2026-1805`)

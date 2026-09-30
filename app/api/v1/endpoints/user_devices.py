@@ -58,13 +58,20 @@ def register_user_device(
 ):
     now = datetime.now(timezone.utc)
     created_new = False
+
+    # La fila propia de este usuario: por token exacto, o por plataforma si el
+    # token rotó (frecuente en iOS). La búsqueda nunca sale de current_user —
+    # buscar primero por device_token a secas es lo que le quitaba el push a
+    # quien ya no es dueño de la sesión en un aparato compartido (ver el
+    # comentario de /deactivate sobre el par (device_token, user_id)).
     device = (
         db.query(UserDevice)
-        .filter(UserDevice.device_token == payload.device_token)
+        .filter(
+            UserDevice.user_id == current_user.id,
+            UserDevice.device_token == payload.device_token,
+        )
         .first()
     )
-
-    # If token rotated (common in iOS), reuse latest user+platform device record.
     if not device:
         device = (
             db.query(UserDevice)
@@ -78,6 +85,44 @@ def register_user_device(
 
     try:
         if not device:
+            # Aparato compartido: si otra cuenta ya tenía este token activo, se
+            # desactiva su fila —con su propio evento— en vez de reasignarla.
+            # Antes, la fila cambiaba de dueño en silencio: el usuario anterior
+            # dejaba de recibir push sin ningún rastro, ni siquiera en Kafka.
+            other_owner = (
+                db.query(UserDevice)
+                .filter(
+                    UserDevice.device_token == payload.device_token,
+                    UserDevice.user_id != current_user.id,
+                    UserDevice.is_active.is_(True),
+                )
+                .first()
+            )
+            if other_owner:
+                other_owner.is_active = False
+                other_owner.updated_at = now
+                db.add(other_owner)
+                db.commit()
+                db.refresh(other_owner)
+
+                other_owner_user = (
+                    db.query(User).filter(User.id == other_owner.user_id).first()
+                )
+                publish_control_event(
+                    user_devices_kafka_producer,
+                    _user_device_payload(
+                        event_type="DELETE",
+                        organization_id=(
+                            other_owner_user.organization_id
+                            if other_owner_user
+                            else None
+                        ),
+                        device=other_owner,
+                    ),
+                    key=str(other_owner.id),
+                    endpoint="register_user_device",
+                )
+
             endpoint_arn, _ = get_or_recreate_endpoint(
                 device_token=payload.device_token,
                 platform=payload.platform,
@@ -98,11 +143,14 @@ def register_user_device(
                 db.refresh(device)
                 created_new = True
             except IntegrityError:
-                # Another concurrent request inserted the same token first.
+                # Another concurrent request inserted the same (user, token) first.
                 db.rollback()
                 device = (
                     db.query(UserDevice)
-                    .filter(UserDevice.device_token == payload.device_token)
+                    .filter(
+                        UserDevice.user_id == current_user.id,
+                        UserDevice.device_token == payload.device_token,
+                    )
                     .first()
                 )
                 if not device:
@@ -135,7 +183,8 @@ def register_user_device(
             endpoint_arn=device.endpoint_arn,
         )
 
-        device.user_id = current_user.id
+        # `device` ya es una fila de current_user — las dos búsquedas de arriba
+        # están acotadas a su user_id, así que no hay reasignación que hacer.
         device.device_token = payload.device_token
         device.platform = payload.platform
         device.is_active = True
@@ -150,17 +199,19 @@ def register_user_device(
             db.commit()
             db.refresh(device)
         except IntegrityError:
-            # Token was claimed by another row while rotating token/user+platform.
+            # Fila concurrente insertada para el mismo (user, token) primero.
             db.rollback()
             device = (
                 db.query(UserDevice)
-                .filter(UserDevice.device_token == payload.device_token)
+                .filter(
+                    UserDevice.user_id == current_user.id,
+                    UserDevice.device_token == payload.device_token,
+                )
                 .first()
             )
             if not device:
                 raise
 
-            device.user_id = current_user.id
             device.platform = payload.platform
             device.is_active = True
             device.last_seen_at = now
@@ -228,10 +279,12 @@ def deactivate_user_device(
     #   1. Exigir sesión sin acotar el alcance cambiaría «cualquiera» por
     #      «cualquier usuario», que no es cerrar nada: una credencial válida de
     #      quien no es dueño seguiría dando de baja el aparato de otro.
-    #   2. Es la forma que pide el multi-cuenta. Hoy el token tiene un solo
-    #      dueño porque `register` lo reasigna, y ese es el defecto que hace que
-    #      entrar con la segunda cuenta apague el push de la primera. Cuando la
-    #      clave pase a ser el par, esta consulta ya está bien escrita.
+    #   2. Es la forma que pide el multi-cuenta. Hasta el 30/09/2026, `register`
+    #      reasignaba el dueño del token en silencio, así que entrar con la
+    #      segunda cuenta apagaba el push de la primera sin dejar rastro. Ya
+    #      no: ahora desactiva la fila anterior con su propio evento en vez de
+    #      reasignarla, así que esta consulta (por el par) era, y sigue siendo,
+    #      la forma correcta de buscar.
     device = (
         db.query(UserDevice)
         .filter(
