@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`urllib3` 2.7.0 → 2.8.0** (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689). Publicadas después del último verde de `develop`, así que bloqueaban el check `security` de este PR sin relación con `alembic`/`sqlmodel`, que es lo que el grupo *sqlalchemy-stack* venía a subir — mismo patrón que `anyio` en #81 y `brace-expansion`/`fast-uri`/`js-yaml` en `nexus-web-page#77`
+
+### Changed
+
+- **`alembic` 1.13.1 → 1.20.0, `sqlmodel` 0.0.22 → 0.0.47** (grupo *sqlalchemy-stack* de Dependabot)
+
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
 > saber qué salió en cada tag anterior a `1.25.0`, y adivinarlo produciría un
