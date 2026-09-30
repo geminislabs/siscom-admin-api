@@ -82,6 +82,12 @@ class UserOut(UserBase):
     client_id: UUID
     cognito_sub: Optional[str] = None
     email_verified: bool = False
+    # Faltaba desde la 029 (v1.32.2): la fila la tiene, pero nadie la exponía.
+    # `AdminDashboard.svelte:21` ya comprobaba `u.status !== 'pending'` contra
+    # un campo que nunca llegaba — 'pending' tampoco es un valor posible aquí,
+    # sólo ACTIVE o INACTIVE (ck_users_status). Ver
+    # test_get_users_expone_el_estado_de_la_fila.
+    status: str = "ACTIVE"
     last_login_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
