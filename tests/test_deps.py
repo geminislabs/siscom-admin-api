@@ -52,13 +52,43 @@ def test_resolve_current_organization_user_not_found():
     assert ei.value.status_code == 404
 
 
-def test_resolve_current_organization_returns_org_id():
+def _db_con_usuario_y_membresia(user, hay_membresia_activa: bool) -> MagicMock:
+    """Un `db` falso cuyo primer `.query()` (User) devuelve `user` y cuyo
+    segundo `.query()` (OrganizationUser) devuelve una membresía activa o
+    ninguna, según `hay_membresia_activa` — en ese orden, porque
+    `_load_current_user` consulta primero User y después OrganizationUser."""
     db = MagicMock()
+    user_query = MagicMock()
+    user_query.filter.return_value.first.return_value = user
+    membership_query = MagicMock()
+    membership_query.filter.return_value.first.return_value = (
+        MagicMock() if hay_membresia_activa else None
+    )
+    db.query.side_effect = [user_query, membership_query]
+    return db
+
+
+def test_resolve_current_organization_sin_membresia_activa_falla_cerrado():
+    """El fail-closed del rediseño de DELETE: sin fila ACTIVE en
+    organization_users para la organización actual, 403 en vez de dejar
+    resolver datos contra una organización de la que ya no es miembro."""
     oid = uuid4()
     user = MagicMock()
+    user.id = uuid4()
     user.organization_id = oid
+    db = _db_con_usuario_y_membresia(user, hay_membresia_activa=False)
 
-    db.query.return_value.filter.return_value.first.return_value = user
+    with pytest.raises(HTTPException) as ei:
+        resolve_current_organization(db, {"sub": "x"})
+    assert ei.value.status_code == 403
+
+
+def test_resolve_current_organization_returns_org_id():
+    oid = uuid4()
+    user = MagicMock()
+    user.id = uuid4()
+    user.organization_id = oid
+    db = _db_con_usuario_y_membresia(user, hay_membresia_activa=True)
 
     assert resolve_current_organization(db, {"sub": "x"}) == oid
 

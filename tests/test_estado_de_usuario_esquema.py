@@ -290,9 +290,19 @@ def test_master_removido_a_proposito_no_recupera_el_rol(engine, datos):
         assert _membresias_de(c, datos["removido"]) == []
 
 
-def test_usuario_normal_no_recibe_nada(engine, datos):
+def test_usuario_normal_recibe_member_desde_la_035(engine, datos):
+    """La `029` sólo rellenaba `is_master` — un usuario normal sin membresía
+    se quedaba así, y así quedó documentado aquí durante semanas.
+
+    Lo cerró la `035`: `accept_invitation` nunca creaba la fila de
+    `organization_users` para nadie invitado por correo, así que casi
+    cualquier miembro regular real no tenía membresía explícita. Esta base
+    corre hasta `head`, no hasta la `029` sola, así que el resultado que
+    importa es el de la cadena completa — ver
+    `test_backfill_membresias_regulares_esquema.py` para los tests que
+    prueban la `035` de forma aislada."""
     with engine.connect() as c:
-        assert _membresias_de(c, datos["normal"]) == []
+        assert _membresias_de(c, datos["normal"]) == ["member"]
 
 
 def test_master_con_organizacion_inexistente_no_tumba_la_migracion(engine, datos):

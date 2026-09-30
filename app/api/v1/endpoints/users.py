@@ -12,6 +12,11 @@ from app.api.deps import (
     get_identity_provider,
 )
 from app.db.session import get_db
+from app.models.organization_user import (
+    MembershipStatus,
+    OrganizationRole,
+    OrganizationUser,
+)
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 from app.models.user import User, UserStatus
 from app.schemas.user import (
@@ -311,6 +316,32 @@ def accept_invitation(
         )
 
     db.add(new_user)
+    db.flush()  # new_user.id lo pone Postgres (server_default); hace falta ya
+
+    # Y la membresía real en organization_users — hasta ahora este endpoint
+    # nunca la creaba, solo escribía users.organization_id. Sin ella,
+    # OrganizationService.get_user_role devuelve None para cualquiera
+    # invitado por esta vía, y require_organization_role no deja pasar
+    # ningún rol, ni siquiera "member". Ver la migración 035, que rellena
+    # esto mismo para quien ya se invitó antes de este cambio.
+    membership = (
+        db.query(OrganizationUser)
+        .filter(
+            OrganizationUser.organization_id == organization_id,
+            OrganizationUser.user_id == new_user.id,
+        )
+        .first()
+    )
+    if membership is None:
+        membership = OrganizationUser(
+            organization_id=organization_id,
+            user_id=new_user.id,
+            role=OrganizationRole.MEMBER,
+        )
+        db.add(membership)
+    elif membership.status != MembershipStatus.ACTIVE.value:
+        membership.status = MembershipStatus.ACTIVE.value
+        db.add(membership)
 
     # 🔟 Marcar token como usado
     token_record.used = True

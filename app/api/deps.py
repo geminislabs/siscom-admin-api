@@ -278,13 +278,32 @@ def get_current_user(
     return payload
 
 
-def resolve_current_organization(db: Session, cognito_payload: dict) -> UUID:
+def _load_current_user(db: Session, cognito_sub: Optional[str]):
     """
-    Busca el usuario por cognito_sub y retorna su organization_id.
+    Busca al usuario por `cognito_sub` y valida que su organización actual
+    siga siendo una membresía real y activa.
+
+    Punto único: `get_current_user_full`, `resolve_current_organization` y
+    `get_current_user_id` delegan aquí en vez de repetir cada una su propia
+    consulta — la validación se escribe una sola vez, así que no hay ningún
+    camino de los tres que pueda evitarla por accidente.
+
+    Falla cerrado: sin una fila `ACTIVE` en `organization_users` para
+    `(user.organization_id, user.id)`, 403 en vez de dejar que el resto del
+    API siga resolviendo alertas, dispositivos, unidades o geofences contra
+    una organización de la que esta persona ya no es miembro — el hueco
+    que dejaba abierto que `DELETE /organizations/{org}/users/{user_id}`
+    sólo tocara `users.organization_id` (ver el rediseño de ese endpoint) sin
+    corregir la columna cuando a alguien le quedaba otra membresía activa.
+
+    Depende de la migración 035: desde ahí, todo usuario con
+    `organization_id` no nulo tiene esa fila. Sin ese backfill, esto habría
+    bloqueado con 403 a cualquiera invitado por correo antes del 30/09/2026
+    — `accept_invitation` nunca creaba la membresía, sólo la columna.
     """
+    from app.models.organization_user import MembershipStatus, OrganizationUser
     from app.models.user import User
 
-    cognito_sub = cognito_payload.get("sub")
     if not cognito_sub:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -298,7 +317,31 @@ def resolve_current_organization(db: Session, cognito_payload: dict) -> UUID:
             detail="Usuario no encontrado en el sistema",
         )
 
-    return user.organization_id
+    has_active_membership = (
+        db.query(OrganizationUser)
+        .filter(
+            OrganizationUser.user_id == user.id,
+            OrganizationUser.organization_id == user.organization_id,
+            OrganizationUser.status == MembershipStatus.ACTIVE.value,
+        )
+        .first()
+        is not None
+    )
+    if not has_active_membership:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sin membresía activa en la organización actual",
+        )
+
+    return user
+
+
+def resolve_current_organization(db: Session, cognito_payload: dict) -> UUID:
+    """
+    Busca el usuario por cognito_sub y retorna su organization_id, ya
+    validada contra una membresía activa real. Ver `_load_current_user`.
+    """
+    return _load_current_user(db, cognito_payload.get("sub")).organization_id
 
 
 # Alias de compatibilidad (DEPRECATED)
@@ -332,19 +375,10 @@ def get_current_user_full(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Retorna el objeto User completo del usuario autenticado.
+    Retorna el objeto User completo del usuario autenticado, con su
+    organización actual validada. Ver `_load_current_user`.
     """
-    from app.models.user import User
-
-    cognito_sub = current_user.get("sub")
-    user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
-
-    return user
+    return _load_current_user(db, current_user.get("sub"))
 
 
 def get_current_user_id(
@@ -352,19 +386,9 @@ def get_current_user_id(
     current_user: dict = Depends(get_current_user),
 ) -> UUID:
     """
-    Retorna el UUID del usuario autenticado.
+    Retorna el UUID del usuario autenticado. Ver `_load_current_user`.
     """
-    from app.models.user import User
-
-    cognito_sub = current_user.get("sub")
-    user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
-
-    return user.id
+    return _load_current_user(db, current_user.get("sub")).id
 
 
 def get_current_user_with_role(
@@ -382,15 +406,7 @@ def get_current_user_with_role(
     Returns:
         Tuple de (User, OrganizationRole o None)
     """
-    from app.models.user import User
-
-    cognito_sub = current_user.get("sub")
-    user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
+    user = _load_current_user(db, current_user.get("sub"))
 
     # Obtener rol usando OrganizationService (única fuente de verdad)
     role = OrganizationService.get_user_role(db, user.id, user.organization_id)
