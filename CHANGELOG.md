@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Resto de bumps de parche/minor agrupados por Dependabot en #124 (annotated-types, anyio, black, certifi, fastapi-cli, pydantic, pytest, sentry-sdk, uvicorn, entre ~45 más) — sin novedad de superficie
 - **`pydantic_core` fijado a 2.46.5, no 2.49.0**: la versión que traía el grupo #124 no es la que `pydantic` 2.13.5 exige (`==2.46.5`); `pip` no lo detectaba porque el conflicto de `boto3`/`botocore` fallaba primero
 - **`SQLAlchemy` se queda en 2.0.36**, no sube a 2.1.1 como proponía #124: `sqlmodel` 0.0.22 exige `SQLAlchemy<2.1.0`, y ese paquete no estaba en el grupo. Queda para cuando `sqlmodel` lo permita
+- **`urllib3` 2.7.0 → 2.8.0** (CVE-2026-97687, CVE-2026-97688, CVE-2026-97689), de #121 — publicadas después del último verde de `develop`, sin relación con `alembic`/`sqlmodel` de ese PR — mismo patrón que `anyio` en #81 y `brace-expansion`/`fast-uri`/`js-yaml` en `nexus-web-page#77`
+
+### Changed
+
+- **`alembic` 1.13.1 → 1.20.0, `sqlmodel` 0.0.22 → 0.0.47** (grupo *sqlalchemy-stack* de Dependabot, #121). `sqlmodel` 0.0.47 sigue exigiendo `SQLAlchemy<2.1.0` — comprobado instalándolo junto a `SQLAlchemy` 2.1.1 — así que el tope de arriba sigue vigente
+- **`fastapi` 0.136.1 → 0.141.1** (grupo *fastapi-stack*, #120)
+- **`filelock` 3.29.0 → 4.0.3** (#126)
 
 > **Nota.** Lo que sigue arrastra entradas de varias versiones ya liberadas que
 > nunca se movieron a su sección. Se dejan aquí a propósito: atribuirlas exigiría
