@@ -5,15 +5,21 @@ Endpoints:
 - GET    /organizations/{organization_id}/users
 - POST   /organizations/{organization_id}/users
 - PATCH  /organizations/{organization_id}/users/{user_id}
+- PATCH  /organizations/{organization_id}/users/{user_id}/status
 - DELETE /organizations/{organization_id}/users/{user_id}
 
 REGLAS DE NEGOCIO:
 ==================
 1. Solo owner puede asignar otro owner
 2. Admin NO puede modificar owner
-3. No se puede eliminar ni degradar al ÚLTIMO owner de la organización
+3. No se puede eliminar, degradar ni inactivar al ÚLTIMO owner **activo** de
+   la organización
 4. Un usuario solo puede aparecer una vez por organización
 5. Roles: owner > admin > billing > member
+
+`PATCH .../status` pausa o reactiva una membresía sin borrarla y sin tocar
+`users.status` — distinto de `DELETE`, que es la baja completa. Ver su
+docstring y el de `MembershipStatus` (`app/models/organization_user.py`).
 """
 
 import logging
@@ -25,13 +31,18 @@ from sqlalchemy.orm import Session
 from app.api.deps import AuthResult, get_identity_provider, require_organization_role
 from app.db.session import get_db
 from app.models.organization import Organization
-from app.models.organization_user import OrganizationRole, OrganizationUser
+from app.models.organization_user import (
+    MembershipStatus,
+    OrganizationRole,
+    OrganizationUser,
+)
 from app.models.user import User, UserStatus
 from app.schemas.organization import (
     AddUserToOrganizationRequest,
     OrganizationUserOut,
     OrganizationUsersListOut,
     UpdateMemberRoleRequest,
+    UpdateMemberStatusRequest,
 )
 from app.services.audit import AuditService
 from app.services.identity import ErrorDeIdentidad, IdentityProvider
@@ -134,12 +145,19 @@ def _can_modify_user(
 
 
 def _count_owners(db: Session, organization_id: UUID) -> int:
-    """Cuenta el número de owners en una organización."""
+    """Cuenta los owners **activos** de una organización.
+
+    Filtra por `status == ACTIVE` desde que existe esa columna (migración
+    034): un owner pausado con `PATCH .../status` sigue teniendo el rol, pero
+    ya no puede actuar, así que no cuenta como red de seguridad contra
+    quedarse sin nadie que administre la organización.
+    """
     return (
         db.query(OrganizationUser)
         .filter(
             OrganizationUser.organization_id == organization_id,
             OrganizationUser.role == OrganizationRole.OWNER.value,
+            OrganizationUser.status == MembershipStatus.ACTIVE.value,
         )
         .count()
     )
@@ -191,6 +209,7 @@ def list_organization_users(
                     if isinstance(membership.role, str)
                     else membership.role.value
                 ),
+                status=membership.status,
                 created_at=membership.created_at,
                 email_verified=user.email_verified,
             )
@@ -312,6 +331,7 @@ def add_user_to_organization(
             if isinstance(membership.role, str)
             else membership.role.value
         ),
+        status=membership.status,
         created_at=membership.created_at,
         email_verified=target_user.email_verified,
     )
@@ -445,6 +465,132 @@ def update_user_role(
             if isinstance(membership.role, str)
             else membership.role.value
         ),
+        status=membership.status,
+        created_at=membership.created_at,
+        email_verified=target_user.email_verified,
+    )
+
+
+@router.patch(
+    "/{organization_id}/users/{user_id}/status",
+    response_model=OrganizationUserOut,
+)
+def update_membership_status(
+    organization_id: UUID,
+    user_id: UUID,
+    data: UpdateMemberStatusRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(require_organization_role("admin")),
+):
+    """
+    Pausa o reactiva la membresía de un usuario en la organización.
+
+    Requiere rol admin o superior.
+
+    **No es `DELETE`.** No borra la membresía, no toca `users.status` y no
+    llama al proveedor de identidad — sólo cambia el estado de esta relación
+    puntual `(organization_id, user_id)`. Alguien con otra membresía activa en
+    otra organización no se ve afectado en absoluto: sigue pudiendo iniciar
+    sesión y usar la app ahí. `DELETE` sigue siendo la baja completa (borra la
+    membresía y, si era su organización principal, desactiva la cuenta).
+
+    Reglas:
+    - Admin NO puede modificar a owners
+    - No se puede inactivar al último owner **activo** de la organización
+    - Idempotente en la fila: fijar el estado que ya tiene no falla, sólo
+      vuelve a auditar el intento
+    """
+    org = _verify_org_access(db, organization_id, auth)
+
+    actor_role = OrganizationService.get_user_role(db, auth.user_id, organization_id)
+    if actor_role is None:
+        actor_role = OrganizationService.get_user_role(
+            db, auth.user_id, auth.organization_id
+        )
+    if actor_role is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para gestionar usuarios",
+        )
+
+    membership = (
+        db.query(OrganizationUser)
+        .filter(
+            OrganizationUser.organization_id == organization_id,
+            OrganizationUser.user_id == user_id,
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado en la organización",
+        )
+
+    current_role_str = (
+        membership.role if isinstance(membership.role, str) else membership.role.value
+    )
+    current_role = OrganizationRole(current_role_str)
+
+    if not _can_modify_user(actor_role, current_role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para modificar a este usuario",
+        )
+
+    nuevo_estado = data.status.value
+    estado_anterior = membership.status
+
+    if (
+        nuevo_estado == MembershipStatus.INACTIVE.value
+        and current_role == OrganizationRole.OWNER
+    ):
+        if _count_owners(db, organization_id) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede inactivar al último owner de la organización",
+            )
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+
+    membership.status = nuevo_estado
+    db.add(membership)
+
+    AuditService.log_org_user_status_changed(
+        db=db,
+        account_id=org.account_id,
+        organization_id=organization_id,
+        actor_user_id=auth.user_id,
+        target_user_id=user_id,
+        old_status=estado_anterior,
+        new_status=nuevo_estado,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    db.commit()
+    db.refresh(membership)
+
+    logger.info(
+        "org_user.status_changed",
+        extra={
+            "user_id": str(user_id),
+            "organization_id": str(organization_id),
+            "old_status": estado_anterior,
+            "new_status": nuevo_estado,
+            "actor_user_id": str(auth.user_id),
+        },
+    )
+
+    return OrganizationUserOut(
+        id=membership.id,
+        organization_id=membership.organization_id,
+        user_id=target_user.id,
+        email=target_user.email,
+        full_name=target_user.full_name,
+        role=current_role_str,
+        status=membership.status,
         created_at=membership.created_at,
         email_verified=target_user.email_verified,
     )

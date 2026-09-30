@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.models.organization_user import OrganizationRole
+from app.models.organization_user import MembershipStatus, OrganizationRole
 
 
 class OrganizationBase(BaseModel):
@@ -179,6 +179,24 @@ class UpdateMemberRoleRequest(BaseModel):
         }
 
 
+class UpdateMemberStatusRequest(BaseModel):
+    """Request para pausar o reactivar una membresía.
+
+    No es lo mismo que dar de baja con `DELETE`: esto no toca `users.status`
+    ni el proveedor de identidad, así que no afecta el acceso de la persona a
+    otras organizaciones a las que pertenezca.
+    """
+
+    status: MembershipStatus = Field(..., description="ACTIVE o INACTIVE")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "INACTIVE",
+            }
+        }
+
+
 class InviteUserRequest(BaseModel):
     """Request para invitar un usuario a la organización."""
 
@@ -224,6 +242,10 @@ class OrganizationUserOut(BaseModel):
     email: str
     full_name: Optional[str] = None
     role: str
+    status: str = Field(
+        default=MembershipStatus.ACTIVE.value,
+        description="Estado de la membresía (no de la cuenta): ACTIVE o INACTIVE",
+    )
     created_at: Optional[datetime] = None
     email_verified: bool = False
 
@@ -237,6 +259,7 @@ class OrganizationUserOut(BaseModel):
                 "email": "usuario@empresa.com",
                 "full_name": "Juan García",
                 "role": "admin",
+                "status": "ACTIVE",
                 "created_at": "2024-01-15T10:30:00Z",
                 "email_verified": True,
             }
