@@ -94,6 +94,7 @@ defecto). Ver [Identidad y marca](../architecture/identidad-y-marca.md).
 - `app/utils/paseto_token.py` — emisión/validación de tokens internos
 - `app/services/gateways/` y `app/api/v1/endpoints/stripe_billing.py` — pagos
 - `app/services/messaging/kafka_producer.py` — eventos Kafka
+- `app/services/team_service.py` — membresía de teams; controla quién comparte ubicación con quién vía `TeamVisibilityRule`. `add_member` (alta directa por un ADMIN/OWNER) valida desde el 30/09 que el usuario agregado pertenezca a la misma cuenta que el team, pero sigue sin pedir consentimiento del agregado — a diferencia de `TeamInvite`, que sí exige que la persona redima un token. Si esa membresía unilateral basta para que otro miembro vea su ubicación depende de las reglas de visibilidad que el team ya tenga activas al momento del alta.
 
 ## Reporting
 

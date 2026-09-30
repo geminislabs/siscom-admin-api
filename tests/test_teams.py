@@ -366,6 +366,55 @@ def test_add_member_duplicate_fails(
     assert response.status_code == status.HTTP_409_CONFLICT
 
 
+def test_add_member_de_otra_cuenta_falla(
+    authenticated_client,
+    test_organization_data,
+    db_session,
+    test_user_data,
+    mock_kafka_producer,
+):
+    """Un ADMIN/OWNER no puede agregar a un usuario de otra cuenta — antes
+    del fix, cualquier users.id existente pasaba sin validar a qué cuenta
+    pertenece."""
+    from app.models.account import Account
+    from app.models.organization import Organization
+    from app.models.user import User
+
+    other_account = Account(id=uuid4(), name="Otra Cuenta", status="ACTIVE")
+    db_session.add(other_account)
+    db_session.commit()
+
+    other_org = Organization(
+        id=uuid4(),
+        account_id=other_account.id,
+        name="Otra Organización",
+        status="ACTIVE",
+    )
+    db_session.add(other_org)
+    db_session.commit()
+
+    outsider = User(
+        id=uuid4(),
+        organization_id=other_org.id,
+        cognito_sub="outsider-sub",
+        email="outsider@otra-cuenta.com",
+        full_name="Outsider",
+    )
+    db_session.add(outsider)
+    db_session.commit()
+
+    res = authenticated_client.post(
+        "/api/v1/teams", json={"name": "Test", "type": "FAMILY"}
+    )
+    team_id = res.json()["data"]["id"]
+
+    response = authenticated_client.post(
+        f"/api/v1/teams/{team_id}/members",
+        json={"user_id": str(outsider.id), "role": "MEMBER"},
+    )
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
 def test_update_member_role(
     authenticated_client,
     test_organization_data,
