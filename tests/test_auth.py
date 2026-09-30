@@ -140,6 +140,7 @@ def test_verify_email_existing_cognito_user_sends_email_attribute(
 
 
 def _make_verified_user(db_session, test_organization_data):
+    from app.models.organization_user import OrganizationRole, OrganizationUser
     from app.models.user import User
 
     user = User(
@@ -152,6 +153,17 @@ def _make_verified_user(db_session, test_organization_data):
         cognito_sub=str(uuid4()),
     )
     db_session.add(user)
+    db_session.flush()
+    # La membresía real, no sólo users.organization_id — get_current_user_full
+    # falla cerrado sin ella desde el rediseño de DELETE (ver app/api/deps.py,
+    # _load_current_user).
+    db_session.add(
+        OrganizationUser(
+            organization_id=test_organization_data.id,
+            user_id=user.id,
+            role=OrganizationRole.OWNER.value,
+        )
+    )
     db_session.commit()
     return user
 

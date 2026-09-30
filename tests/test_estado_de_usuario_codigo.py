@@ -25,6 +25,7 @@ from fastapi import status
 
 from app.api.deps import get_identity_provider
 from app.main import app as fastapi_app
+from app.models.organization import Organization
 from app.models.organization_user import OrganizationRole, OrganizationUser
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 from app.models.user import User, UserStatus
@@ -161,6 +162,146 @@ def test_si_el_proveedor_falla_la_baja_se_mantiene(
     assert victima.status == UserStatus.INACTIVE.value
 
 
+# ── Rediseño: última membresía activa, no users.organization_id ───────────
+
+
+def test_con_otra_membresia_activa_sacarlo_no_apaga_la_cuenta(
+    client, db_session, test_organization_data, test_user_data, idp_falso
+):
+    """El bug que el rediseño corrige: antes comparaba contra
+    `users.organization_id` — la columna heredada de una sola organización —
+    y apagaba la cuenta aunque a la persona le quedara otra membresía
+    activa en otra organización."""
+    victima = _otro_usuario(db_session, test_organization_data, "dos-orgs@example.com")
+    segunda_org = Organization(
+        id=uuid4(),
+        account_id=test_organization_data.account_id,
+        name="Segunda organización",
+        status="ACTIVE",
+    )
+    db_session.add(segunda_org)
+    db_session.flush()
+    db_session.add(
+        OrganizationUser(
+            organization_id=segunda_org.id,
+            user_id=victima.id,
+            role=OrganizationRole.MEMBER.value,
+        )
+    )
+    db_session.commit()
+
+    respuesta = _sacar_de_la_organizacion(
+        client, test_user_data, test_organization_data, victima
+    )
+
+    assert respuesta.status_code == status.HTTP_204_NO_CONTENT
+    db_session.refresh(victima)
+    # Sigue activa: le queda la membresía de la segunda organización.
+    assert victima.status == UserStatus.ACTIVE.value
+    idp_falso.deshabilitar.assert_not_called()
+
+    restantes = (
+        db_session.query(OrganizationUser)
+        .filter(OrganizationUser.user_id == victima.id)
+        .all()
+    )
+    assert [m.organization_id for m in restantes] == [segunda_org.id]
+
+
+def test_organization_id_colgante_falla_cerrado_en_vez_de_servir_datos_ajenos(
+    client, db_session, test_organization_data, test_user_data, idp_falso
+):
+    """La Parte 2 del rediseño: `users.organization_id` no se repunta al
+    sacar a alguien de la organización a la que apuntaba — la víctima del
+    test anterior sigue con `organization_id` = la organización de la que
+    ya no es miembro. Cualquier request suyo tiene que fallar cerrado ahí,
+    no resolver alertas/unidades/dispositivos contra esa organización."""
+    victima = _otro_usuario(db_session, test_organization_data, "colgante@example.com")
+    segunda_org = Organization(
+        id=uuid4(),
+        account_id=test_organization_data.account_id,
+        name="Organización real de la víctima",
+        status="ACTIVE",
+    )
+    db_session.add(segunda_org)
+    db_session.flush()
+    db_session.add(
+        OrganizationUser(
+            organization_id=segunda_org.id,
+            user_id=victima.id,
+            role=OrganizationRole.MEMBER.value,
+        )
+    )
+    db_session.commit()
+
+    _sacar_de_la_organizacion(client, test_user_data, test_organization_data, victima)
+    db_session.refresh(victima)
+    assert victima.status == UserStatus.ACTIVE.value  # la cuenta sigue viva
+    assert victima.organization_id == test_organization_data.id  # pero colgando
+
+    with patch(
+        "app.api.deps.verify_cognito_token",
+        return_value={"sub": victima.cognito_sub},
+    ):
+        respuesta = client.get(
+            "/api/v1/users/me",
+            headers={"Authorization": "Bearer lo-que-sea"},
+        )
+
+    assert respuesta.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_sin_otra_membresia_activa_si_apaga_la_cuenta(
+    client, db_session, test_organization_data, test_user_data, idp_falso
+):
+    """La otra mitad: sin ninguna membresía activa que le quede, sí se
+    apaga — es el mismo comportamiento que antes para el caso normal (una
+    sola organización), sólo que ahora calculado bien."""
+    victima = _otro_usuario(db_session, test_organization_data, "una-org@example.com")
+
+    respuesta = _sacar_de_la_organizacion(
+        client, test_user_data, test_organization_data, victima
+    )
+
+    assert respuesta.status_code == status.HTTP_204_NO_CONTENT
+    db_session.refresh(victima)
+    assert victima.status == UserStatus.INACTIVE.value
+    idp_falso.deshabilitar.assert_called_once()
+
+
+def test_con_membresia_pausada_en_otra_organizacion_igual_apaga_la_cuenta(
+    client, db_session, test_organization_data, test_user_data, idp_falso
+):
+    """Una membresía INACTIVE (pausada con PATCH .../status) no cuenta como
+    activa: si es lo único que le queda, la cuenta se apaga igual."""
+    victima = _otro_usuario(db_session, test_organization_data, "pausada@example.com")
+    segunda_org = Organization(
+        id=uuid4(),
+        account_id=test_organization_data.account_id,
+        name="Organización con membresía pausada",
+        status="ACTIVE",
+    )
+    db_session.add(segunda_org)
+    db_session.flush()
+    db_session.add(
+        OrganizationUser(
+            organization_id=segunda_org.id,
+            user_id=victima.id,
+            role=OrganizationRole.MEMBER.value,
+            status="INACTIVE",
+        )
+    )
+    db_session.commit()
+
+    respuesta = _sacar_de_la_organizacion(
+        client, test_user_data, test_organization_data, victima
+    )
+
+    assert respuesta.status_code == status.HTTP_204_NO_CONTENT
+    db_session.refresh(victima)
+    assert victima.status == UserStatus.INACTIVE.value
+
+
 # ── Readmision ───────────────────────────────────────────────────────────
 
 
@@ -195,6 +336,48 @@ def test_seguir_activo_sigue_bloqueando_la_invitacion(
     )
 
     assert respuesta.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_aceptar_invitacion_nueva_crea_la_membresia(
+    client, db_session, test_organization_data, idp_falso
+):
+    """El rediseño de la Parte 2: `accept_invitation` nunca creaba fila en
+    `organization_users`, sólo escribía `users.organization_id`. Sin esto,
+    `require_organization_role` no deja pasar ningún rol para nadie invitado
+    por esta vía — ver la migración 035."""
+    db_session.add(
+        TokenConfirmacion(
+            id=uuid4(),
+            token="tok-alta-nueva",
+            organization_id=test_organization_data.id,
+            email="nuevo@example.com",
+            full_name="Persona Nueva",
+            expires_at=utcnow() + timedelta_una_hora(),
+            used=False,
+            type=TokenType.INVITATION,
+        )
+    )
+    db_session.commit()
+    idp_falso.sujeto_de.return_value = None
+    idp_falso.crear_credencial.return_value = "sub-nuevo@example.com"
+
+    respuesta = client.post(
+        "/api/v1/users/accept-invitation",
+        json={"token": "tok-alta-nueva", "password": "La-nueva-1!"},
+    )
+
+    assert respuesta.status_code == status.HTTP_201_CREATED
+    nuevo = db_session.query(User).filter(User.email == "nuevo@example.com").one()
+
+    membresias = (
+        db_session.query(OrganizationUser)
+        .filter(OrganizationUser.user_id == nuevo.id)
+        .all()
+    )
+    assert len(membresias) == 1
+    assert membresias[0].organization_id == test_organization_data.id
+    assert membresias[0].role == OrganizationRole.MEMBER.value
+    assert membresias[0].status == "ACTIVE"
 
 
 def test_aceptar_la_invitacion_reactiva_la_fila_y_no_crea_otra(

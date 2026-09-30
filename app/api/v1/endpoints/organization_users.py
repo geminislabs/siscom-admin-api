@@ -692,18 +692,34 @@ def remove_user_from_organization(
 
     # Eliminar la membresía
     db.delete(membership)
+    db.flush()
 
-    # Y desactivar la fila, que es lo que rompe el callejón sin salida.
+    # Y desactivar la fila sólo si esta era su última membresía ACTIVA en
+    # cualquier organización — lo que de verdad rompe el callejón sin
+    # salida, sin apagar a alguien que todavía tiene a dónde entrar.
     #
-    # Sólo cuando la organización de la que se le saca es **la suya**. Alguien
-    # puede ser miembro de varias: quitarle una membresía ajena no lo da de
-    # baja del sistema.
+    # Antes comparaba contra `target.organization_id` — la columna heredada
+    # de cuando sólo existía una organización por persona — así que a
+    # alguien con dos membresías activas lo podía dejar sin poder entrar a
+    # NINGUNA por sacarlo de la que coincidiera con esa columna. Ver el
+    # rediseño documentado junto a la migración 035, que es su prerrequisito:
+    # sin el backfill de ahí, esta cuenta habría dado falsos ceros para
+    # cualquiera invitado por la vía clásica.
     target = db.query(User).filter(User.id == user_id).first()
     desactivado = False
-    if target is not None and target.organization_id == organization_id:
-        target.status = UserStatus.INACTIVE.value
-        db.add(target)
-        desactivado = True
+    if target is not None:
+        remaining_active = (
+            db.query(OrganizationUser)
+            .filter(
+                OrganizationUser.user_id == user_id,
+                OrganizationUser.status == MembershipStatus.ACTIVE.value,
+            )
+            .count()
+        )
+        if remaining_active == 0:
+            target.status = UserStatus.INACTIVE.value
+            db.add(target)
+            desactivado = True
 
     db.commit()
 
