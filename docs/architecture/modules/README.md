@@ -21,6 +21,7 @@ Esta documentación soporta diagramas de contenedores y componentes C4.
 | [contact](./contact.md) | Formulario de contacto público | AWS SES, Google reCAPTCHA v3 |
 | [subscriptions](./subscriptions.md) | Gestión de suscripciones | PostgreSQL |
 | [trips](./trips.md) | Consulta de viajes y telemetría | PostgreSQL, PASETO |
+| [teams](./teams.md) | Grupos de personas y visibilidad de ubicación entre sí — **declarativo, sin enforcement todavía** | PostgreSQL, Kafka (sin consumidor) |
 
 ---
 
@@ -35,6 +36,7 @@ Esta documentación soporta diagramas de contenedores y componentes C4.
 | **KORE Wireless API** | IoT/SMS Gateway | Envío de comandos SMS a dispositivos SuperSIM | commands |
 | **Google reCAPTCHA v3** | Security | Protección contra bots en formularios públicos | contact |
 | **PostgreSQL** | Database | Persistencia de datos | Todos los módulos |
+| **Kafka** | Event bus | Eventos de control-plane; `team-rules-updates` es el único tópico sin consumidor confirmado | teams (productor), user-devices, unit-devices, geofences, mobility (productores con consumidor fuera del repo) |
 
 ---
 
@@ -109,6 +111,7 @@ Todos los módulos interactúan con PostgreSQL a través de SQLAlchemy/SQLModel.
 | contact | (sin tablas propias, solo envío de email) |
 | subscriptions | `subscriptions`, `plans` |
 | trips | `trips`, `trip_points`, `trip_alerts`, `trip_events`, `units`, `unit_devices`, `user_units` |
+| teams | `team.teams`, `team.members`, `team.visibility_rules`, `team.invites`, `team.emergency_events` |
 
 ---
 
