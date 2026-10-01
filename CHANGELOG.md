@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.47.0] - 2026-10-01
+
+**Migraciones**
+
+- `035_backfill_membresias`
+
+**Rollback**: casi siempre basta revertir la imagen (aditiva). Si hace falta
+revertir el esquema, `alembic downgrade 034_estado_de_membresia` **antes** de
+desplegar el tag anterior.
+
 ### Security
 
 - **`POST /teams/{id}/members` ya valida que el usuario agregado pertenezca a la misma cuenta que el team.** Antes aceptaba cualquier `users.id` existente en el sistema — un ADMIN/OWNER de un team podía agregar a alguien de otra cuenta, sin que hubiera ninguna comprobación de tenancy en el camino. Mismo 404 tanto si el usuario no existe como si es de otra cuenta, para no convertir la respuesta en un oráculo. Hallazgo de la revisión del 26/09, cerrado en `team_service.py`. **Queda abierto**: el consentimiento del usuario agregado — la membresía sigue siendo unilateral, sin que medie una invitación aceptada, a diferencia del flujo de `TeamInvite`
