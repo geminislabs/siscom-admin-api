@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **`POST /teams/{id}/members` ya valida que el usuario agregado pertenezca a la misma cuenta que el team.** Antes aceptaba cualquier `users.id` existente en el sistema — un ADMIN/OWNER de un team podía agregar a alguien de otra cuenta, sin que hubiera ninguna comprobación de tenancy en el camino. Mismo 404 tanto si el usuario no existe como si es de otra cuenta, para no convertir la respuesta en un oráculo. Hallazgo de la revisión del 26/09, cerrado en `team_service.py`. **Queda abierto**: el consentimiento del usuario agregado — la membresía sigue siendo unilateral, sin que medie una invitación aceptada, a diferencia del flujo de `TeamInvite`
+- **`POST /organizations/{org}/users` ya valida que el usuario agregado pertenezca a la misma cuenta que la organización.** Mismo hueco que el de `team_service.add_member` arriba, en un endpoint distinto: aceptaba cualquier `users.id` del sistema. Agregar a alguien de **otra organización de la misma cuenta** sigue funcionando — ese es el uso normal del endpoint; el límite es la cuenta, no la organización. Mismo 404 en los dos casos (no existe / es de otra cuenta). Encontrado revisando el rediseño de `DELETE`, sin relación con él
 
 ### Fixed
 
