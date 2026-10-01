@@ -264,9 +264,28 @@ def add_user_to_organization(
             detail=f"No tienes permisos para asignar el rol '{data.role.value}'",
         )
 
-    # Verificar que el usuario existe
+    # Verificar que el usuario existe y pertenece a la misma cuenta que la
+    # organización. Antes aceptaba cualquier users.id del sistema — un admin
+    # podía agregar a alguien de otra cuenta, sin ninguna comprobación de
+    # tenancy en el camino. Mismo 404 en los dos casos (no existe / es de
+    # otra cuenta), para no convertir la respuesta en un oráculo — mismo
+    # patrón que TeamService.add_member.
     target_user = db.query(User).filter(User.id == data.user_id).first()
     if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
+    target_org = (
+        db.query(Organization)
+        .filter(Organization.id == target_user.organization_id)
+        .first()
+    )
+    target_account_id = (
+        target_org.account_id if target_org else target_user.organization_id
+    )
+    if target_account_id != org.account_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuario no encontrado",
