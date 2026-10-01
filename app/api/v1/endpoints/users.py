@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 from typing import List
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -227,15 +227,16 @@ def accept_invitation(
 
     # 6️⃣ ¿Existe ya la credencial en el proveedor de identidad?
     #
-    # El handle de un alta nueva sigue siendo el correo, como hasta ahora. La
-    # rebanada B2 lo cambia por un UUID; el único sitio que hay que tocar es
-    # este, porque `external_id` se guarda en la fila unas líneas más abajo.
+    # Rebanada B2: el handle de un alta nueva ya no es el correo, es un UUID
+    # opaco — es lo que permite que el mismo correo exista como dos
+    # credenciales distintas en dos marcas (white-label). `external_id` se
+    # guarda en la fila unas líneas más abajo con este mismo valor.
     #
     # En una reactivación el handle **sale de la fila**, no del correo: es
-    # inmutable en Cognito y puede no ser el correo (la rebanada B2 escribirá
-    # UUID). Reconstruirlo a partir del correo funcionaría hoy y se rompería
-    # en silencio con el primer handle UUID.
-    handle = existing_user.external_id if reactivando else email
+    # inmutable en Cognito y puede no ser el correo (altas posteriores a B2
+    # ya nacen con UUID). Reconstruirlo a partir del correo se rompería en
+    # silencio con cualquier handle UUID.
+    handle = existing_user.external_id if reactivando else str(uuid4())
 
     try:
         cognito_sub = idp.sujeto_de(handle=handle)
