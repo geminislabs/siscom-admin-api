@@ -13,6 +13,13 @@ Lo que Cognito exige en cada llamada —el `MessageAction`, el atributo `email`
 junto a `email_verified`, el `Permanent` de la contraseña— se comprueba en
 `tests/test_identidad_codigo.py`, contra el adaptador. Aquí se comprueba lo que
 es de este endpoint: a quién llama y con qué handle.
+
+Desde la rebanada B3, `/auth/login` y `/auth/register` ya no dependen de
+`get_identity_provider` a secas: dependen de `get_identity_provider_para_login`,
+que resuelve la marca de la petición y enruta con `proveedor_para_cuenta()`.
+El fixture `idp_falso` sustituye las dos, para que el doble valga tanto para
+estos dos endpoints como para el resto (password, logout, etc.) sin que cada
+test tenga que saber cuál usa cuál.
 """
 
 from datetime import timedelta
@@ -22,7 +29,7 @@ from uuid import uuid4
 import pytest
 from fastapi import status
 
-from app.api.deps import get_identity_provider
+from app.api.deps import get_identity_provider, get_identity_provider_para_login
 from app.main import app as fastapi_app
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 from app.services.identity import IdentityProvider, Sesion
@@ -45,8 +52,10 @@ def idp_falso():
         expires_in=3600,
     )
     fastapi_app.dependency_overrides[get_identity_provider] = lambda: doble
+    fastapi_app.dependency_overrides[get_identity_provider_para_login] = lambda: doble
     yield doble
     fastapi_app.dependency_overrides.pop(get_identity_provider, None)
+    fastapi_app.dependency_overrides.pop(get_identity_provider_para_login, None)
 
 
 def test_endpoint_without_token_returns_401(client):
@@ -258,6 +267,188 @@ def test_una_contrasena_mala_sigue_siendo_un_401_con_el_mensaje_del_proveedor(
     assert response.json()["detail"] == (
         "Credenciales inválidas. Incorrect username or password."
     )
+
+
+# ---------------------------------------------------------------------------
+# Resolución de marca en login y registro (Fase 3, rebanada B3)
+# ---------------------------------------------------------------------------
+
+
+def _marca_verificada(db_session, hostname, *, nombre="Mero Mero"):
+    """Una `Account` de marca con su `tenant_domains` ya verificado.
+
+    Minimal a propósito: estos tests no miran branding ni `account_path`, así
+    que no hace falta `TenantBranding` ni el camino que sí necesita
+    `tests/test_tenancy_codigo.py` para sus pruebas de techo descendente.
+    """
+    from app.models.account import Account
+    from app.models.tenancy import TenantDomain
+    from app.utils.datetime import utcnow
+
+    cuenta = Account(id=uuid4(), name=nombre, status="ACTIVE")
+    db_session.add(cuenta)
+    db_session.flush()
+    db_session.add(
+        TenantDomain(
+            account_id=cuenta.id,
+            hostname=hostname,
+            is_primary=True,
+            status="VERIFIED",
+            verified_at=utcnow(),
+        )
+    )
+    db_session.commit()
+    return cuenta
+
+
+def test_login_sin_host_conocido_cae_en_la_marca_por_defecto(
+    client, db_session, test_organization_data, idp_falso
+):
+    """
+    Es el caso de el 100% del tráfico hoy: ningún `tenant_domains` verificado
+    en producción, y `nexus-web-page` llama con una URL absoluta, así que el
+    `Host` que ve esta API nunca es el de un partner. El comportamiento tiene
+    que seguir siendo exactamente el de antes de B3.
+    """
+    user = _make_verified_user(db_session, test_organization_data)
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": user.email, "password": "irrelevante"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+
+
+def test_login_filtra_por_marca_cuando_el_host_resuelve(
+    client, db_session, test_organization_data, idp_falso
+):
+    """
+    Dos filas, mismo correo, marcas distintas — lo que permiten los índices
+    parciales de la migración `028` (ver
+    `test_identidad_codigo.py::test_dos_marcas_pueden_compartir_correo` para
+    la misma garantía al nivel del modelo). El login con el `Host` de Mero
+    Mero tiene que autenticar a SU fila, no a la de la marca por defecto.
+    """
+    from app.models.user import User
+
+    marca = _marca_verificada(db_session, "meromero.com")
+
+    handle_default = str(uuid4())
+    user_default = User(
+        id=uuid4(),
+        organization_id=test_organization_data.id,
+        email="compartido@example.com",
+        full_name="Marca por defecto",
+        email_verified=True,
+        external_id=handle_default,
+        cognito_sub=str(uuid4()),
+    )
+    handle_marca = str(uuid4())
+    user_marca = User(
+        id=uuid4(),
+        organization_id=test_organization_data.id,
+        email="compartido@example.com",
+        full_name="Usuario de Mero Mero",
+        email_verified=True,
+        external_id=handle_marca,
+        cognito_sub=str(uuid4()),
+        brand_account_id=marca.id,
+    )
+    db_session.add_all([user_default, user_marca])
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "compartido@example.com", "password": "irrelevante"},
+        headers={"Host": "meromero.com"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    idp_falso.autenticar.assert_called_once_with(
+        handle=handle_marca, password="irrelevante"
+    )
+
+
+def _datos_registro(**overrides):
+    datos = {
+        "account_name": "Mi Empresa",
+        "email": "nuevo@example.com",
+        "password": "Contrasena-larga1",
+    }
+    datos.update(overrides)
+    return datos
+
+
+def test_register_fija_brand_account_id_null_hoy(client, db_session, idp_falso):
+    """
+    El test que pide el propio documento de arquitectura (§26): fijar hoy
+    que un alta sin `Host` de marca nace con `brand_account_id is None`, para
+    que el día que cambie sea una decisión y no un descubrimiento.
+    """
+    from app.models.user import User
+
+    idp_falso.crear_credencial.return_value = str(uuid4())
+
+    response = client.post("/api/v1/auth/register", json=_datos_registro())
+
+    assert response.status_code == status.HTTP_201_CREATED
+    user = db_session.query(User).filter(User.email == "nuevo@example.com").first()
+    assert user.brand_account_id is None
+
+
+def test_register_asigna_la_marca_resuelta(client, db_session, idp_falso):
+    """Con el `Host` de un partner verificado, el alta nueva nace en su marca."""
+    from app.models.user import User
+
+    marca = _marca_verificada(db_session, "meromero.com")
+    idp_falso.crear_credencial.return_value = str(uuid4())
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json=_datos_registro(email="nuevo-mero-mero@example.com"),
+        headers={"Host": "meromero.com"},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    user = (
+        db_session.query(User)
+        .filter(User.email == "nuevo-mero-mero@example.com")
+        .first()
+    )
+    assert user.brand_account_id == marca.id
+
+
+def test_register_el_duplicado_es_por_marca_no_global(client, db_session, idp_falso):
+    """
+    El mismo correo puede registrarse bajo dos marcas distintas sin 400 — es
+    la consecuencia directa de que la unicidad ya es `(brand_account_id,
+    email)` y no `email` a secas.
+    """
+    _marca_verificada(db_session, "meromero.com")
+    # Un `sub` distinto por alta, como haría el Cognito real — un
+    # `return_value` fijo chocaría con `ix_users_cognito_sub` al segundo
+    # registro y el fallo sería del doble, no del código bajo prueba.
+    idp_falso.crear_credencial.side_effect = lambda **_: str(uuid4())
+
+    primero = client.post(
+        "/api/v1/auth/register",
+        json=_datos_registro(email="repetido@example.com"),
+    )
+    assert primero.status_code == status.HTTP_201_CREATED
+
+    segundo = client.post(
+        "/api/v1/auth/register",
+        json=_datos_registro(email="repetido@example.com", account_name="Otra Empresa"),
+        headers={"Host": "meromero.com"},
+    )
+    assert segundo.status_code == status.HTTP_201_CREATED
+
+    tercero = client.post(
+        "/api/v1/auth/register",
+        json=_datos_registro(email="repetido@example.com", account_name="Otra Mas"),
+    )
+    assert tercero.status_code == status.HTTP_400_BAD_REQUEST
 
 
 # ---------------------------------------------------------------------------

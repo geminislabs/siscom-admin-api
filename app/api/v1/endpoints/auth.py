@@ -2,6 +2,7 @@ import logging
 import random
 from datetime import timedelta
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -9,9 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     BearerAuth,
+    get_cuenta_de_marca,
     get_current_user_full,
     get_data_token_issuer,
     get_identity_provider,
+    get_identity_provider_para_login,
     get_scope_store,
 )
 from app.core.security import verificar_access_token_para_refresco
@@ -122,7 +125,8 @@ def _revocar_todas_las_sesiones(idp: IdentityProvider, store, user: User) -> Non
 def register_user(
     data: OnboardingRequest,
     db: Session = Depends(get_db),
-    idp: IdentityProvider = Depends(get_identity_provider),
+    idp: IdentityProvider = Depends(get_identity_provider_para_login),
+    marca: Optional[Account] = Depends(get_cuenta_de_marca),
 ):
     """
     Registro rápido - Crea Account + Organization + User.
@@ -132,21 +136,33 @@ def register_user(
 
     FLUJO:
     ======
-    1. Validar que el email NO exista en users
+    1. Validar que el email NO exista en users, dentro de la marca resuelta
     2. Crear Account (raíz comercial)
     3. Crear Organization default (raíz operativa)
-    4. Crear User master
+    4. Crear User master, con el `brand_account_id` de la marca resuelta
     5. Crear membership OWNER en organization_users
     6. Crear membership OWNER en account_users
-    7. Registrar usuario en Cognito
+    7. Registrar usuario en Cognito (o el proveedor que corresponda a la marca)
     8. Enviar email de verificación
+
+    `marca` (rebanada B3) es la `Account` de marca resuelta por `Host` — no la
+    `Account` que este endpoint crea, que es la del cliente nuevo. `None`
+    significa la marca por defecto, donde está todo el mundo hoy: no existe
+    todavía ningún `tenant_domains` verificado en producción, así que el
+    comportamiento no cambia para nadie con este release. Ver §26 del
+    documento de arquitectura.
 
     Returns:
         OnboardingResponse con account_id, organization_id, user_id
     """
+    marca_id = marca.id if marca else None
 
-    # 1️⃣ ÚNICA VALIDACIÓN: Email debe ser único
-    existing_user = db.query(User).filter(User.email == data.email).first()
+    # 1️⃣ ÚNICA VALIDACIÓN: Email debe ser único dentro de la marca
+    existing_user = (
+        db.query(User)
+        .filter(User.email == data.email, User.brand_account_id == marca_id)
+        .first()
+    )
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -183,12 +199,23 @@ def register_user(
     # 4️⃣ Crear User master
     user_full_name = data.name if data.name else data.account_name
 
+    # Handle UUID, no el correo — mismo motivo que ya aplicó B2 a
+    # `accept_invitation` (`users.py:239`): `external_id` es único por
+    # proveedor pero NO por marca (`uq_users_proveedor_external_id`), así que
+    # si dos altas en marcas distintas heredaran el default "handle = correo"
+    # chocarían entre sí aunque sus `brand_account_id` sean distintos. Sin
+    # esto, el registro bajo una segunda marca con un correo ya usado en la
+    # marca por defecto fallaría con un 500 en vez de crear la credencial.
+    handle = str(uuid4())
+
     user = User(
         organization_id=organization.id,
         email=data.email,
         full_name=user_full_name,
         is_master=True,
         email_verified=False,
+        brand_account_id=marca_id,
+        external_id=handle,
     )
     db.add(user)
     db.flush()
@@ -214,11 +241,11 @@ def register_user(
     # 8️⃣ Registrar la credencial en el proveedor de identidad
     try:
         cognito_sub = idp.crear_credencial(
-            handle=user.external_id,
+            handle=handle,
             email=data.email,
             full_name=user_full_name,
         )
-        idp.fijar_password(handle=user.external_id, password=data.password)
+        idp.fijar_password(handle=handle, password=data.password)
 
         if cognito_sub:
             user.cognito_sub = cognito_sub
@@ -361,26 +388,38 @@ def login_user(
     db: Session = Depends(get_db),
     issuer=Depends(get_data_token_issuer),
     store=Depends(get_scope_store),
-    idp: IdentityProvider = Depends(get_identity_provider),
+    idp: IdentityProvider = Depends(get_identity_provider_para_login),
+    marca: Optional[Account] = Depends(get_cuenta_de_marca),
 ):
     """
     Autentica un usuario con sus credenciales.
 
     Proceso:
-    1. Verifica que el usuario exista en la base de datos
+    1. Verifica que el usuario exista, dentro de la marca resuelta por `Host`
     2. Verifica que el email esté verificado
-    3. Autentica con AWS Cognito
+    3. Autentica con el proveedor de identidad de esa marca
     4. Actualiza el last_login_at
     5. Retorna la información del usuario y los tokens de Cognito
+
+    `marca` (rebanada B3) es `None` cuando el `Host` no resuelve a ningún
+    `tenant_domains` verificado — el caso de todo el tráfico hoy, porque
+    `nexus-web-page` todavía llama a esta API con una URL absoluta y no hay
+    ningún partner con dominio propio en producción. `None` es la marca por
+    defecto, nunca un error: ver §26 del documento de arquitectura.
 
     Códigos de error:
     - 404: Usuario no encontrado
     - 403: Email no verificado
     - 401: Credenciales inválidas
     """
+    marca_id = marca.id if marca else None
 
-    # 1️⃣ Buscar el usuario en la base de datos
-    user = db.query(User).filter(User.email == credentials.email).first()
+    # 1️⃣ Buscar el usuario en la base de datos, dentro de esa marca
+    user = (
+        db.query(User)
+        .filter(User.email == credentials.email, User.brand_account_id == marca_id)
+        .first()
+    )
 
     if not user:
         record_auth_attempt("cognito", "failure")

@@ -61,7 +61,7 @@ class OnboardingRequest(BaseModel):
     )
     email: EmailStr = Field(
         ...,
-        description="Email del usuario master (debe ser único globalmente)",
+        description="Email del usuario master (único dentro de la marca resuelta por Host, no globalmente)",
         json_schema_extra={"example": "usuario@ejemplo.com"},
     )
     password: str = Field(

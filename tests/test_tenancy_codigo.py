@@ -320,7 +320,7 @@ def test_resolver_todas_ignora_las_capabilities_operativas(db_session):
     ],
 )
 def test_normalizacion_del_host(crudo, esperado):
-    from app.api.v1.endpoints.tenant_config import normalizar_host
+    from app.services.tenancy import normalizar_host
 
     assert normalizar_host(crudo) == esperado
 

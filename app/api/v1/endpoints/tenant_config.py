@@ -24,8 +24,9 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.tenancy import TenantBranding, TenantDomain
+from app.models.tenancy import TenantBranding
 from app.schemas.tenant_config import TenantConfigResponse
+from app.services.tenancy import normalizar_host, resolver_account_id_de_host
 
 router = APIRouter()
 
@@ -37,34 +38,6 @@ MARCA_POR_DEFECTO = "Nexus"
 # tema, que es una acción manual y poco frecuente. Corto de todos modos, para
 # que publicar se note sin tener que purgar nada.
 CACHE_SEGUNDOS = 60
-
-
-def normalizar_host(host: str | None) -> str | None:
-    """
-    Deja el `Host` como está guardado en `tenant_domains`, o `None` si no puede.
-
-    El Host llega en la caja que mande el cliente y puede traer puerto, punto
-    final o mayúsculas. La columna es minúsculas por restricción de la base
-    justamente para que la búsqueda sea una igualdad indexable.
-
-    Devuelve `None` —y no una cadena vacía ni el valor crudo— cuando el Host no
-    sirve: quien llama tiene que decidir explícitamente qué hacer con eso, en
-    lugar de acabar consultando por "" y encontrando lo que sea.
-    """
-    if not host:
-        return None
-    host = host.strip().lower().rstrip(".")
-    # IPv6 entre corchetes: [::1]:8000
-    if host.startswith("["):
-        cierre = host.find("]")
-        if cierre == -1:
-            return None
-        host = host[: cierre + 1]
-    elif ":" in host:
-        host = host.split(":", 1)[0]
-    if not host or len(host) > 253:
-        return None
-    return host
 
 
 @router.get(
@@ -99,20 +72,9 @@ def get_tenant_config(
             hostname="", brand_name=MARCA_POR_DEFECTO, theme={}, is_default=True
         )
 
-    dominio = (
-        db.query(TenantDomain)
-        .filter(
-            TenantDomain.hostname == hostname,
-            # Solo verificado: un dominio en PENDING lo puede reclamar
-            # cualquiera hasta que demuestre control por DNS, y servir su marca
-            # antes de eso permitiría suplantar a un partner con solo apuntar
-            # un CNAME.
-            TenantDomain.status == "VERIFIED",
-        )
-        .first()
-    )
+    account_id = resolver_account_id_de_host(hostname, db)
 
-    if dominio is None:
+    if account_id is None:
         return TenantConfigResponse(
             hostname=hostname,
             brand_name=MARCA_POR_DEFECTO,
@@ -121,9 +83,7 @@ def get_tenant_config(
         )
 
     branding = (
-        db.query(TenantBranding)
-        .filter(TenantBranding.account_id == dominio.account_id)
-        .first()
+        db.query(TenantBranding).filter(TenantBranding.account_id == account_id).first()
     )
 
     return TenantConfigResponse(
