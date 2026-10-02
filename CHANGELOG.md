@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.47.1] - 2026-10-02
+
+**Migraciones.** Ninguna. La cabeza sigue en `035_backfill_membresias`.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir en
+la base.
+
 ### Changed
 
 - **`accept_invitation` ya no usa el correo como handle de Cognito en altas nuevas — rebanada B2.** Es un UUID opaco, generado en el momento del alta. Es lo que permite que el mismo correo exista como credenciales distintas en marcas distintas (white-label): Cognito exige que el *username* sea único, y el correo deja de serlo globalmente desde la `028` (`UNIQUE(brand_account_id, email)`). El usuario sigue entrando con correo y contraseña — nunca ve el UUID. Sin migración: `external_id` ya era `text` y se pasa explícito al crear la fila, así que el trigger `users_identidad_before` no lo pisa. Las reactivaciones no cambian (siguen tomando el handle de la fila existente). `register_user` (`/auth/register`) queda fuera de este cambio: sólo crea cuentas bajo la marca por defecto, donde el correo sigue siendo único por `uq_users_correo_marca_por_defecto`
