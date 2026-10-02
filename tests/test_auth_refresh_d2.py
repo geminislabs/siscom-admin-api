@@ -19,7 +19,8 @@ de haber hablado con Cognito sería otro fallo con la misma pinta.
 """
 
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi import status
@@ -27,6 +28,7 @@ from fastapi import status
 from app.api.deps import get_identity_provider
 from app.core import security
 from app.main import app as fastapi_app
+from app.models.account import Account
 from app.services.identity import IdentityProvider, Sesion
 from tests import jwt_del_pool
 
@@ -297,3 +299,46 @@ def test_refresh_sin_rotacion_devuelve_el_campo_nulo(
 
     assert respuesta.status_code == status.HTTP_200_OK
     assert respuesta.json()["refresh_token"] is None
+
+
+# ── Proveedor por marca (post-B3) ───────────────────────────────────────────
+
+
+def test_renovacion_usa_el_proveedor_de_la_marca_de_la_fila(
+    client, db_session, test_user_data, clave_del_pool
+):
+    """
+    `idp` se sobreescribe con el proveedor de la marca de la fila resuelta por
+    el `sub` —no el proveedor por defecto inyectado en la firma— en cuanto esa
+    fila tiene `brand_account_id`. Hoy ninguna lo tiene en producción
+    (`get_identity_provider` sigue siendo lo que ve el 100% del tráfico), pero
+    el día que exista una marca con su propio Cognito, renovar su sesión no
+    puede seguir hablándole al pool por defecto.
+    """
+    marca = Account(id=uuid4(), name="Mero Mero", status="ACTIVE")
+    db_session.add(marca)
+    db_session.flush()
+    test_user_data.brand_account_id = marca.id
+    db_session.commit()
+
+    proveedor_de_marca = MagicMock(spec=IdentityProvider)
+    proveedor_de_marca.renovar.return_value = Sesion(
+        access_token="access-marca",
+        id_token="id-marca",
+        refresh_token=None,
+        expires_in=3600,
+    )
+
+    with patch(
+        "app.api.v1.endpoints.auth.proveedor_para_cuenta",
+        return_value=proveedor_de_marca,
+    ) as resolver:
+        respuesta = _renovar(client, _access_token(clave_del_pool))
+
+    assert respuesta.status_code == status.HTTP_200_OK
+    assert respuesta.json()["access_token"] == "access-marca"
+    resolver.assert_called_once()
+    assert resolver.call_args.args[0].id == marca.id
+    proveedor_de_marca.renovar.assert_called_once_with(
+        handle=test_user_data.external_id, refresh_token="refresh-guardado"
+    )
