@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.48.1] - 2026-10-02
+
+**Migraciones.** Ninguna.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir en
+la base.
+
 ### Security
 
 - **Cierra la rebanada de marca que B3 (`v1.48.0`) dejó anotada: `forgot-password`, `reset-password`
