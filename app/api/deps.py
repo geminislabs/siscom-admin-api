@@ -44,6 +44,7 @@ from app.services.organization import OrganizationService
 from app.utils.paseto_token import decode_service_token
 
 if TYPE_CHECKING:  # pragma: no cover - solo para anotaciones
+    from app.models.account import Account
     from app.services.identity import IdentityProvider
     from app.services.scope_store import ScopeStore
     from app.utils.data_token import DataTokenIssuer
@@ -183,6 +184,41 @@ def get_identity_provider() -> "IdentityProvider":
     from app.services.identity import proveedor_por_defecto
 
     return proveedor_por_defecto()
+
+
+def get_cuenta_de_marca(
+    request: Request, db: Session = Depends(get_db)
+) -> Optional["Account"]:
+    """La `Account` de marca para esta petición, resuelta por `Host`.
+
+    `None` significa «marca por defecto» — el suelo de §26 del documento de
+    arquitectura, nunca un error. Hoy es siempre `None` en producción: no hay
+    ningún `tenant_domains` verificado todavía, y el `Host` que ve esta API en
+    peticiones de `nexus-web-page` es el suyo propio, no el del visitante —
+    conectar eso es trabajo de la Fase 4/5, no de esta rebanada (B3).
+    """
+    from app.models.account import Account
+    from app.services.tenancy import normalizar_host, resolver_account_id_de_host
+
+    account_id = resolver_account_id_de_host(
+        normalizar_host(request.headers.get("host")), db
+    )
+    return db.get(Account, account_id) if account_id else None
+
+
+def get_identity_provider_para_login(
+    cuenta: Optional["Account"] = Depends(get_cuenta_de_marca),
+) -> "IdentityProvider":
+    """El proveedor de identidad de la marca resuelta — rebanada B3.
+
+    Es la dependencia que anticipaba el docstring de `get_identity_provider`:
+    ahora que `/auth/login` y `/auth/register` conocen la marca de la
+    petición, enrutan con `proveedor_para_cuenta()` en vez del proveedor por
+    defecto siempre.
+    """
+    from app.services.identity import proveedor_para_cuenta
+
+    return proveedor_para_cuenta(cuenta)
 
 
 def close_rules_kafka_producer() -> None:

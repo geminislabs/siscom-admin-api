@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Migraciones.** Ninguna. El esquema (`027`/`028`) ya tenía todo lo necesario.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir en
+la base.
+
+### Added
+
+- **Rebanada B3: `/auth/login` y `/auth/register` ya resuelven marca por `Host`.** Hasta ahora
+  ambos buscaban `User` por correo a secas, ignorando `brand_account_id` — el bug que `v1.47.1`
+  dejó anotado explícitamente para `register_user`. La resolución `Host → tenant_domains →
+  account_id` (antes solo dentro de `tenant_config.py`) se movió a `app/services/tenancy.py` para
+  compartirla; dos dependencias nuevas en `app/api/deps.py` (`get_cuenta_de_marca`,
+  `get_identity_provider_para_login`) la conectan a los dos endpoints, incluido el proveedor de
+  identidad correcto para la marca resuelta (`proveedor_para_cuenta`, que existía desde B1 sin
+  nadie que lo llamara)
+  - **Inerte por diseño, hoy.** Cero `tenant_domains` verificados en producción, y
+    `nexus-web-page` llama a esta API con una URL absoluta (no una ruta relativa), así que el
+    `Host` que ve esta API nunca es el del visitante — eso lo conecta la Fase 4/5, no esta
+    rebanada. Todo cae en la marca por defecto, exactamente el comportamiento de antes. Ver §26
+    del documento de arquitectura ("regla del resolutor"): la ausencia de marca es un valor
+    legítimo y permanente, nunca un error
+  - **De paso, `register_user` también deja de nacer con el correo como handle.** Sin esto, dos
+    altas con el mismo correo en marcas distintas chocaban en `uq_users_proveedor_external_id`
+    (único por proveedor, no por marca) aunque sus `brand_account_id` fueran distintos — el mismo
+    patrón que B2 ya había corregido en `accept_invitation`, que `register_user` se había quedado
+    sin aplicar
+  - **Fuera de esta rebanada, a propósito:** `forgot-password`, `reset-password` y
+    `resend-verification` tienen el mismo bug de búsqueda global por correo y quedan para una
+    rebanada propia; el *enforcement* de `self_signup_enabled` y adjuntar la cuenta nueva al árbol
+    de reventa (`parent_account_id`) es trabajo de Fase 6, no de B3; el "selector de cuenta" sigue
+    sin construirse porque hoy ningún mecanismo produce varias cuentas para una misma credencial
+
 ## [1.47.1] - 2026-10-02
 
 **Migraciones.** Ninguna. La cabeza sigue en `035_backfill_membresias`.
