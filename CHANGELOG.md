@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.48.0] - 2026-10-02
+
 **Migraciones.** Ninguna. El esquema (`027`/`028`) ya tenía todo lo necesario.
 
 **Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir en
