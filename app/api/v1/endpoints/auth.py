@@ -60,6 +60,7 @@ from app.services.identity import (
     IdentityProvider,
     ParametroInvalido,
     PasswordRechazada,
+    proveedor_para_cuenta,
 )
 from app.services.notifications import (
     send_password_reset_email,
@@ -114,6 +115,26 @@ def _revocar_todas_las_sesiones(idp: IdentityProvider, store, user: User) -> Non
     """
     revoke_sessions_for_user(store, user.id)
     idp.revocar_sesiones_de(handle=user.external_id)
+
+
+def _proveedor_para_usuario(db: Session, brand_account_id) -> IdentityProvider:
+    """El proveedor de identidad de la marca de un usuario ya identificado.
+
+    Hermano de `get_identity_provider_para_login` (`app/api/deps.py`), que
+    resuelve la marca por `Host` porque ahí todavía no hay usuario. Aquí ya lo
+    hay —viene de una fila, un token o una sesión— así que se resuelve por su
+    propio `brand_account_id`, sin que importe qué dominio hizo la petición.
+
+    Se usa como **sobreescritura guardada**: los endpoints que la llaman
+    siguen declarando `idp: IdentityProvider = Depends(get_identity_provider)`
+    y sólo invocan esto cuando `brand_account_id` no es `None`. Mientras no
+    exista ningún `tenant_domains` verificado en producción eso nunca pasa, así
+    que el `idp` inyectado por pruebas (`dependency_overrides`) sigue
+    gobernando exactamente como antes — igual que el resto de B3, inerte por
+    diseño hasta que exista una marca real.
+    """
+    marca = db.get(Account, brand_account_id) if brand_account_id else None
+    return proveedor_para_cuenta(marca)
 
 
 # ------------------------------------------
@@ -572,12 +593,18 @@ def _try_issue_data_token(db, user, issuer, store) -> Optional[DataTokenResponse
     response_model=ForgotPasswordResponse,
     status_code=status.HTTP_200_OK,
 )
-def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db),
+    marca: Optional[Account] = Depends(get_cuenta_de_marca),
+):
     """
     Solicita la recuperación de contraseña para un usuario.
 
     Proceso:
-    1. Verifica que el usuario exista en la base de datos
+    1. Verifica que el usuario exista en la base de datos, dentro de la marca
+       resuelta por `Host` — mismo criterio que `/auth/login` y
+       `/auth/register` desde B3
     2. Genera un código de 6 dígitos aleatorio
     3. Guarda el código en la tabla tokens_confirmacion con tipo PASSWORD_RESET
     4. Envía un correo electrónico con el código de 6 dígitos
@@ -586,10 +613,18 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
     Notas de seguridad:
     - Siempre retorna el mismo mensaje, independientemente de si el usuario existe o no,
       para evitar enumerar usuarios válidos del sistema.
+    - Sin el filtro por marca, dos cuentas en marcas distintas que compartan
+      correo (B3 ya lo permite) podían recibir el código de recuperación de
+      la fila equivocada.
     """
+    marca_id = marca.id if marca else None
 
-    # 1️⃣ Buscar el usuario en la base de datos
-    user = db.query(User).filter(User.email == request.email).first()
+    # 1️⃣ Buscar el usuario en la base de datos, dentro de esa marca
+    user = (
+        db.query(User)
+        .filter(User.email == request.email, User.brand_account_id == marca_id)
+        .first()
+    )
 
     if user:
         # 2️⃣ Generar un código de 6 dígitos aleatorio
@@ -640,18 +675,19 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
 def reset_password(
     request: ResetPasswordRequest,
     db: Session = Depends(get_db),
-    idp: IdentityProvider = Depends(get_identity_provider),
+    idp: IdentityProvider = Depends(get_identity_provider_para_login),
     store=Depends(get_scope_store),
+    marca: Optional[Account] = Depends(get_cuenta_de_marca),
 ):
     """
     Restablece la contraseña de un usuario utilizando un código de verificación de 6 dígitos.
 
     Proceso:
-    1. Busca el usuario por email
-    2. Busca y valida el código en la base de datos
+    1. Busca el usuario por email, dentro de la marca resuelta por `Host`
+    2. Busca y valida el código en la base de datos, para ESE usuario
     3. Verifica que el código no haya expirado
     4. Verifica que el código no haya sido usado
-    5. Actualiza la contraseña en AWS Cognito usando AdminSetUserPassword
+    5. Actualiza la contraseña en el proveedor de identidad de esa marca
     6. Marca el código como usado
     7. Retorna un mensaje de éxito
 
@@ -659,23 +695,36 @@ def reset_password(
     - 400: Código inválido, expirado o ya usado
     - 404: Usuario no encontrado
     - 500: Error al actualizar la contraseña en Cognito
-    """
 
-    # 1️⃣ Buscar el usuario en la base de datos
-    user = db.query(User).filter(User.email == request.email).first()
+    `marca`/`idp` (rebanada posterior a B3): sin el filtro por marca en el
+    paso 1, y sin que el paso 2 se amarrara al usuario ya resuelto en vez de
+    volver a buscar por correo, dos cuentas en marcas distintas con el mismo
+    correo podían desincronizarse — el código de una le cambiaba la
+    contraseña a la otra. Ver §26 del documento de arquitectura.
+    """
+    marca_id = marca.id if marca else None
+
+    # 1️⃣ Buscar el usuario en la base de datos, dentro de esa marca
+    user = (
+        db.query(User)
+        .filter(User.email == request.email, User.brand_account_id == marca_id)
+        .first()
+    )
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
         )
 
-    # 2️⃣ Buscar el código en la base de datos
+    # 2️⃣ Buscar el código en la base de datos — amarrado al usuario ya
+    # resuelto, no a `request.email` otra vez: son dos lecturas
+    # independientes, y sólo una pasó por el filtro de marca.
     token_record = (
         db.query(TokenConfirmacion)
         .filter(
             TokenConfirmacion.token == request.code,
             TokenConfirmacion.type == TokenType.PASSWORD_RESET,
-            TokenConfirmacion.email == request.email,
+            TokenConfirmacion.user_id == user.id,
         )
         .first()
     )
@@ -801,6 +850,10 @@ def change_password(
     - 500: Error al cambiar la contraseña en Cognito
 
     Nota: Este endpoint requiere autenticación (Bearer token en el header Authorization)
+
+    `idp` se sobreescribe con el proveedor de la marca de `current_user` —ya
+    autenticado, así que su `brand_account_id` no depende de ningún `Host`—
+    en vez del proveedor por defecto inyectado aquí.
     """
 
     # 0️⃣ Verificar que el email esté verificado
@@ -809,6 +862,9 @@ def change_password(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email no verificado. Debe verificar su email antes de cambiar la contraseña.",
         )
+
+    if current_user.brand_account_id:
+        idp = _proveedor_para_usuario(db, current_user.brand_account_id)
 
     # Para usar ChangePassword necesitamos el AccessToken del usuario
     # El access token debe venir en el header Authorization
@@ -931,13 +987,15 @@ def change_password(
     status_code=status.HTTP_200_OK,
 )
 def resend_verification(
-    request: ResendVerificationRequest, db: Session = Depends(get_db)
+    request: ResendVerificationRequest,
+    db: Session = Depends(get_db),
+    marca: Optional[Account] = Depends(get_cuenta_de_marca),
 ):
     """
     Reenvía el correo de verificación de email a un usuario no verificado.
 
     Proceso:
-    1. Busca el usuario por email
+    1. Busca el usuario por email, dentro de la marca resuelta por `Host`
     2. Si no existe o ya está verificado, retorna mensaje genérico (seguridad)
     3. Si existe y no está verificado:
        a. Invalida todos los tokens de verificación anteriores no usados
@@ -951,9 +1009,17 @@ def resend_verification(
     Notas de seguridad:
     - Siempre retorna el mismo mensaje, sin revelar si el usuario existe o ya está verificado
     - Invalida tokens anteriores para evitar que se usen tokens antiguos
+    - Sin el filtro por marca, dos cuentas en marcas distintas con el mismo
+      correo podían reenviarse mutuamente el token de verificación.
     """
-    # 1️⃣ Buscar el usuario en la base de datos
-    user = db.query(User).filter(User.email == request.email).first()
+    marca_id = marca.id if marca else None
+
+    # 1️⃣ Buscar el usuario en la base de datos, dentro de esa marca
+    user = (
+        db.query(User)
+        .filter(User.email == request.email, User.brand_account_id == marca_id)
+        .first()
+    )
 
     # 2️⃣ Si no existe o ya está verificado, retornar mensaje genérico
     if not user:
@@ -1094,6 +1160,12 @@ def verify_email(
     - 400: Token inválido, expirado o ya usado
     - 404: Usuario o cliente no encontrado
     - 500: Error al configurar usuario en Cognito
+
+    `idp` se sobreescribe tras el paso 4️⃣ con el proveedor de la marca del
+    usuario (`_proveedor_para_usuario`) en vez de quedarse con el proveedor
+    por defecto inyectado aquí: para un master de una marca con Cognito
+    propio, el Flujo A tiene que crear la credencial en SU pool, no en el del
+    despliegue.
     """
     # 1️⃣ Buscar el token en la base de datos
     token_record = (
@@ -1132,6 +1204,9 @@ def verify_email(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
         )
+
+    if user.brand_account_id:
+        idp = _proveedor_para_usuario(db, user.brand_account_id)
 
     # 5️⃣ Si el usuario ya está verificado, retornar error amigable
     if user.email_verified:
@@ -1291,12 +1366,12 @@ def _token_de_la_cabecera(authorization: Optional[str]) -> Optional[str]:
     return token or None
 
 
-def _handle_para_renovar(
+def _usuario_para_renovar(
     *,
     authorization: Optional[str],
     db: Session,
-) -> str:
-    """Resuelve el *handle* con el que se firma el SECRET_HASH de la renovación.
+) -> User:
+    """Resuelve la fila con la que se firma el SECRET_HASH de la renovación.
 
     **Un solo camino: la cabecera.** Es el contrato D2 de §24. Se valida el
     access token admitiendo que esté vencido —si no lo estuviera, el cliente no
@@ -1304,6 +1379,10 @@ def _handle_para_renovar(
     `external_id`, que es opaco: correo para los usuarios de antes, UUID para los
     que cree B2. No le pide nada nuevo al cliente, que manda el token que ya
     tiene guardado.
+
+    Devuelve la fila completa, no sólo el handle: `refresh_token` también
+    necesita su `brand_account_id` para elegir el proveedor de identidad
+    correcto (`_proveedor_para_usuario`).
 
     Aquí había un segundo camino, por el campo `email` del cuerpo. Se borró el
     28/09/2026, cuando los tres clientes ya mandaban la cabecera. Tenía que irse
@@ -1333,7 +1412,7 @@ def _handle_para_renovar(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No se pudo renovar el token",
         )
-    return usuario.external_id
+    return usuario
 
 
 @router.post(
@@ -1369,12 +1448,20 @@ def refresh_token(
     - 401: Refresh token inválido, expirado o revocado, o cabecera no válida
     - 422: No vino la cabecera Authorization
     - 500: Error al renovar los tokens en Cognito
+
+    `idp` se sobreescribe con el proveedor de la marca de la fila resuelta —
+    la misma de la que sale `handle`— en vez del proveedor por defecto
+    inyectado aquí.
     """
 
-    handle = _handle_para_renovar(
+    usuario = _usuario_para_renovar(
         authorization=authorization,
         db=db,
     )
+    handle = usuario.external_id
+
+    if usuario.brand_account_id:
+        idp = _proveedor_para_usuario(db, usuario.brand_account_id)
 
     # 1️⃣ Pedirle al proveedor una sesión nueva
     try:
@@ -1470,7 +1557,14 @@ def logout_user(
     - 500: Error al cerrar sesión en Cognito
 
     Nota: Este endpoint requiere autenticación (Bearer token en el header Authorization)
+
+    `idp` se sobreescribe con el proveedor de la marca de `current_user`, no
+    el proveedor por defecto inyectado aquí — mismo motivo que en
+    `change_password`.
     """
+    if current_user.brand_account_id:
+        idp = _proveedor_para_usuario(db, current_user.brand_account_id)
+
     # Se revoca ANTES de llamar a Cognito: si Cognito falla, la sesión del plano
     # de datos ya está cortada. Al revés, un fallo aquí dejaría un data token
     # vivo tras un logout aparentemente correcto.

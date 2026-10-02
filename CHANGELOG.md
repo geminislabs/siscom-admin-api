@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Cierra la rebanada de marca que B3 (`v1.48.0`) dejó anotada: `forgot-password`, `reset-password`
+  y `resend-verification` ya resuelven marca por `Host`, igual que `/auth/login` y `/auth/register`.**
+  Los tres buscaban `User` por correo a secas, ignorando `brand_account_id` — dos cuentas en marcas
+  distintas con el mismo correo (el índice parcial de la `028` ya lo permite) podían enviarse
+  mutuamente el código de recuperación o el token de verificación
+  - **`reset-password` tenía un hueco más fino, y más grave.** El `user` se buscaba por un lado y el
+    `token_record` por otro, cada uno con su propio filtro por `email` — ninguno de los dos pasaba
+    por la marca. Con dos cuentas compartiendo correo, un código de recuperación emitido para una
+    marca podía resolver el `user` de la otra, y cambiarle la contraseña a ESA, no a la dueña del
+    código. Se cierra resolviendo el `user` por `(email, brand_account_id)` y el `token_record` por
+    `user_id` ya resuelto, no por `email` otra vez
+- **`verify-email`, `/auth/password`, `/auth/logout` y `/auth/refresh` ya usan el proveedor de
+  identidad de la marca del usuario, no el proveedor por defecto.** B3 sólo tocó login/register;
+  estos cuatro seguían inyectando `get_identity_provider()` a secas. Para un master de una marca con
+  Cognito propio, eso habría significado crear su credencial, cambiar su contraseña, cerrar su
+  sesión o renovarla contra el pool equivocado. La marca se resuelve de la fila ya identificada
+  (`user.brand_account_id` / `current_user.brand_account_id`), no del `Host` — a diferencia de
+  login/register/forgot-password, aquí ya hay un usuario antes de necesitar el proveedor
+  - **Inerte por diseño, hoy** — igual que el resto de B3: cero `tenant_domains` verificados en
+    producción, así que `brand_account_id` es `None` en todas las filas reales y el comportamiento
+    no cambia para nadie. Cierra el patrón para cuando exista la primera marca con proveedor propio
+
 ## [1.48.0] - 2026-10-02
 
 **Migraciones.** Ninguna. El esquema (`027`/`028`) ya tenía todo lo necesario.

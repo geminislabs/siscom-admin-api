@@ -143,6 +143,63 @@ def test_verify_email_existing_cognito_user_sends_email_attribute(
     assert token_record.password_temp is None
 
 
+def test_verify_email_usa_el_proveedor_de_la_marca_del_usuario(
+    client, db_session, test_organization_data
+):
+    """
+    El Flujo A (master con `password_temp`) crea la credencial y le fija la
+    contraseña en Cognito. Para un master con `brand_account_id`, eso tiene
+    que pasar en el pool de SU marca, no en el del despliegue — el mismo
+    hueco que B3 ya cerró en login/register, aquí para verify-email.
+    """
+    from app.models.user import User
+
+    marca = _marca_verificada(db_session, "meromero.com")
+
+    user = User(
+        id=uuid4(),
+        organization_id=test_organization_data.id,
+        email="master-mero-mero@example.com",
+        full_name="Master de Mero Mero",
+        is_master=True,
+        email_verified=False,
+        external_id=str(uuid4()),
+        brand_account_id=marca.id,
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    token_value = "verify-marca"
+    token_record = TokenConfirmacion(
+        id=uuid4(),
+        token=token_value,
+        expires_at=utcnow() + timedelta(hours=1),
+        used=False,
+        type=TokenType.EMAIL_VERIFICATION,
+        user_id=user.id,
+        email=user.email,
+        password_temp="TempPass123!",
+    )
+    db_session.add(token_record)
+    db_session.commit()
+
+    proveedor_de_marca = MagicMock(spec=IdentityProvider)
+    proveedor_de_marca.sujeto_de.return_value = None
+    proveedor_de_marca.crear_credencial.return_value = str(uuid4())
+
+    with patch(
+        "app.api.v1.endpoints.auth.proveedor_para_cuenta",
+        return_value=proveedor_de_marca,
+    ) as resolver:
+        response = client.post(f"/api/v1/auth/verify-email?token={token_value}")
+
+    assert response.status_code == status.HTTP_200_OK
+    resolver.assert_called_once()
+    assert resolver.call_args.args[0].id == marca.id
+    proveedor_de_marca.crear_credencial.assert_called_once()
+    proveedor_de_marca.fijar_password.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # Data token adjunto al login (Fase 1)
 # ---------------------------------------------------------------------------
@@ -452,6 +509,166 @@ def test_register_el_duplicado_es_por_marca_no_global(client, db_session, idp_fa
 
 
 # ---------------------------------------------------------------------------
+# Filtrado por marca en forgot/reset-password y resend-verification
+#
+# La rebanada B3 dejó fichado este hueco sin cerrarlo: los tres buscaban al
+# usuario por `email` a secas, así que dos marcas compartiendo correo (lo que
+# el índice parcial de la 028 ya permite) podían mezclar las filas.
+# ---------------------------------------------------------------------------
+
+
+def _dos_usuarios_mismo_correo(db_session, test_organization_data, marca, **extra):
+    """Dos filas, mismo correo, una en la marca por defecto y otra en `marca`.
+
+    Espejo de la fixture inline que ya usan los tests de login/register por
+    marca — se repite en vez de extraerse porque cada endpoint necesita
+    campos ligeramente distintos (`cognito_sub`, `is_master`).
+    """
+    from app.models.user import User
+
+    user_default = User(
+        id=uuid4(),
+        organization_id=test_organization_data.id,
+        email="compartido@example.com",
+        full_name="Marca por defecto",
+        external_id=str(uuid4()),
+        **extra,
+    )
+    user_marca = User(
+        id=uuid4(),
+        organization_id=test_organization_data.id,
+        email="compartido@example.com",
+        full_name="Usuario de Mero Mero",
+        external_id=str(uuid4()),
+        brand_account_id=marca.id,
+        **extra,
+    )
+    db_session.add_all([user_default, user_marca])
+    db_session.commit()
+    return user_default, user_marca
+
+
+def test_forgot_password_filtra_por_marca_cuando_el_host_resuelve(
+    client, db_session, test_organization_data
+):
+    """El código de recuperación tiene que generarse para la fila de la marca
+    que resolvió el `Host`, no para la primera que encuentre el query.
+    """
+    marca = _marca_verificada(db_session, "meromero.com")
+    _, user_marca = _dos_usuarios_mismo_correo(
+        db_session, test_organization_data, marca, email_verified=True
+    )
+
+    with patch(
+        "app.api.v1.endpoints.auth.send_password_reset_email", return_value=True
+    ):
+        response = client.post(
+            "/api/v1/auth/forgot-password",
+            json={"email": "compartido@example.com"},
+            headers={"Host": "meromero.com"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    token_record = (
+        db_session.query(TokenConfirmacion)
+        .filter(TokenConfirmacion.type == TokenType.PASSWORD_RESET)
+        .one()
+    )
+    assert token_record.user_id == user_marca.id
+
+
+def test_resend_verification_filtra_por_marca_cuando_el_host_resuelve(
+    client, db_session, test_organization_data
+):
+    """Mismo criterio que forgot-password: el reenvío es para la fila de la
+    marca resuelta, no para cualquiera con ese correo.
+    """
+    marca = _marca_verificada(db_session, "meromero.com")
+    _, user_marca = _dos_usuarios_mismo_correo(
+        db_session, test_organization_data, marca, email_verified=False
+    )
+
+    with patch("app.api.v1.endpoints.auth.send_verification_email", return_value=True):
+        response = client.post(
+            "/api/v1/auth/resend-verification",
+            json={"email": "compartido@example.com"},
+            headers={"Host": "meromero.com"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    token_record = (
+        db_session.query(TokenConfirmacion)
+        .filter(TokenConfirmacion.type == TokenType.EMAIL_VERIFICATION)
+        .one()
+    )
+    assert token_record.user_id == user_marca.id
+
+
+def test_reset_password_no_cruza_marcas_con_el_mismo_correo(
+    client, db_session, test_organization_data, idp_falso
+):
+    """
+    El bug real, más fino que «filtra por marca»: el `user` se buscaba por un
+    lado y el `token_record` por otro, cada uno con su propio filtro por
+    `email`. Con dos marcas compartiendo correo, un código emitido para la
+    fila de Mero Mero resolvía igual el `user` de la marca por defecto —y le
+    cambiaba la contraseña a ESA, no a la dueña del código.
+    """
+    marca = _marca_verificada(db_session, "meromero.com")
+    user_default, user_marca = _dos_usuarios_mismo_correo(
+        db_session, test_organization_data, marca, email_verified=True
+    )
+
+    codigo = "654321"
+    db_session.add(
+        TokenConfirmacion(
+            id=uuid4(),
+            token=codigo,
+            expires_at=utcnow() + timedelta(hours=1),
+            used=False,
+            type=TokenType.PASSWORD_RESET,
+            user_id=user_marca.id,
+            email=user_marca.email,
+        )
+    )
+    db_session.commit()
+    _con_store_vacio()
+
+    # Sin el Host de Mero Mero, el código resuelve a la marca por defecto —y
+    # ese código no es el suyo: 400, no un cambio silencioso a la fila
+    # equivocada.
+    sin_host = client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "compartido@example.com",
+            "code": codigo,
+            "new_password": "La-nueva-1!",
+        },
+    )
+    assert sin_host.status_code == status.HTTP_400_BAD_REQUEST
+    idp_falso.fijar_password.assert_not_called()
+
+    # Con el Host correcto, el mismo código sí restablece la fila de Mero Mero.
+    con_host = client.post(
+        "/api/v1/auth/reset-password",
+        json={
+            "email": "compartido@example.com",
+            "code": codigo,
+            "new_password": "La-nueva-1!",
+        },
+        headers={"Host": "meromero.com"},
+    )
+    assert con_host.status_code == status.HTTP_200_OK
+    # `assert_called_once_with` sobre las DOS llamadas acumuladas: la primera
+    # no llamó a nadie (400 antes de llegar al proveedor), así que la única
+    # llamada real tiene que ser con el handle de Mero Mero, nunca con el de
+    # la marca por defecto.
+    idp_falso.fijar_password.assert_called_once_with(
+        handle=user_marca.external_id, password="La-nueva-1!"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Revocación al cambiar y restablecer contraseña
 # ---------------------------------------------------------------------------
 
@@ -613,4 +830,81 @@ def test_restablecer_contrasena_cierra_las_demas_sesiones(
     idp_falso.fijar_password.assert_called_once()
     idp_falso.revocar_sesiones_de.assert_called_once_with(
         handle=test_user_data.external_id
+    )
+
+
+# ---------------------------------------------------------------------------
+# Proveedor por marca en endpoints autenticados (post-B3)
+#
+# `current_user` ya está autenticado, así que su `brand_account_id` no
+# depende de ningún `Host` — se resuelve directo de la fila, no de la
+# petición. Sin esto, un master de una marca con Cognito propio seguiría
+# hablándole al pool por defecto al cambiar su contraseña o cerrar sesión.
+# ---------------------------------------------------------------------------
+
+
+def test_cambiar_contrasena_usa_el_proveedor_de_la_marca_del_usuario(
+    client, db_session, test_organization_data
+):
+    marca = _marca_verificada(db_session, "meromero.com")
+    user = _make_verified_user(db_session, test_organization_data)
+    user.brand_account_id = marca.id
+    db_session.commit()
+    _con_store_vacio()
+
+    proveedor_de_marca = MagicMock(spec=IdentityProvider)
+    proveedor_de_marca.autenticar.return_value = Sesion(access_token="access-marca")
+
+    with (
+        patch(
+            "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+        ),
+        patch(
+            "app.api.v1.endpoints.auth.proveedor_para_cuenta",
+            return_value=proveedor_de_marca,
+        ) as resolver,
+    ):
+        response = client.patch(
+            "/api/v1/auth/password",
+            headers={"Authorization": "Bearer lo-que-sea"},
+            json={"old_password": "la-de-antes", "new_password": "La-nueva-1!"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    resolver.assert_called_once()
+    assert resolver.call_args.args[0].id == marca.id
+    proveedor_de_marca.fijar_password.assert_called_once()
+    proveedor_de_marca.revocar_sesiones_de.assert_called_once()
+
+
+def test_logout_usa_el_proveedor_de_la_marca_del_usuario(
+    client, db_session, test_organization_data
+):
+    marca = _marca_verificada(db_session, "meromero.com")
+    user = _make_verified_user(db_session, test_organization_data)
+    user.brand_account_id = marca.id
+    db_session.commit()
+    _con_store_vacio()
+
+    proveedor_de_marca = MagicMock(spec=IdentityProvider)
+
+    with (
+        patch(
+            "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+        ),
+        patch(
+            "app.api.v1.endpoints.auth.proveedor_para_cuenta",
+            return_value=proveedor_de_marca,
+        ) as resolver,
+    ):
+        response = client.post(
+            "/api/v1/auth/logout",
+            headers={"Authorization": "Bearer lo-que-sea"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    resolver.assert_called_once()
+    assert resolver.call_args.args[0].id == marca.id
+    proveedor_de_marca.revocar_sesiones.assert_called_once_with(
+        access_token="lo-que-sea"
     )
