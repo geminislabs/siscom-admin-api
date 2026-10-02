@@ -18,7 +18,7 @@ varias en cascada hacia `mobility.devices`, `team.members`, `user_units` y
 """
 
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import status
@@ -378,6 +378,50 @@ def test_aceptar_invitacion_nueva_crea_la_membresia(
     assert membresias[0].organization_id == test_organization_data.id
     assert membresias[0].role == OrganizationRole.MEMBER.value
     assert membresias[0].status == "ACTIVE"
+
+
+def test_aceptar_invitacion_nueva_usa_handle_uuid_y_no_el_correo(
+    client, db_session, test_organization_data, idp_falso
+):
+    """Rebanada B2: el handle de un alta nueva deja de ser el correo.
+
+    Es lo que permite que el mismo correo exista como credenciales distintas
+    en dos marcas — si esto vuelve a ser el correo, white-label se rompe en
+    silencio (el error sólo aparece con el primer correo duplicado entre
+    marcas, no en este test)."""
+    db_session.add(
+        TokenConfirmacion(
+            id=uuid4(),
+            token="tok-handle-uuid",
+            organization_id=test_organization_data.id,
+            email="handle-nuevo@example.com",
+            full_name="Persona Nueva",
+            expires_at=utcnow() + timedelta_una_hora(),
+            used=False,
+            type=TokenType.INVITATION,
+        )
+    )
+    db_session.commit()
+    idp_falso.sujeto_de.return_value = None
+    idp_falso.crear_credencial.return_value = "sub-handle-nuevo"
+
+    respuesta = client.post(
+        "/api/v1/users/accept-invitation",
+        json={"token": "tok-handle-uuid", "password": "La-nueva-1!"},
+    )
+
+    assert respuesta.status_code == status.HTTP_201_CREATED
+    nuevo = (
+        db_session.query(User).filter(User.email == "handle-nuevo@example.com").one()
+    )
+
+    handle_usado = idp_falso.crear_credencial.call_args.kwargs["handle"]
+    assert handle_usado != "handle-nuevo@example.com"
+    assert UUID(handle_usado)  # no lanza -> es un UUID valido
+    assert nuevo.external_id == handle_usado
+    idp_falso.fijar_password.assert_called_once_with(
+        handle=handle_usado, password="La-nueva-1!"
+    )
 
 
 def test_aceptar_la_invitacion_reactiva_la_fila_y_no_crea_otra(

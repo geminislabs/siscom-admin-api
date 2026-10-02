@@ -192,10 +192,10 @@ HOY (rebanada B1)                      REBANADA B3
                                        7. tokens + data token
 ```
 
-El paso 3 de la izquierda ya usa el handle y no el correo: el día que un alta
-nazca con handle UUID (rebanada B2), este endpoint no cambia. Lo que falta es
-el paso 2 — resolver la marca — y con él el filtro por `brand_account_id` del
-paso 3.
+El paso 3 de la izquierda ya usa el handle y no el correo, y desde la
+rebanada B2 las altas nuevas por `accept_invitation` ya nacen con handle
+UUID: este endpoint no cambió. Lo que falta es el paso 2 — resolver la
+marca — y con él el filtro por `brand_account_id` del paso 3.
 
 El paso 2 resuelve **apariencia y credencial**, nunca autorización: los datos
 que ve el usuario los determina su subárbol (`account_path`), no la cabecera
@@ -212,10 +212,12 @@ que ve el usuario los determina su subárbol (`account_path`), no la cabecera
 - El SECRET_HASH de Cognito se calcula con HMAC-SHA256 **sobre el handle**, no
   sobre el correo: firmarlo con el correo mientras se autentica con un UUID da
   un `NotAuthorizedException` indistinguible de una contraseña mal escrita
-- `POST /auth/refresh` es el único flujo que sigue tomando el handle del cuerpo
-  de la petición (el campo `email`), porque es público y no hay fila que
-  consultar. La rebanada B2 lo rompe: un usuario con handle UUID no firmará el
-  SECRET_HASH con su correo
+- `POST /auth/refresh` es público y no recibe el handle en el cuerpo: valida
+  el access token del cliente (aceptándolo vencido), saca el `sub`, resuelve
+  la fila y firma el SECRET_HASH con `external_id`. Es el contrato D2 de §24
+  — se cerró el 28/09/2026, antes de que la rebanada B2 empezara a emitir
+  handles UUID, que es justo lo que este contrato necesitaba para no
+  romperse
 - Los tokens PASETO se generan en `/auth/internal` para servicios
 
 ---
