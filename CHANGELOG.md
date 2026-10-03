@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-10-03
+
+**Migraciones.** Ninguna. La cabeza sigue en `036_organizacion_por_defecto`.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir en
+la base.
+
 ### Added
 
 - **Plantillas de SES por marca (B4, §11 del documento de arquitectura).** Los tres correos
