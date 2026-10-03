@@ -139,7 +139,9 @@ def invite_user(
     db.commit()
 
     # 5️⃣ Enviar correo con la URL de invitación
-    email_sent = send_invitation_email(data.email, invitation_token, data.full_name)
+    email_sent = send_invitation_email(
+        data.email, invitation_token, data.full_name, db, current_user.brand_account_id
+    )
     if not email_sent:
         logger.warning("user.invite.email_failed")
 
@@ -450,7 +452,9 @@ def resend_invitation(
     db.refresh(new_invitation)
 
     # 7️⃣ Enviar email con la nueva URL de invitación
-    email_sent = send_invitation_email(data.email, new_token, full_name)
+    email_sent = send_invitation_email(
+        data.email, new_token, full_name, db, current_user.brand_account_id
+    )
     if email_sent:
         logger.info("user.resend_invitation.email_sent")
     else:
