@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.49.0] - 2026-10-02
+
+**Migraciones.** `036_organizacion_por_defecto` — renombra `users.organization_id` a
+`default_organization_id`. Solo catálogo (`ALTER TABLE ... RENAME COLUMN`): sin reescritura de
+tabla, sin bloqueo de lectores, sin downtime.
+
+**Rollback.** Redesplegar el tag anterior. Si hiciera falta revertir el esquema,
+`alembic downgrade 035_backfill_membresias` antes de desplegar el tag anterior — también solo
+catálogo, igual de rápido.
+
 ### Added
 
 - **Infraestructura del selector de cuenta (B3, §26 del documento de arquitectura).** Una misma
