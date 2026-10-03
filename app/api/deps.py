@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Optional
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -314,28 +314,54 @@ def get_current_user(
     return payload
 
 
-def _load_current_user(db: Session, cognito_sub: Optional[str]):
+def organizacion_solicitada(
+    x_organization_id: Optional[UUID] = Header(default=None, alias="X-Organization-Id"),
+) -> Optional[UUID]:
+    """El selector de cuenta (B3, §26): en qué organización pide actuar esta
+    petición, si el cliente lo dice.
+
+    `None` —el caso de todo el tráfico hoy, porque ningún cliente manda esta
+    cabecera todavía— dice «la de siempre»: `_load_current_user` cae a
+    `default_organization_id` exactamente como antes de que existiera esta
+    cabecera. Nunca es un error, igual que la marca por `Host` en B3.
     """
-    Busca al usuario por `cognito_sub` y valida que su organización actual
-    siga siendo una membresía real y activa.
+    return x_organization_id
+
+
+def _load_current_user(
+    db: Session,
+    cognito_sub: Optional[str],
+    organization_id: Optional[UUID] = None,
+):
+    """
+    Busca al usuario por `cognito_sub` y valida que la organización en la que
+    pide actuar siga siendo una membresía real y activa.
 
     Punto único: `get_current_user_full`, `resolve_current_organization` y
     `get_current_user_id` delegan aquí en vez de repetir cada una su propia
     consulta — la validación se escribe una sola vez, así que no hay ningún
     camino de los tres que pueda evitarla por accidente.
 
+    `organization_id` es el selector de cuenta: la organización que pide la
+    cabecera `X-Organization-Id` (ver `organizacion_solicitada`), o `None`
+    para quedarse con `default_organization_id` — el comportamiento de
+    siempre. Cualquiera de las dos pasa por el **mismo** chequeo de abajo, así
+    que pedir una organización ajena nunca es más permisivo que no pedir
+    ninguna.
+
     Falla cerrado: sin una fila `ACTIVE` en `organization_users` para
-    `(user.organization_id, user.id)`, 403 en vez de dejar que el resto del
+    `(user.id, organización solicitada)`, 403 en vez de dejar que el resto del
     API siga resolviendo alertas, dispositivos, unidades o geofences contra
-    una organización de la que esta persona ya no es miembro — el hueco
+    una organización de la que esta persona no es miembro activo — el hueco
     que dejaba abierto que `DELETE /organizations/{org}/users/{user_id}`
     sólo tocara `users.organization_id` (ver el rediseño de ese endpoint) sin
     corregir la columna cuando a alguien le quedaba otra membresía activa.
 
     Depende de la migración 035: desde ahí, todo usuario con
-    `organization_id` no nulo tiene esa fila. Sin ese backfill, esto habría
-    bloqueado con 403 a cualquiera invitado por correo antes del 30/09/2026
-    — `accept_invitation` nunca creaba la membresía, sólo la columna.
+    `default_organization_id` no nulo tiene esa fila. Sin ese backfill, esto
+    habría bloqueado con 403 a cualquiera invitado por correo antes del
+    30/09/2026 — `accept_invitation` nunca creaba la membresía, sólo la
+    columna.
     """
     from app.models.organization_user import MembershipStatus, OrganizationUser
     from app.models.user import User
@@ -353,11 +379,15 @@ def _load_current_user(db: Session, cognito_sub: Optional[str]):
             detail="Usuario no encontrado en el sistema",
         )
 
+    organizacion_objetivo = (
+        organization_id if organization_id is not None else user.default_organization_id
+    )
+
     has_active_membership = (
         db.query(OrganizationUser)
         .filter(
             OrganizationUser.user_id == user.id,
-            OrganizationUser.organization_id == user.organization_id,
+            OrganizationUser.organization_id == organizacion_objetivo,
             OrganizationUser.status == MembershipStatus.ACTIVE.value,
         )
         .first()
@@ -366,18 +396,27 @@ def _load_current_user(db: Session, cognito_sub: Optional[str]):
     if not has_active_membership:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Sin membresía activa en la organización actual",
+            detail="Sin membresía activa en la organización solicitada",
         )
+
+    if organization_id is not None:
+        user._active_organization_id = organization_id
 
     return user
 
 
-def resolve_current_organization(db: Session, cognito_payload: dict) -> UUID:
+def resolve_current_organization(
+    db: Session, cognito_payload: dict, organization_id: Optional[UUID] = None
+) -> UUID:
     """
-    Busca el usuario por cognito_sub y retorna su organization_id, ya
-    validada contra una membresía activa real. Ver `_load_current_user`.
+    Busca el usuario por cognito_sub y retorna la organización en la que
+    actúa —la del selector de cuenta si se pidió una, si no la de
+    siempre—, ya validada contra una membresía activa real. Ver
+    `_load_current_user`.
     """
-    return _load_current_user(db, cognito_payload.get("sub")).organization_id
+    return _load_current_user(
+        db, cognito_payload.get("sub"), organization_id
+    ).organization_id
 
 
 # Alias de compatibilidad (DEPRECATED)
@@ -389,12 +428,13 @@ def resolve_current_client(db: Session, cognito_payload: dict) -> UUID:
 def get_current_organization_id(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    organization_id: Optional[UUID] = Depends(organizacion_solicitada),
 ) -> UUID:
     """
     Dependency que combina autenticación y resolución de organization_id.
-    Retorna el organization_id del usuario autenticado.
+    Retorna la organización en la que actúa esta sesión.
     """
-    return resolve_current_organization(db, current_user)
+    return resolve_current_organization(db, current_user, organization_id)
 
 
 # Alias de compatibilidad (DEPRECATED)
@@ -409,27 +449,30 @@ def get_current_client_id(
 def get_current_user_full(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    organization_id: Optional[UUID] = Depends(organizacion_solicitada),
 ):
     """
-    Retorna el objeto User completo del usuario autenticado, con su
-    organización actual validada. Ver `_load_current_user`.
+    Retorna el objeto User completo del usuario autenticado, con la
+    organización en la que actúa ya validada. Ver `_load_current_user`.
     """
-    return _load_current_user(db, current_user.get("sub"))
+    return _load_current_user(db, current_user.get("sub"), organization_id)
 
 
 def get_current_user_id(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    organization_id: Optional[UUID] = Depends(organizacion_solicitada),
 ) -> UUID:
     """
     Retorna el UUID del usuario autenticado. Ver `_load_current_user`.
     """
-    return _load_current_user(db, current_user.get("sub")).id
+    return _load_current_user(db, current_user.get("sub"), organization_id).id
 
 
 def get_current_user_with_role(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    organization_id: Optional[UUID] = Depends(organizacion_solicitada),
 ) -> tuple:
     """
     Retorna el usuario y su rol organizacional.
@@ -442,7 +485,7 @@ def get_current_user_with_role(
     Returns:
         Tuple de (User, OrganizationRole o None)
     """
-    user = _load_current_user(db, current_user.get("sub"))
+    user = _load_current_user(db, current_user.get("sub"), organization_id)
 
     # Obtener rol usando OrganizationService (única fuente de verdad)
     role = OrganizationService.get_user_role(db, user.id, user.organization_id)

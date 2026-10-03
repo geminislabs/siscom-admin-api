@@ -158,7 +158,7 @@ def test_verify_email_usa_el_proveedor_de_la_marca_del_usuario(
 
     user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         email="master-mero-mero@example.com",
         full_name="Master de Mero Mero",
         is_master=True,
@@ -211,7 +211,7 @@ def _make_verified_user(db_session, test_organization_data):
 
     user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         email="login-datatoken@example.com",
         full_name="Login Test",
         email_verified=True,
@@ -282,7 +282,7 @@ def test_login_autentica_con_el_handle_de_la_fila_no_con_el_correo(
     handle = str(uuid4())
     user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         email="handle-distinto@example.com",
         full_name="Handle Distinto",
         email_verified=True,
@@ -394,7 +394,7 @@ def test_login_filtra_por_marca_cuando_el_host_resuelve(
     handle_default = str(uuid4())
     user_default = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         email="compartido@example.com",
         full_name="Marca por defecto",
         email_verified=True,
@@ -404,7 +404,7 @@ def test_login_filtra_por_marca_cuando_el_host_resuelve(
     handle_marca = str(uuid4())
     user_marca = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         email="compartido@example.com",
         full_name="Usuario de Mero Mero",
         email_verified=True,
@@ -528,7 +528,7 @@ def _dos_usuarios_mismo_correo(db_session, test_organization_data, marca, **extr
 
     user_default = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         email="compartido@example.com",
         full_name="Marca por defecto",
         external_id=str(uuid4()),
@@ -536,7 +536,7 @@ def _dos_usuarios_mismo_correo(db_session, test_organization_data, marca, **extr
     )
     user_marca = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         email="compartido@example.com",
         full_name="Usuario de Mero Mero",
         external_id=str(uuid4()),
@@ -908,3 +908,143 @@ def test_logout_usa_el_proveedor_de_la_marca_del_usuario(
     proveedor_de_marca.revocar_sesiones.assert_called_once_with(
         access_token="lo-que-sea"
     )
+
+
+# ---------------------------------------------------------------------------
+# Selector de cuenta — organización activa de la sesión (B3, §26)
+#
+# Medido contra producción el 02/10/2026: cero usuarios con más de una
+# membresía activa hoy. Estos tests construyen el caso a mano porque ningún
+# dato real lo produce todavía.
+# ---------------------------------------------------------------------------
+
+
+def _con_segunda_organizacion(db_session, test_organization_data, user, nombre):
+    from app.models.organization import Organization
+    from app.models.organization_user import OrganizationRole, OrganizationUser
+
+    segunda_org = Organization(
+        id=uuid4(),
+        account_id=test_organization_data.account_id,
+        name=nombre,
+        status="ACTIVE",
+    )
+    db_session.add(segunda_org)
+    db_session.flush()
+    db_session.add(
+        OrganizationUser(
+            organization_id=segunda_org.id,
+            user_id=user.id,
+            role=OrganizationRole.MEMBER.value,
+        )
+    )
+    db_session.commit()
+    return segunda_org
+
+
+def test_list_my_organizations_una_sola_membresia(
+    client, db_session, test_organization_data
+):
+    """El caso de todo el mundo hoy: una fila, nada que elegir."""
+    user = _make_verified_user(db_session, test_organization_data)
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.get(
+            "/api/v1/auth/organizations",
+            headers={"Authorization": "Bearer lo-que-sea"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    cuerpo = response.json()
+    assert len(cuerpo) == 1
+    assert cuerpo[0]["organization_id"] == str(test_organization_data.id)
+    assert cuerpo[0]["role"] == "owner"
+
+
+def test_list_my_organizations_con_dos_membresias(
+    client, db_session, test_organization_data
+):
+    user = _make_verified_user(db_session, test_organization_data)
+    segunda_org = _con_segunda_organizacion(
+        db_session, test_organization_data, user, "Flota Norte"
+    )
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.get(
+            "/api/v1/auth/organizations",
+            headers={"Authorization": "Bearer lo-que-sea"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    orgs = {fila["organization_id"]: fila["role"] for fila in response.json()}
+    assert orgs == {
+        str(test_organization_data.id): "owner",
+        str(segunda_org.id): "member",
+    }
+
+
+def test_x_organization_id_cambia_la_organizacion_activa(
+    client, db_session, test_organization_data
+):
+    """El selector de verdad: con dos membresías activas, la cabecera
+    `X-Organization-Id` decide con cuál actúa la sesión — y `/auth/me` lo
+    refleja sin que el endpoint sepa nada de selectores."""
+    user = _make_verified_user(db_session, test_organization_data)
+    segunda_org = _con_segunda_organizacion(
+        db_session, test_organization_data, user, "Flota Norte"
+    )
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        por_defecto = client.get(
+            "/api/v1/auth/me", headers={"Authorization": "Bearer lo-que-sea"}
+        )
+        con_cabecera = client.get(
+            "/api/v1/auth/me",
+            headers={
+                "Authorization": "Bearer lo-que-sea",
+                "X-Organization-Id": str(segunda_org.id),
+            },
+        )
+
+    assert por_defecto.status_code == status.HTTP_200_OK
+    assert con_cabecera.status_code == status.HTTP_200_OK
+    assert por_defecto.json()["organization_id"] == str(test_organization_data.id)
+    assert con_cabecera.json()["organization_id"] == str(segunda_org.id)
+    assert con_cabecera.json()["role"] == "member"
+
+
+def test_x_organization_id_ajena_falla_cerrado(
+    client, db_session, test_organization_data
+):
+    """Pedir una organización de la que no se es miembro activo es un 403,
+    no una fuga a datos ajenos."""
+    from app.models.organization import Organization
+
+    user = _make_verified_user(db_session, test_organization_data)
+    org_ajena = Organization(
+        id=uuid4(),
+        account_id=test_organization_data.account_id,
+        name="No es la mía",
+        status="ACTIVE",
+    )
+    db_session.add(org_ajena)
+    db_session.commit()
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.get(
+            "/api/v1/auth/me",
+            headers={
+                "Authorization": "Bearer lo-que-sea",
+                "X-Organization-Id": str(org_ajena.id),
+            },
+        )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN

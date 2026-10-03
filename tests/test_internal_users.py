@@ -43,13 +43,18 @@ def como_gac():
 
 @pytest.fixture
 def sin_fk_de_organizacion(db_session):
-    """Quita `users_organization_id_fkey` para poder construir un huerfano.
+    """Quita `users_default_organization_id_fkey` para poder construir un huerfano.
 
     **El harness es mas estricto que produccion, y por eso hace falta esto.**
     El modelo declara `ForeignKey("organizations.id")` y `create_all()` la crea;
     el esquema productivo **no la tiene** — solo un indice, `idx_users_org_master`.
     Es deriva conocida, anotada al desplegar la `v1.32.2`, y el comparador no la
     ve porque mira columnas y no restricciones.
+
+    Postgres no renombra las restricciones cuando se renombra la columna
+    (migracion `036`): el nombre sigue siendo el de cuando se creo,
+    `users_default_organization_id_fkey`, sobre la columna que ahora se llama
+    distinto.
 
     La consecuencia practica es incomoda y conviene no esconderla: sin este
     `DROP`, el caso que este endpoint existe para resolver **no se puede
@@ -64,7 +69,10 @@ def sin_fk_de_organizacion(db_session):
     from sqlalchemy import text
 
     db_session.execute(
-        text("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_organization_id_fkey")
+        text(
+            "ALTER TABLE users DROP CONSTRAINT IF EXISTS"
+            " users_default_organization_id_fkey"
+        )
     )
     db_session.flush()
     yield
@@ -81,7 +89,7 @@ def idp_falso():
 def _usuario(db_session, organization_id, correo, estado=UserStatus.ACTIVE):
     user = User(
         id=uuid4(),
-        organization_id=organization_id,
+        default_organization_id=organization_id,
         cognito_sub=f"sub-{correo}",
         external_id=correo,
         email=correo,

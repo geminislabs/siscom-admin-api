@@ -30,8 +30,14 @@ def engine():
     eng.dispose()
 
 
-def _escenario(conn):
-    """Una regla de alerta con su autor, colgando de una organizacion real."""
+def _escenario(conn, columna_organizacion_usuario="default_organization_id"):
+    """Una regla de alerta con su autor, colgando de una organizacion real.
+
+    `columna_organizacion_usuario` existe porque este helper se usa a dos
+    revisiones distintas: en `head` la columna de `users` ya se llama
+    `default_organization_id` (migracion `036`); bajada a la `031` —anterior
+    a la `036`— todavia se llama `organization_id`.
+    """
     cuenta, org, usuario, regla = uuid4(), uuid4(), uuid4(), uuid4()
     conn.execute(
         text("INSERT INTO public.accounts (id, account_name) VALUES (:id, 'Cuenta')"),
@@ -46,7 +52,7 @@ def _escenario(conn):
     )
     conn.execute(
         text(
-            "INSERT INTO public.users (id, email, organization_id)"
+            f"INSERT INTO public.users (id, email, {columna_organizacion_usuario})"
             " VALUES (:id, :correo, :org)"
         ),
         {"id": usuario, "correo": f"{usuario}@example.com", "org": org},
@@ -105,7 +111,7 @@ def test_antes_de_la_032_el_borrado_del_autor_fallaba(engine):
 
     try:
         with engine.begin() as c:
-            datos = _escenario(c)
+            datos = _escenario(c, columna_organizacion_usuario="organization_id")
 
         with pytest.raises(IntegrityError):
             with engine.begin() as c:

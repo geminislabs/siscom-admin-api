@@ -66,7 +66,7 @@ def _otro_usuario(db_session, organizacion, correo, rol=OrganizationRole.MEMBER)
     """Un segundo usuario con membresia, para poder sacarlo."""
     user = User(
         id=uuid4(),
-        organization_id=organizacion.id,
+        default_organization_id=organizacion.id,
         cognito_sub=f"sub-{correo}",
         external_id=correo,
         email=correo,

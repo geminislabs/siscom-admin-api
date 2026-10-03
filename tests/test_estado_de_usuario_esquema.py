@@ -81,11 +81,21 @@ def _organizacion(conn, cuenta: UUID, nombre: str) -> UUID:
     return oid
 
 
-def _usuario(conn, correo: str, organizacion: UUID, master: bool) -> UUID:
+def _usuario(
+    conn,
+    correo: str,
+    organizacion: UUID,
+    master: bool,
+    columna_organizacion="default_organization_id",
+) -> UUID:
+    """`columna_organizacion` existe porque este helper se usa en dos estados
+    de esquema distintos: en `head` la columna ya se llama
+    `default_organization_id` (migracion `036`); bajada a la `028` —el viaje
+    que hace el fixture `datos`— todavia se llama `organization_id`."""
     uid = uuid4()
     conn.execute(
-        text("""
-            INSERT INTO users (id, email, organization_id, is_master, external_id)
+        text(f"""
+            INSERT INTO users (id, email, {columna_organizacion}, is_master, external_id)
             VALUES (:id, :correo, :org, :master, :correo)
             """),
         {
@@ -163,25 +173,55 @@ def datos(engine):
         cuenta = _cuenta(c, "Cuenta del relleno")
 
         org_heredado = _organizacion(c, cuenta, "Org del master heredado")
-        heredado = _usuario(c, "heredado@example.com", org_heredado, master=True)
+        heredado = _usuario(
+            c,
+            "heredado@example.com",
+            org_heredado,
+            master=True,
+            columna_organizacion="organization_id",
+        )
 
         org_con_rol = _organizacion(c, cuenta, "Org del master con membresia")
-        con_rol = _usuario(c, "con-rol@example.com", org_con_rol, master=True)
+        con_rol = _usuario(
+            c,
+            "con-rol@example.com",
+            org_con_rol,
+            master=True,
+            columna_organizacion="organization_id",
+        )
         _membresia(c, org_con_rol, con_rol, "member")
 
         org_removido = _organizacion(c, cuenta, "Org del master removido")
-        removido = _usuario(c, "removido@example.com", org_removido, master=True)
+        removido = _usuario(
+            c,
+            "removido@example.com",
+            org_removido,
+            master=True,
+            columna_organizacion="organization_id",
+        )
         _evento_removido(c, cuenta, org_removido, removido)
 
         org_normal = _organizacion(c, cuenta, "Org del usuario normal")
-        normal = _usuario(c, "normal@example.com", org_normal, master=False)
+        normal = _usuario(
+            c,
+            "normal@example.com",
+            org_normal,
+            master=False,
+            columna_organizacion="organization_id",
+        )
 
         # El caso que tumbo el despliegue de v1.32.1: un master cuya
         # organizacion **no existe**. Se puede insertar aqui porque la base esta
         # en la 028, por debajo de la clave foranea que anade la `030` — igual
         # que en produccion, donde estas filas son anteriores a la migracion.
         org_fantasma = uuid4()
-        huerfano = _usuario(c, "huerfano@example.com", org_fantasma, master=True)
+        huerfano = _usuario(
+            c,
+            "huerfano@example.com",
+            org_fantasma,
+            master=True,
+            columna_organizacion="organization_id",
+        )
 
         tx.commit()
 

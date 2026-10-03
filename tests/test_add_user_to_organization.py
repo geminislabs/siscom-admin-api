@@ -39,7 +39,7 @@ def _agregar_usuario(client, actor, organizacion, user_id, rol="member"):
 def _admin(db_session, organizacion, correo):
     user = User(
         id=uuid4(),
-        organization_id=organizacion.id,
+        default_organization_id=organizacion.id,
         cognito_sub=f"sub-{correo}",
         external_id=correo,
         email=correo,
@@ -86,7 +86,7 @@ def test_agregar_usuario_de_otra_cuenta_falla(db_session, client, test_account_d
     db_session.commit()
     outsider = User(
         id=uuid4(),
-        organization_id=otra_org.id,
+        default_organization_id=otra_org.id,
         cognito_sub="outsider-sub",
         email="outsider@otra-cuenta.com",
         full_name="Outsider",
@@ -124,7 +124,7 @@ def test_agregar_usuario_de_otra_organizacion_misma_cuenta_funciona(
     db_session.commit()
     miembro = User(
         id=uuid4(),
-        organization_id=otra_org_misma_cuenta.id,
+        default_organization_id=otra_org_misma_cuenta.id,
         cognito_sub="hermana-sub",
         email="hermana@example.com",
         full_name="De la org hermana",

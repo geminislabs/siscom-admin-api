@@ -321,7 +321,7 @@ def test_resolve_emergency_event_by_admin(
     # Crear otro usuario
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-resolve",
         email="other-resolve@test.com",
         full_name="Other User",
@@ -389,7 +389,7 @@ def test_resolve_emergency_event_forbidden(
     # Crear otro usuario
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-forbidden",
         email="other-forbidden@test.com",
         full_name="Other User",

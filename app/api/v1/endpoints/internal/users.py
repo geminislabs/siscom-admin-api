@@ -68,12 +68,12 @@ def _es_huerfano():
 
     Es la misma consulta del contador (4) del runbook de la 029, promovida de
     SQL suelto a algo que el código puede ejercer. Mientras no exista la clave
-    foránea de `users.organization_id`, este predicado es la única forma de
-    saberlo.
+    foránea de `users.default_organization_id`, este predicado es la única
+    forma de saberlo.
     """
     return and_(
-        User.organization_id.isnot(None),
-        not_(exists().where(Organization.id == User.organization_id)),
+        User.default_organization_id.isnot(None),
+        not_(exists().where(Organization.id == User.default_organization_id)),
     )
 
 
@@ -108,7 +108,7 @@ def list_internal_users(
     if status_filter is not None:
         query = query.filter(User.status == status_filter.value)
     if organization_id is not None:
-        query = query.filter(User.organization_id == organization_id)
+        query = query.filter(User.default_organization_id == organization_id)
     if search:
         query = query.filter(User.email.ilike(f"%{search}%"))
     if solo_huerfanos:

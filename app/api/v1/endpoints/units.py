@@ -1222,7 +1222,7 @@ def assign_user_to_unit(
         db.query(User)
         .filter(
             User.id == assignment.user_id,
-            User.organization_id == current_user.organization_id,
+            User.default_organization_id == current_user.organization_id,
         )
         .first()
     )

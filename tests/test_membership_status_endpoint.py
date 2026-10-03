@@ -48,7 +48,7 @@ def _cambiar_estado(client, actor, organizacion, victima, nuevo_estado):
 def _otro_usuario(db_session, organizacion, correo, rol=OrganizationRole.MEMBER):
     user = User(
         id=uuid4(),
-        organization_id=organizacion.id,
+        default_organization_id=organizacion.id,
         cognito_sub=f"sub-{correo}",
         external_id=correo,
         email=correo,

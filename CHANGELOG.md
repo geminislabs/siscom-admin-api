@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Infraestructura del selector de cuenta (B3, §26 del documento de arquitectura).** Una misma
+  credencial puede actuar en cualquiera de las organizaciones donde tenga membresía `ACTIVE`, no
+  solo en la que la columna de la fila recordaba como «de origen»
+  - `users.organization_id` se renombra a `default_organization_id` (migración `036`, solo
+    catálogo — sin reescritura de tabla) y `organization_id` pasa a ser una propiedad de Python
+    **sin setter**: devuelve la organización activa de la sesión si se pidió una, si no
+    `default_organization_id`. Las ~64 lecturas de `current_user.organization_id` repartidas por
+    `app/api/v1/endpoints/` no se tocan — siguen leyendo lo mismo, y es la propiedad la que decide
+  - Nueva cabecera `X-Organization-Id`: `_load_current_user` (`app/api/deps.py`) la valida contra
+    una membresía `ACTIVE` real en `organization_users` antes de aceptarla — el mismo candado que
+    ya protegía la organización por defecto, ahora parametrizado. Pedir una organización ajena es
+    403, nunca una fuga
+  - `GET /auth/organizations` — las organizaciones donde el usuario autenticado tiene membresía
+    activa, con su rol en cada una. Es el punto de entrada para que el cliente decida si tiene algo
+    que mostrarle al usuario
+  - **Inerte por diseño, hoy**: medido contra producción el 02/10/2026, cero usuarios con más de
+    una membresía activa — sin cliente que mande la cabecera, el comportamiento no cambia para
+    nadie. El selector de UI (nexus-web-page, móviles) queda para una rebanada aparte
+
 ## [1.48.1] - 2026-10-02
 
 **Migraciones.** Ninguna.

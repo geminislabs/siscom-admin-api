@@ -72,7 +72,7 @@ def test_user_devices_register_desactiva_al_dueno_anterior(
 
     previous_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="previous-owner-sub",
         email="previous@test.com",
         full_name="Previous Owner",

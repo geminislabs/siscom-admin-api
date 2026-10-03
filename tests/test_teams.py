@@ -305,7 +305,7 @@ def test_add_member(
 
     new_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="new-user-sub",
         email="newuser@test.com",
         full_name="New User",
@@ -342,7 +342,7 @@ def test_add_member_duplicate_fails(
 
     new_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="dup-user-sub",
         email="dup@test.com",
         full_name="Dup User",
@@ -395,7 +395,7 @@ def test_add_member_de_otra_cuenta_falla(
 
     outsider = User(
         id=uuid4(),
-        organization_id=other_org.id,
+        default_organization_id=other_org.id,
         cognito_sub="outsider-sub",
         email="outsider@otra-cuenta.com",
         full_name="Outsider",
@@ -427,7 +427,7 @@ def test_update_member_role(
 
     new_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="role-user-sub",
         email="role@test.com",
         full_name="Role User",
@@ -488,7 +488,7 @@ def test_remove_member(
 
     new_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="remove-user-sub",
         email="remove@test.com",
         full_name="Remove User",

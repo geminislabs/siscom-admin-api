@@ -57,7 +57,7 @@ def test_deactivate_con_credencial_de_quien_no_es_dueno_no_toca_la_fila(
     """
     otro = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="cognito-sub-de-otro",
         email="otro@example.com",
         full_name="Otro Usuario",

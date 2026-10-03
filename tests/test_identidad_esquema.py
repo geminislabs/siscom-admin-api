@@ -109,7 +109,7 @@ def _usuario(
     conn.execute(
         text("""
             INSERT INTO users (id, email, brand_account_id, external_id,
-                               identity_provider, organization_id)
+                               identity_provider, default_organization_id)
             VALUES (:id, :correo, :marca, :ext, :prov, :org)
             """),
         {

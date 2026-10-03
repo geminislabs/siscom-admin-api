@@ -175,7 +175,7 @@ def test_publish_mobility_location_rejects_device_from_other_user(
 
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-cognito-sub-mobility",
         email="other-mobility@example.com",
         full_name="Other User",
@@ -311,7 +311,7 @@ def test_publish_mobility_locations_batch_rejects_device_from_other_user(
 
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-cognito-sub-mobility-batch",
         email="other-mobility-batch@example.com",
         full_name="Other User",
