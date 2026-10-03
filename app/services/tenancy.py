@@ -74,3 +74,25 @@ def resolver_account_id_de_host(hostname: str | None, db: Session) -> UUID | Non
         .first()
     )
     return dominio.account_id if dominio else None
+
+
+def resolver_dominio_publico_de_account(account_id: UUID, db: Session) -> str | None:
+    """
+    El hostname primario y verificado de una cuenta de marca, o `None`.
+
+    Es la inversa de `resolver_account_id_de_host`: de cuenta a dominio en vez
+    de dominio a cuenta. La usa B4 (plantillas de SES por marca) para construir
+    el enlace de acción de un correo — si la marca no tiene un dominio propio
+    verificado, el llamador cae a `settings.FRONTEND_URL`, mismo criterio de
+    "marca por defecto nunca es error" que el resto de esta rebanada.
+    """
+    dominio = (
+        db.query(TenantDomain)
+        .filter(
+            TenantDomain.account_id == account_id,
+            TenantDomain.status == "VERIFIED",
+            TenantDomain.is_primary.is_(True),
+        )
+        .first()
+    )
+    return dominio.hostname if dominio else None

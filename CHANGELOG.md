@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Plantillas de SES por marca (B4, §11 del documento de arquitectura).** Los tres correos
+  transaccionales (`verification_email.html`, `invitation.html`, `password_reset.html`) ya no
+  llevan "Geminis Labs" y su logo grabados a fuego fuera de cualquier variable — toman nombre,
+  logo, enlace de acción y pie legal de la marca del destinatario
+  - `app/services/tenancy.py` gana `resolver_dominio_publico_de_account`, inversa de
+    `resolver_account_id_de_host`: de cuenta a su dominio primario verificado, para construir el
+    enlace de acción de un correo (verificar correo, aceptar invitación) contra el dominio del
+    partner cuando existe
+  - `app/services/notifications.py` gana `BrandEmailContext` y `_resolver_contexto_de_marca`: dado
+    un `brand_account_id` (el de `User.brand_account_id`, nunca el `Host` de la petición — en
+    estos flujos el usuario ya está identificado), resuelve nombre, `logo_url`, `support_email` y
+    `legal_url` desde `tenant_branding.published` y el dominio desde `tenant_domains`. Mismo patrón
+    que `_proveedor_para_usuario` en `auth.py`
+  - El remitente del correo pasa a `"{brand_name} <SES_FROM_EMAIL>"` con `Reply-To` opcional al
+    correo de soporte de la marca — sin verificar un dominio SES por marca, mismo argumento que
+    cerró la discusión de pools de Cognito por tenant en §5: aprovisionar N identidades por marca es
+    el patrón de deriva que ya se rechazó ahí
+  - **Cero migraciones**: reutiliza `tenant_branding.published` (JSONB, en producción desde
+    `v1.28.0`) con tres claves nuevas (`logo_url`, `support_email`, `legal_url`), ya públicas de
+    facto porque `GET /tenant-config` expone `published` completo sin autenticación
+  - **Inerte por diseño, hoy**: sin `brand_account_id` resuelto, el correo sale igual que antes de
+    B4 — mismo logo inline, mismo nombre, mismo pie. Cubierto por test en
+    `tests/test_notifications_service.py`
+
 ## [1.49.0] - 2026-10-02
 
 **Migraciones.** `036_organizacion_por_defecto` — renombra `users.organization_id` a

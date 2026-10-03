@@ -315,7 +315,9 @@ def register_user(
 
     # Enviar email de verificación (NO falla el endpoint si falla)
     try:
-        email_sent = send_verification_email(data.email, verification_token_str)
+        email_sent = send_verification_email(
+            data.email, verification_token_str, db, marca_id
+        )
         if email_sent:
             logger.info(
                 "auth.register.verification_email_sent",
@@ -691,7 +693,7 @@ def forgot_password(
         db.commit()
 
         # 4️⃣ Enviar correo electrónico con el código de 6 dígitos
-        email_sent = send_password_reset_email(user.email, reset_code)
+        email_sent = send_password_reset_email(user.email, reset_code, db, marca_id)
         if email_sent:
             logger.info(
                 "auth.password_reset.email_sent",
@@ -1146,7 +1148,7 @@ def resend_verification(
     db.commit()
 
     # f) Enviar correo electrónico con el token
-    email_sent = send_verification_email(user.email, verification_token)
+    email_sent = send_verification_email(user.email, verification_token, db, marca_id)
     if email_sent:
         logger.info(
             "auth.resend_verification.email_sent",
