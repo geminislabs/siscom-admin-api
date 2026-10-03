@@ -68,7 +68,7 @@ def _usuario(conn, correo: str, organizacion: UUID) -> UUID:
     uid = uuid4()
     conn.execute(
         text("""
-            INSERT INTO users (id, email, organization_id, external_id)
+            INSERT INTO users (id, email, default_organization_id, external_id)
             VALUES (:id, :correo, :org, :correo)
             """),
         {"id": str(uid), "correo": correo, "org": str(organizacion)},

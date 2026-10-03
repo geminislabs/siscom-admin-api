@@ -74,7 +74,7 @@ def _organizacion(conn):
 def _insertar_usuario(conn, organization_id):
     conn.execute(
         text("""
-            INSERT INTO public.users (id, email, organization_id)
+            INSERT INTO public.users (id, email, default_organization_id)
             VALUES (:id, :email, :org)
             """),
         {"id": uuid4(), "email": f"{uuid4()}@example.com", "org": organization_id},
@@ -90,7 +90,7 @@ def test_la_columna_queda_obligatoria(conn):
     nulable = conn.execute(text("""
             SELECT is_nullable FROM information_schema.columns
              WHERE table_schema = 'public' AND table_name = 'users'
-               AND column_name = 'organization_id'
+               AND column_name = 'default_organization_id'
             """)).scalar_one()
 
     assert nulable == "NO"
@@ -178,7 +178,10 @@ def test_la_migracion_aplica_con_filas_apuntando_al_vacio(engine):
 
     with engine.connect() as c:
         sigue = c.execute(
-            text("SELECT organization_id IS NOT NULL FROM public.users WHERE id = :id"),
+            text(
+                "SELECT default_organization_id IS NOT NULL FROM public.users"
+                " WHERE id = :id"
+            ),
             {"id": huerfano},
         ).scalar_one()
         validada = c.execute(

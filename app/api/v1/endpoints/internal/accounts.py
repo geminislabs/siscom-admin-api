@@ -86,7 +86,7 @@ def list_all_accounts(
             Organization.account_id,
             func.count(User.id).label("user_count"),
         )
-        .join(User, User.organization_id == Organization.id)
+        .join(User, User.default_organization_id == Organization.id)
         .group_by(Organization.account_id)
         .subquery()
     )
@@ -269,7 +269,7 @@ def get_account_by_id(
     # Contar usuarios (a través de organizations)
     total_users = (
         db.query(func.count(User.id))
-        .join(Organization, User.organization_id == Organization.id)
+        .join(Organization, User.default_organization_id == Organization.id)
         .filter(Organization.account_id == account_id)
         .scalar()
     ) or 0
@@ -334,7 +334,7 @@ def get_account_organizations(
             Organization.updated_at,
             func.count(User.id).label("total_users"),
         )
-        .outerjoin(User, User.organization_id == Organization.id)
+        .outerjoin(User, User.default_organization_id == Organization.id)
         .filter(Organization.account_id == account_id)
         .group_by(Organization.id)
         .order_by(Organization.created_at.desc())

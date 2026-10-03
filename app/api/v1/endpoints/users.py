@@ -45,7 +45,7 @@ def list_users(
     """
     Lista todos los usuarios de la organización autenticada.
     """
-    users = db.query(User).filter(User.organization_id == organization_id).all()
+    users = db.query(User).filter(User.default_organization_id == organization_id).all()
     return users
 
 
@@ -292,13 +292,13 @@ def accept_invitation(
     # Se reactiva y no se reemplaza: la fila vieja es la que referencian las
     # veinte claves foráneas —unidades, dispositivos, equipos—, así que
     # conservarla es lo que hace que readmitir a alguien le devuelva lo suyo
-    # en vez de dejarlo huérfano. `organization_id` **sí** se reescribe: manda
-    # la invitación, que puede readmitirlo en una organización distinta de la
-    # que se le sacó.
+    # en vez de dejarlo huérfano. `default_organization_id` **sí** se
+    # reescribe: manda la invitación, que puede readmitirlo en una
+    # organización distinta de la que se le sacó.
     if reactivando:
         new_user = existing_user
         new_user.status = UserStatus.ACTIVE.value
-        new_user.organization_id = organization_id
+        new_user.default_organization_id = organization_id
         new_user.cognito_sub = cognito_sub
         new_user.email_verified = True
         if full_name:
@@ -308,7 +308,7 @@ def accept_invitation(
             email=email,
             # Usar full_name del token o email como fallback
             full_name=full_name or email,
-            organization_id=organization_id,
+            default_organization_id=organization_id,
             cognito_sub=cognito_sub,
             external_id=handle,
             is_master=False,

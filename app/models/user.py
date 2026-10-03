@@ -1,11 +1,30 @@
 """
 Modelo de Usuario.
 
-Los usuarios pertenecen a una organización (organization_id).
-Los permisos se determinan por organization_users.role.
+Los usuarios pertenecen a una organización. Los permisos se determinan por
+organization_users.role.
 
 NOTA: El campo is_master está DEPRECADO.
 Usar organization_users.role para permisos.
+
+ORGANIZATION_ID: COLUMNA vs. PROPIEDAD (selector de cuenta, B3)
+================================================================
+`default_organization_id` es la columna (migración `036`, antes se llamaba
+`organization_id`): la organización con la que nació la fila, de solo
+escritura explícita — hoy sólo la tocan `register_user` y
+`accept_invitation`.
+
+`organization_id` es una **propiedad de Python, sin setter**. Devuelve la
+organización **activa** de la sesión si `app/api/deps.py` la fijó (selector
+de cuenta), o si no `default_organization_id`. Es deliberado que lea igual
+que antes del rename: las ~64 lecturas de `current_user.organization_id`
+repartidas por `app/api/v1/endpoints/` no se tocan — es la propiedad la que
+decide en qué organización actúa la sesión, no cada sitio que la consulta.
+
+Cualquier intento de **escribir** `organization_id` falla con
+`AttributeError` a propósito: todo lo que antes reasignaba la columna ahora
+tiene que decir `default_organization_id` explícitamente, auditado al
+introducir esta propiedad (eran solo tres sitios).
 
 IDENTIDAD POR MARCA (Fase 3, rebanada B)
 ========================================
@@ -98,7 +117,7 @@ class User(SQLModel, table=True):
     __tablename__ = "users"
     __table_args__ = (
         Index("idx_users_cognito_sub", "cognito_sub"),
-        Index("idx_users_organization_master", "organization_id", "is_master"),
+        Index("idx_users_organization_master", "default_organization_id", "is_master"),
         # Los tres índices de la 028. Se declaran aquí para que el harness de
         # tests —que construye el esquema con `create_all()`— tenga la misma
         # unicidad que producción: sin ellos, una prueba de la rebanada B3
@@ -151,8 +170,9 @@ class User(SQLModel, table=True):
             server_default=text("gen_random_uuid()"),
         )
     )
-    organization_id: UUID = Field(
+    default_organization_id: UUID = Field(
         sa_column=Column(
+            "default_organization_id",
             PGUUID(as_uuid=True),
             ForeignKey("organizations.id", ondelete="CASCADE"),
             nullable=False,
@@ -229,6 +249,13 @@ class User(SQLModel, table=True):
     )
     account_memberships: List["AccountUser"] = Relationship(back_populates="user")
 
+    @property
+    def organization_id(self) -> UUID:
+        """La organización en la que actúa esta sesión — ver el docstring del
+        módulo. Sin setter a propósito: ver `default_organization_id`."""
+        activa = getattr(self, "_active_organization_id", None)
+        return activa if activa is not None else self.default_organization_id
+
     # Alias para compatibilidad (DEPRECATED)
     @property
     def client_id(self) -> UUID:
@@ -237,8 +264,8 @@ class User(SQLModel, table=True):
 
     @client_id.setter
     def client_id(self, value: UUID):
-        """DEPRECATED: Usar organization_id"""
-        self.organization_id = value
+        """DEPRECATED: Usar default_organization_id"""
+        self.default_organization_id = value
 
     # Alias para compatibilidad (DEPRECATED)
     @property

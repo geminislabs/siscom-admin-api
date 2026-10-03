@@ -33,7 +33,7 @@ def _create_unit(db_session, organization_id, name):
 def _create_user(db_session, organization_id, email, is_master=False):
     user = User(
         id=uuid4(),
-        organization_id=organization_id,
+        default_organization_id=organization_id,
         cognito_sub=f"test-cognito-{uuid4()}",
         email=email,
         full_name="Usuario de prueba",

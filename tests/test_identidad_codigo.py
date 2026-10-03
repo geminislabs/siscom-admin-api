@@ -61,7 +61,7 @@ def _marca(db, nombre="Mero Mero"):
 
 
 def _usuario(db, org, correo, **campos):
-    user = User(id=uuid.uuid4(), organization_id=org.id, email=correo, **campos)
+    user = User(id=uuid.uuid4(), default_organization_id=org.id, email=correo, **campos)
     db.add(user)
     db.flush()
     return user

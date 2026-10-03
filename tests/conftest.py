@@ -391,7 +391,7 @@ def test_user_data(db_session, test_organization_data):
     """
     user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="test-cognito-sub-123",
         email="test@example.com",
         full_name="Test User",

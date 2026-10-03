@@ -467,3 +467,27 @@ class DataTokenResponse(BaseModel):
                 "token_type": "Bearer",
             }
         }
+
+
+class UserOrganizationOut(BaseModel):
+    """
+    Una organización donde el usuario autenticado tiene membresía activa.
+
+    Es la lista que necesita el selector de cuenta (B3, §26 del documento de
+    arquitectura) para decidir si tiene algo que mostrar: con una sola fila no
+    hace falta elegir nada, y es el caso de todo el mundo hoy — medido contra
+    producción el 02/10/2026, cero usuarios con más de una.
+    """
+
+    organization_id: UUID = Field(..., description="ID de la organización")
+    name: str = Field(..., description="Nombre visible de la organización")
+    role: str = Field(..., description="Rol del usuario en esa organización")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "organization_id": "123e4567-e89b-12d3-a456-426614174000",
+                "name": "Flota Norte",
+                "role": "owner",
+            }
+        }

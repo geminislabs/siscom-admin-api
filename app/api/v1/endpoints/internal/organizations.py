@@ -253,7 +253,7 @@ def get_organization_users(
             detail="Organización no encontrada",
         )
 
-    users = db.query(User).filter(User.organization_id == organization_id).all()
+    users = db.query(User).filter(User.default_organization_id == organization_id).all()
 
     return [
         {

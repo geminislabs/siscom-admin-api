@@ -223,7 +223,7 @@ def test_accept_invite_creates_member(
 
     new_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="invite-accept-sub",
         email="inviteaccept@test.com",
         full_name="Invite Accept User",
@@ -305,7 +305,7 @@ def test_accept_invite_after_revoke(
 
     new_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="revoked-invite-sub",
         email="revokedinvite@test.com",
         full_name="Revoked Invite User",

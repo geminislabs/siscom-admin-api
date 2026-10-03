@@ -38,7 +38,7 @@ def test_register_mobility_device_rejects_notification_device_from_other_user(
 ):
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-cognito-sub",
         email="other@example.com",
         full_name="Other User",
@@ -206,7 +206,7 @@ def test_list_mobility_devices_returns_only_current_user_records(
 
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-cognito-list",
         email="other-list@example.com",
         full_name="Other List User",
@@ -305,7 +305,7 @@ def test_get_mobility_device_forbidden_other_user(
 ):
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-forbidden",
         email="other-forbidden@example.com",
         full_name="Forbidden User",
@@ -507,7 +507,7 @@ def test_associate_notification_device_from_other_user(
 ):
     other_user = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="other-notification-owner",
         email="other-notification@example.com",
         full_name="Other Notification User",

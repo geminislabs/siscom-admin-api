@@ -30,7 +30,7 @@ def test_get_users_expone_inactive_para_una_fila_desactivada(
 
     inactivo = User(
         id=uuid4(),
-        organization_id=test_organization_data.id,
+        default_organization_id=test_organization_data.id,
         cognito_sub="sub-inactivo",
         external_id="inactivo@example.com",
         email="inactivo@example.com",

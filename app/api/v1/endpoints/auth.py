@@ -22,7 +22,11 @@ from app.db.session import get_db
 from app.models.account import Account, AccountStatus
 from app.models.account_user import AccountRole, AccountUser
 from app.models.organization import Organization, OrganizationStatus
-from app.models.organization_user import OrganizationRole, OrganizationUser
+from app.models.organization_user import (
+    MembershipStatus,
+    OrganizationRole,
+    OrganizationUser,
+)
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 from app.models.user import User
 from app.observability.metrics import record_auth_attempt, record_session_delta
@@ -48,6 +52,7 @@ from app.schemas.user import (
     ResetPasswordResponse,
     UserLogin,
     UserLoginResponse,
+    UserOrganizationOut,
 )
 from app.services.data_token_issuance import revoke_sessions_for_user
 from app.services.identity import (
@@ -230,7 +235,7 @@ def register_user(
     handle = str(uuid4())
 
     user = User(
-        organization_id=organization.id,
+        default_organization_id=organization.id,
         email=data.email,
         full_name=user_full_name,
         is_master=True,
@@ -398,6 +403,49 @@ def get_my_account(
         role=role,
         organization_id=current_user.organization_id,
     )
+
+
+# ------------------------------------------
+# Organizaciones del usuario — selector de cuenta (B3, §26)
+# ------------------------------------------
+@router.get("/organizations", response_model=list[UserOrganizationOut])
+def list_my_organizations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_full),
+):
+    """
+    Las organizaciones donde el usuario autenticado tiene membresía activa.
+
+    Es el punto de entrada del selector de cuenta: el cliente llama aquí tras
+    el login y, si la lista trae más de una fila, muestra el selector; con una
+    sola (el caso de todo el mundo hoy) no hay nada que elegir. Cambiar de
+    organización activa es mandar su `organization_id` en la cabecera
+    `X-Organization-Id` en las peticiones siguientes — `_load_current_user`
+    (`app/api/deps.py`) la valida contra esta misma membresía en cada una.
+    """
+    filas = (
+        db.query(OrganizationUser, Organization)
+        .join(Organization, Organization.id == OrganizationUser.organization_id)
+        .filter(
+            OrganizationUser.user_id == current_user.id,
+            OrganizationUser.status == MembershipStatus.ACTIVE.value,
+        )
+        .order_by(Organization.name)
+        .all()
+    )
+
+    return [
+        UserOrganizationOut(
+            organization_id=organization.id,
+            name=organization.name,
+            role=(
+                membership.role.value
+                if hasattr(membership.role, "value")
+                else membership.role
+            ),
+        )
+        for membership, organization in filas
+    ]
 
 
 # ------------------------------------------
