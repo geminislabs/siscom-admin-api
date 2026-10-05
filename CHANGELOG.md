@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-10-04
+
+**Migraciones.** Ninguna. La cabeza sigue en `036_organizacion_por_defecto`.
+
+**Rollback.** Redesplegar el tag anterior: no toca el esquema, así que no hay nada que revertir en
+la base.
+
 ### Added
 
 - `GET /auth/organizations` devuelve `is_default` en cada fila: si esa organización es la
