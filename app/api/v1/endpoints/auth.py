@@ -445,6 +445,10 @@ def list_my_organizations(
                 if hasattr(membership.role, "value")
                 else membership.role
             ),
+            # Contra la columna y no contra `current_user.organization_id`:
+            # esa propiedad devuelve la organización activa si la petición
+            # trajo `X-Organization-Id`, y aquí se pregunta por la de siempre.
+            is_default=organization.id == current_user.default_organization_id,
         )
         for membership, organization in filas
     ]

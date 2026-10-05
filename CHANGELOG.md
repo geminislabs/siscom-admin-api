@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GET /auth/organizations` devuelve `is_default` en cada fila: si esa organización es la
+  `default_organization_id` del usuario, la que usa cualquier petición sin `X-Organization-Id`.
+  Sin el campo, los clientes del selector de cuenta (web, iOS, Android) tenían que adivinar cuál
+  es «la de siempre» y marcaban la primera por orden alfabético, que no tiene por qué serlo. Se
+  calcula contra la columna, no contra la organización activa: pedir la lista actuando en otra
+  organización no lo mueve. Aditivo — ningún cliente existente se rompe por recibirlo
+
 ## [1.50.0] - 2026-10-03
 
 **Migraciones.** Ninguna. La cabeza sigue en `036_organizacion_por_defecto`.

@@ -961,6 +961,7 @@ def test_list_my_organizations_una_sola_membresia(
     assert len(cuerpo) == 1
     assert cuerpo[0]["organization_id"] == str(test_organization_data.id)
     assert cuerpo[0]["role"] == "owner"
+    assert cuerpo[0]["is_default"] is True
 
 
 def test_list_my_organizations_con_dos_membresias(
@@ -984,6 +985,45 @@ def test_list_my_organizations_con_dos_membresias(
     assert orgs == {
         str(test_organization_data.id): "owner",
         str(segunda_org.id): "member",
+    }
+    por_defecto = {
+        fila["organization_id"]: fila["is_default"] for fila in response.json()
+    }
+    assert por_defecto == {
+        str(test_organization_data.id): True,
+        str(segunda_org.id): False,
+    }
+
+
+def test_list_my_organizations_is_default_no_sigue_a_la_cabecera(
+    client, db_session, test_organization_data
+):
+    """`is_default` dice cuál es la organización de siempre, no la activa:
+    pedir la lista actuando en la segunda no puede moverlo. Si lo moviera, el
+    cliente no tendría cómo volver a la de siempre."""
+    user = _make_verified_user(db_session, test_organization_data)
+    segunda_org = _con_segunda_organizacion(
+        db_session, test_organization_data, user, "Flota Norte"
+    )
+
+    with patch(
+        "app.api.deps.verify_cognito_token", return_value={"sub": user.cognito_sub}
+    ):
+        response = client.get(
+            "/api/v1/auth/organizations",
+            headers={
+                "Authorization": "Bearer lo-que-sea",
+                "X-Organization-Id": str(segunda_org.id),
+            },
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    por_defecto = {
+        fila["organization_id"]: fila["is_default"] for fila in response.json()
+    }
+    assert por_defecto == {
+        str(test_organization_data.id): True,
+        str(segunda_org.id): False,
     }
 
 

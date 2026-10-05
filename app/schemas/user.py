@@ -482,6 +482,15 @@ class UserOrganizationOut(BaseModel):
     organization_id: UUID = Field(..., description="ID de la organización")
     name: str = Field(..., description="Nombre visible de la organización")
     role: str = Field(..., description="Rol del usuario en esa organización")
+    is_default: bool = Field(
+        ...,
+        description=(
+            "Si es la organización por defecto del usuario "
+            "(`default_organization_id`): la que usa una petición sin "
+            "`X-Organization-Id`. Sin este campo el cliente no tiene cómo "
+            "saber cuál es la «de siempre» y tiene que adivinarla."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -489,5 +498,6 @@ class UserOrganizationOut(BaseModel):
                 "organization_id": "123e4567-e89b-12d3-a456-426614174000",
                 "name": "Flota Norte",
                 "role": "owner",
+                "is_default": True,
             }
         }
