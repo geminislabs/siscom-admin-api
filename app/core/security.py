@@ -133,7 +133,10 @@ def verify_cognito_token(token: str) -> dict:
     try:
         jwks = _get_jwks()
         header = jwt.get_unverified_header(token)
-        key = next((k for k in jwks["keys"] if k["kid"] == header["kid"]), None)
+        # `.get` y no `["kid"]`: un token sin `kid` en la cabecera era un
+        # KeyError fuera del `except` y salía como 500 (medido en producción el
+        # 06/10/2026, ya con python-jose). Es una credencial inválida: 401.
+        key = next((k for k in jwks["keys"] if k["kid"] == header.get("kid")), None)
         if not key:
             raise HTTPException(status_code=401, detail="Invalid token header")
 

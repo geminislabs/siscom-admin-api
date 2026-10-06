@@ -16,6 +16,7 @@ los puntos donde PyJWT, por defecto, se comporta distinto de `python-jose`:
 
 import time
 
+import jwt
 import pytest
 from fastapi import HTTPException, status
 
@@ -74,5 +75,19 @@ def test_exp_vencido_sigue_rechazandose(clave_del_pool):
 
     with pytest.raises(HTTPException) as error:
         verify_cognito_token(token)
+
+    assert error.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@_VERIFICADORES
+def test_token_sin_kid_es_401(clave_del_pool, verificar):
+    """Sin `kid` en la cabecera no hay llave que buscar: credencial inválida,
+    no un 500. Pasaba en `verify_cognito_token` desde antes de PyJWT."""
+    token = jwt.encode(
+        {"sub": "x"}, jwt_del_pool.pem_privado(clave_del_pool), algorithm="RS256"
+    )
+
+    with pytest.raises(HTTPException) as error:
+        verificar(token)
 
     assert error.value.status_code == status.HTTP_401_UNAUTHORIZED
