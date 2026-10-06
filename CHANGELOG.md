@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.53.0] - 2026-10-06
+
+**Migraciones.** Ninguna. La cabeza sigue en `037_por_defecto_activa`.
+
+**Rollback.** Redesplegar `v1.52.0`: no toca el esquema, así que no hay nada que revertir en la
+base. Es el camino si tras el despliegue aparecen 401 en peticiones con un token válido.
+
 ### Security
 
 - **`python-jose` se cambia por `PyJWT` (2.15.1).** Cierra las dos excepciones que había en los
