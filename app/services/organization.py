@@ -30,7 +30,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization
-from app.models.organization_user import OrganizationRole, OrganizationUser
+from app.models.organization_user import (
+    MembershipStatus,
+    OrganizationRole,
+    OrganizationUser,
+)
 from app.models.subscription import Subscription
 from app.models.user import User
 from app.services.subscription_query import (
@@ -95,6 +99,63 @@ class OrganizationService:
         # Si algún día ese contador deja de ser 0, la respuesta no es devolver
         # el *fallback* sino crear la membresía que falta.
         return None
+
+    @staticmethod
+    def reparar_organizacion_por_defecto(db: Session, user: User) -> Optional[UUID]:
+        """
+        Sostiene un invariante: **si el usuario tiene alguna membresía
+        ACTIVE, su `default_organization_id` es una de ellas.**
+
+        Sin esto, pausar o quitar la membresía por defecto dejaba la columna
+        apuntando a una fila no activa, y como `_load_current_user`
+        (`app/api/deps.py`) valida toda petición sin `X-Organization-Id`
+        contra esa columna, la persona recibía 403 en todo
+        —`/auth/organizations` incluido— aunque tuviera otras membresías
+        activas. Lo mismo al revés: a quien no le quedaba ninguna activa y
+        luego lo reactivaban o lo sumaban a otra organización, la columna le
+        seguía apuntando a la vieja. Los clientes no mandan la cabecera si no
+        hay una organización elegida, así que con el invariante pasan solos a
+        la nueva por defecto sin cambiar nada.
+
+        Se llama **después** de cualquier cambio de membresía (pausar,
+        reactivar, borrar, crear), con ese cambio ya en la sesión vía
+        `flush()`, y no hace commit: va en la transacción del llamador o no
+        va. Es idempotente, así que llamarla de más no cuesta nada.
+
+        Si la por defecto ya es una membresía activa, no la toca: el
+        invariante no pide que sea una en particular. Si no lo es, elige la
+        activa más antigua, con el id de la organización como desempate
+        (`created_at` admite NULL): determinista, para que un reintento elija
+        la misma.
+
+        Returns:
+            La nueva organización por defecto, o `None` si no hubo cambio:
+            ya era válida, o no le queda ninguna activa. En ese último caso la
+            columna se deja como está (es NOT NULL) y el 403 es la respuesta
+            correcta: no tiene acceso a nada.
+        """
+        activas = (
+            db.query(OrganizationUser.organization_id)
+            .filter(
+                OrganizationUser.user_id == user.id,
+                OrganizationUser.status == MembershipStatus.ACTIVE.value,
+            )
+            .order_by(
+                OrganizationUser.created_at.asc().nullslast(),
+                OrganizationUser.organization_id.asc(),
+            )
+            .all()
+        )
+        if not activas:
+            return None
+        if any(
+            fila.organization_id == user.default_organization_id for fila in activas
+        ):
+            return None
+
+        user.default_organization_id = activas[0].organization_id
+        db.add(user)
+        return activas[0].organization_id
 
     @staticmethod
     def is_member(
@@ -257,6 +318,12 @@ class OrganizationService:
         )
 
         db.add(membership)
+        db.flush()
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is not None:
+            OrganizationService.reparar_organizacion_por_defecto(db, user)
+
         db.commit()
         db.refresh(membership)
 
@@ -378,6 +445,12 @@ class OrganizationService:
             )
 
         db.delete(membership)
+        db.flush()
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is not None:
+            OrganizationService.reparar_organizacion_por_defecto(db, user)
+
         db.commit()
 
         return True

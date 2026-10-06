@@ -328,6 +328,27 @@ def organizacion_solicitada(
     return x_organization_id
 
 
+def _load_user_by_sub(db: Session, cognito_sub: Optional[str]):
+    """La identidad sola: el usuario del token, sin decir nada de en qué
+    organización actúa. `_load_current_user` la usa y luego valida la
+    membresía; `get_current_user_identity` se queda aquí."""
+    from app.models.user import User
+
+    if not cognito_sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido: falta 'sub'",
+        )
+
+    user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado en el sistema",
+        )
+    return user
+
+
 def _load_current_user(
     db: Session,
     cognito_sub: Optional[str],
@@ -364,20 +385,8 @@ def _load_current_user(
     columna.
     """
     from app.models.organization_user import MembershipStatus, OrganizationUser
-    from app.models.user import User
 
-    if not cognito_sub:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido: falta 'sub'",
-        )
-
-    user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado en el sistema",
-        )
+    user = _load_user_by_sub(db, cognito_sub)
 
     organizacion_objetivo = (
         organization_id if organization_id is not None else user.default_organization_id
@@ -456,6 +465,24 @@ def get_current_user_full(
     organización en la que actúa ya validada. Ver `_load_current_user`.
     """
     return _load_current_user(db, current_user.get("sub"), organization_id)
+
+
+def get_current_user_identity(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    El usuario autenticado **sin** validar membresía ni leer
+    `X-Organization-Id`. Sólo para endpoints que preguntan por la identidad
+    misma y no actúan sobre datos de ninguna organización.
+
+    Hoy lo usa únicamente `GET /auth/organizations`: es la forma de salir de
+    una organización por defecto que ya no es válida, así que no puede
+    depender de ella. Responde con las membresías de la propia persona y
+    nada más, así que no abre nada que `_load_current_user` cierre. No usarlo
+    en endpoints que lean o escriban datos de una organización.
+    """
+    return _load_user_by_sub(db, current_user.get("sub"))
 
 
 def get_current_user_id(

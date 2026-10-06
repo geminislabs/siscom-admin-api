@@ -142,9 +142,23 @@ class AuditService:
         actor_user_id: UUID,
         target_user_id: UUID,
         previous_role: str,
+        default_organization_reassigned_to: Optional[UUID] = None,
         **kwargs: Any,
     ) -> AccountEvent:
-        """Registra cuando se elimina un usuario de una organización."""
+        """Registra cuando se elimina un usuario de una organización.
+
+        `default_organization_reassigned_to` va sólo si la que se quitó era su
+        organización por defecto y ésta pasó a otra (ver
+        `OrganizationService.reparar_organizacion_por_defecto`).
+        """
+        metadata = {
+            "user_id": str(target_user_id),
+            "previous_role": previous_role,
+        }
+        if default_organization_reassigned_to is not None:
+            metadata["default_organization_reassigned_to"] = str(
+                default_organization_reassigned_to
+            )
         return AuditService.log_event(
             db=db,
             account_id=account_id,
@@ -153,10 +167,7 @@ class AuditService:
             event_type=EventType.ORG_USER_REMOVED.value,
             target_type=TargetType.ORGANIZATION_USER.value,
             target_id=target_user_id,
-            metadata={
-                "user_id": str(target_user_id),
-                "previous_role": previous_role,
-            },
+            metadata=metadata,
             **kwargs,
         )
 
@@ -197,9 +208,23 @@ class AuditService:
         target_user_id: UUID,
         old_status: str,
         new_status: str,
+        default_organization_reassigned_to: Optional[UUID] = None,
         **kwargs: Any,
     ) -> AccountEvent:
-        """Registra cuando se pausa o reactiva una membresía (no la cuenta)."""
+        """Registra cuando se pausa o reactiva una membresía (no la cuenta).
+
+        `default_organization_reassigned_to` va sólo si la pausa movió la
+        organización por defecto a otra membresía activa.
+        """
+        metadata = {
+            "user_id": str(target_user_id),
+            "old_status": old_status,
+            "new_status": new_status,
+        }
+        if default_organization_reassigned_to is not None:
+            metadata["default_organization_reassigned_to"] = str(
+                default_organization_reassigned_to
+            )
         return AuditService.log_event(
             db=db,
             account_id=account_id,
@@ -208,11 +233,7 @@ class AuditService:
             event_type=EventType.ORG_USER_STATUS_CHANGED.value,
             target_type=TargetType.ORGANIZATION_USER.value,
             target_id=target_user_id,
-            metadata={
-                "user_id": str(target_user_id),
-                "old_status": old_status,
-                "new_status": new_status,
-            },
+            metadata=metadata,
             **kwargs,
         )
 

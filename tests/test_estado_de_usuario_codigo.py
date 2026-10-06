@@ -208,14 +208,22 @@ def test_con_otra_membresia_activa_sacarlo_no_apaga_la_cuenta(
     assert [m.organization_id for m in restantes] == [segunda_org.id]
 
 
-def test_organization_id_colgante_falla_cerrado_en_vez_de_servir_datos_ajenos(
+def test_sacar_de_la_por_defecto_nunca_sirve_datos_de_esa_organizacion(
     client, db_session, test_organization_data, test_user_data, idp_falso
 ):
-    """La Parte 2 del rediseño: `users.organization_id` no se repunta al
-    sacar a alguien de la organización a la que apuntaba — la víctima del
-    test anterior sigue con `organization_id` = la organización de la que
-    ya no es miembro. Cualquier request suyo tiene que fallar cerrado ahí,
-    no resolver alertas/unidades/dispositivos contra esa organización."""
+    """La garantía de la Parte 2 del rediseño: tras sacar a alguien de su
+    organización por defecto, ninguna petición suya resuelve datos contra
+    esa organización.
+
+    Hasta el 06/10/2026 eso se lograba **sin** repuntar la columna: quedaba
+    colgando y toda petición sin cabecera fallaba cerrado con 403 —«en vez
+    de adivinar cuál membresía es la nueva principal» (`c7c278e`)—. Era
+    seguro, pero dejaba sin servicio a quien sí tenía otra membresía activa,
+    y ni siquiera podía listarlas para elegir. Desde que existe el selector,
+    `OrganizationService.reparar_organizacion_por_defecto` la mueve a la
+    activa más antigua (un criterio fijo, no una adivinanza), y la persona
+    puede cambiarla. La garantía de seguridad es la misma: la organización
+    de la que se le sacó queda fuera, con y sin cabecera."""
     victima = _otro_usuario(db_session, test_organization_data, "colgante@example.com")
     segunda_org = Organization(
         id=uuid4(),
@@ -237,18 +245,27 @@ def test_organization_id_colgante_falla_cerrado_en_vez_de_servir_datos_ajenos(
     _sacar_de_la_organizacion(client, test_user_data, test_organization_data, victima)
     db_session.refresh(victima)
     assert victima.status == UserStatus.ACTIVE.value  # la cuenta sigue viva
-    assert victima.organization_id == test_organization_data.id  # pero colgando
+    assert victima.default_organization_id == segunda_org.id  # y ya no cuelga
 
     with patch(
         "app.api.deps.verify_cognito_token",
         return_value={"sub": victima.cognito_sub},
     ):
-        respuesta = client.get(
-            "/api/v1/users/me",
+        sin_cabecera = client.get(
+            "/api/v1/auth/me",
             headers={"Authorization": "Bearer lo-que-sea"},
         )
+        hacia_la_que_perdio = client.get(
+            "/api/v1/users/me",
+            headers={
+                "Authorization": "Bearer lo-que-sea",
+                "X-Organization-Id": str(test_organization_data.id),
+            },
+        )
 
-    assert respuesta.status_code == status.HTTP_403_FORBIDDEN
+    assert sin_cabecera.status_code == status.HTTP_200_OK
+    assert sin_cabecera.json()["organization_id"] == str(segunda_org.id)
+    assert hacia_la_que_perdio.status_code == status.HTTP_403_FORBIDDEN
 
 
 def test_sin_otra_membresia_activa_si_apaga_la_cuenta(

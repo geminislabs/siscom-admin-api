@@ -11,8 +11,10 @@ ORGANIZATION_ID: COLUMNA vs. PROPIEDAD (selector de cuenta, B3)
 ================================================================
 `default_organization_id` es la columna (migración `036`, antes se llamaba
 `organization_id`): la organización con la que nació la fila, de solo
-escritura explícita — hoy sólo la tocan `register_user` y
-`accept_invitation`.
+escritura explícita — la tocan `register_user`, `accept_invitation` y
+`OrganizationService.reparar_organizacion_por_defecto`, que la mueve cuando
+deja de ser una membresía activa (invariante: si el usuario tiene alguna
+membresía ACTIVE, ésta es una de ellas).
 
 `organization_id` es una **propiedad de Python, sin setter**. Devuelve la
 organización **activa** de la sesión si `app/api/deps.py` la fijó (selector

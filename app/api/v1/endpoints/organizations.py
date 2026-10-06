@@ -26,11 +26,13 @@ from app.api.deps import AuthResult, require_organization_role
 from app.db.session import get_db
 from app.models.organization import Organization, OrganizationStatus
 from app.models.organization_user import OrganizationRole, OrganizationUser
+from app.models.user import User
 from app.schemas.organization import (
     OrganizationCreate,
     OrganizationOut,
     OrganizationUpdate,
 )
+from app.services.organization import OrganizationService
 from app.utils.datetime import utcnow
 
 logger = logging.getLogger(__name__)
@@ -92,6 +94,13 @@ def create_organization(
         role=OrganizationRole.OWNER,
     )
     db.add(membership)
+    db.flush()
+
+    # Por si quien la crea no tenía ninguna otra membresía activa: ver
+    # `OrganizationService.reparar_organizacion_por_defecto`.
+    creador = db.query(User).filter(User.id == auth.user_id).first()
+    if creador is not None:
+        OrganizationService.reparar_organizacion_por_defecto(db, creador)
 
     db.commit()
     db.refresh(new_org)
