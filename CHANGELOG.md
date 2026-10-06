@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Un token sin `kid` en la cabecera daba **500** en vez de 401 en todo endpoint autenticado:
+  `verify_cognito_token` leía `header["kid"]` fuera del `except`. Medido en producción el
+  06/10/2026; ya pasaba con `python-jose`, no lo trajo PyJWT. No abría nada —el token se rechazaba
+  igual—, pero era un error del servidor ante una credencial inválida. La función del refresco ya
+  usaba `header.get("kid")`
+
 ## [1.53.0] - 2026-10-06
 
 **Migraciones.** Ninguna. La cabeza sigue en `037_por_defecto_activa`.
