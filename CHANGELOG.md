@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.52.0] - 2026-10-06
+
+**Migraciones.** `037_por_defecto_activa`, solo datos: un `UPDATE` de `users.default_organization_id`
+para quien ya la tuviera apuntando a una membresía no activa y le quede otra activa. Lo esperable
+es que no toque ninguna fila. Cabeza: `036_organizacion_por_defecto` → `037_por_defecto_activa`.
+
+**Rollback.** Redesplegar el tag anterior basta: el código de `v1.51.0` funciona igual con la
+columna reparada. El `downgrade` de la `037` es un no-op deliberado (el valor anterior era el roto y
+no se guarda), así que `alembic downgrade 036_organizacion_por_defecto` no borra nada; sólo hace
+falta, antes de desplegar el tag viejo, para que alembic no aborte con
+`Can't locate revision identified by '037_por_defecto_activa'`.
+
 ### Security
 
 - **`CVE-2026-85394` en `python-jose` se registra como riesgo aceptado, con prueba.** Sin
