@@ -2,9 +2,9 @@ import logging
 import time
 from threading import Lock
 
+import jwt
 import requests
 from fastapi import HTTPException, status
-from jose import JWTError, jwt
 
 from app.core.config import settings
 
@@ -70,17 +70,36 @@ def _token_invalido() -> HTTPException:
     )
 
 
+# Opciones comunes a los dos `jwt.decode`, para que la verificación siga
+# siendo la que hacía `python-jose` (cambiado por PyJWT el 06/10/2026):
+# - `verify_aud`: los access tokens de Cognito llevan `client_id`, no `aud`;
+#   lo comprueba `_exigir_access_token_del_pool`.
+# - `verify_iat`: PyJWT rechaza un `iat` en el futuro con margen cero;
+#   `python-jose` sólo exigía que fuera entero. Con el reloj del servidor un
+#   segundo por detrás del de Cognito, un token recién emitido se rechazaría.
+#   `exp` y la firma siguen verificándose, que es lo que acota el token.
+_OPCIONES_COMUNES = {"verify_aud": False, "verify_iat": False}
+
+
+def _llave_de(jwk: dict):
+    """La llave pública de un JWK de las JWKS. `python-jose` aceptaba el dict
+    tal cual; PyJWT lo quiere construido. Se fija RS256: la llave no decide el
+    algoritmo, lo decide `algorithms=` en `jwt.decode`."""
+    return jwt.PyJWK(jwk, algorithm="RS256").key
+
+
 def _exigir_access_token_del_pool(payload: dict, *, log: str) -> None:
     """Lo que la firma **no** dice: de dónde viene el token, para qué se emitió
     y para quién.
 
     La firma sólo acredita que lo emitió este pool. No que sea un access token
     —un id token del mismo pool la pasa igual de bien— ni que se emitiera para
-    este cliente. Medido contra `python-jose 3.5.0` el 26/09/2026:
-    `audience=COGNITO_CLIENT_ID` no cubre lo último, porque los access tokens de
-    Cognito llevan `client_id` y no `aud`, y el paquete acepta un token *sin*
-    `aud` aunque se le pase `audience=` — el `raise` está comentado en el
-    paquete. De ahí que estas comprobaciones estén escritas a mano.
+    este cliente. `audience=COGNITO_CLIENT_ID` no cubre lo último, porque los
+    access tokens de Cognito llevan `client_id` y no `aud` (medido contra
+    `python-jose 3.5.0` el 26/09/2026, que además aceptaba un token *sin*
+    `aud` aunque se le pasara `audience=`; PyJWT lo rechazaría, pero tampoco
+    serviría: el claim que importa es `client_id`). De ahí que estas
+    comprobaciones estén escritas a mano.
     """
     if payload.get("iss") != _issuer_esperado():
         logger.warning("%s.issuer_ajeno", log)
@@ -120,15 +139,14 @@ def verify_cognito_token(token: str) -> dict:
 
         payload = jwt.decode(
             token,
-            key,
+            _llave_de(key),
             algorithms=["RS256"],
-            # `verify_aud` fuera: para un access token es un no-op medido, y
-            # quien comprueba de verdad para quién se emitió el token es la
-            # exigencia de `client_id` de abajo.
-            options={"verify_aud": False},
+            # Ver `_OPCIONES_COMUNES`: quien comprueba de verdad para quién se
+            # emitió el token es la exigencia de `client_id` de abajo.
+            options=_OPCIONES_COMUNES,
         )
 
-    except JWTError as e:
+    except jwt.PyJWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
@@ -188,11 +206,11 @@ def verificar_access_token_para_refresco(token: str) -> dict:
 
         payload = jwt.decode(
             token,
-            key,
+            _llave_de(key),
             algorithms=["RS256"],
-            options={"verify_exp": False, "verify_aud": False},
+            options={**_OPCIONES_COMUNES, "verify_exp": False},
         )
-    except JWTError as e:
+    except jwt.PyJWTError as e:
         logger.warning("auth.refresh.token.firma_invalida: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

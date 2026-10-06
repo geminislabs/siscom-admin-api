@@ -4,8 +4,8 @@
 llama y se queda con el `sub` para encontrar la fila del usuario. Hasta el
 28/09/2026 sólo exigía **la firma y `exp`** — pasaba `audience=` creyendo cubrir
 para quién se emitió el token, y eso es un no-op medido: los access tokens de
-Cognito llevan `client_id` y no `aud`, y `python-jose` acepta un token *sin*
-`aud` aunque se le pase `audience=`.
+Cognito llevan `client_id` y no `aud`, y `python-jose` (la librería hasta el
+06/10/2026) aceptaba un token *sin* `aud` aunque se le pasara `audience=`.
 
 La consecuencia era que **un id token del mismo pool servía donde se espera un
 access token**. Los dos llevan `sub`, y el `sub` es lo único que se mira después.
@@ -83,8 +83,9 @@ def test_un_token_de_otro_pool_no_sirve(clave_del_pool):
 
 
 def test_un_access_token_sin_client_id_no_sirve(clave_del_pool):
-    """Quitar el claim no es lo mismo que traerlo mal, y `python-jose` no
-    distingue: por eso la comprobación es una igualdad y no un `if presente`."""
+    """Quitar el claim no es lo mismo que traerlo mal, y la librería JWT no
+    mira `client_id`: por eso la comprobación es una igualdad y no un
+    `if presente`."""
     token = jwt_del_pool.access_token(clave_del_pool, client_id=None)
 
     assert _rechazo(token).status_code == status.HTTP_401_UNAUTHORIZED
