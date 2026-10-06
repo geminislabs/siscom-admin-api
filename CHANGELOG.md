@@ -15,6 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fabrica el token del ataque y exige 401. Registro en `docs/security/threat-model.md`; la salida
   de fondo sigue siendo cambiar `python-jose` por `PyJWT`
 
+### Fixed
+
+- **La organización por defecto ya no queda apuntando a una membresía inactiva.** Pausar
+  (`PATCH /organizations/{org}/users/{id}/status`) o quitar (`DELETE`) la membresía por defecto de
+  alguien dejaba `default_organization_id` colgando, y como toda petición sin `X-Organization-Id`
+  se valida contra esa columna, la persona recibía 403 en todo —`/auth/organizations` incluido—
+  aunque tuviera otras membresías activas. Ahora se sostiene un invariante: **si el usuario tiene
+  alguna membresía ACTIVE, su organización por defecto es una de ellas**
+  - `OrganizationService.reparar_organizacion_por_defecto` mueve la columna a la membresía activa
+    más antigua (desempate por id de organización). Corre en la misma transacción en todo camino
+    que cambia membresías: pausar, reactivar, `DELETE`, `POST /organizations/{org}/users`, crear
+    organización y `OrganizationService.add_member`/`remove_member`. Sin otra activa, la columna se
+    queda (es NOT NULL) y el 403 es correcto
+  - Los clientes no cambian: sin organización elegida no mandan la cabecera, y el backend ya los
+    resuelve a la nueva por defecto
+  - El cambio queda en la auditoría: `default_organization_reassigned_to` en la metadata de
+    `org_user_status_changed` y `org_user_removed` cuando la por defecto se movió
+  - Revierte una decisión del 30/09 (`c7c278e`): entonces se dejó la columna colgando para «fallar
+    cerrado en vez de adivinar cuál membresía es la nueva principal». Con el selector de cuenta en
+    producción el criterio es fijo y la persona puede cambiarlo; la garantía de seguridad se
+    conserva — la organización de la que se le sacó queda fuera, con y sin cabecera
+- `GET /auth/organizations` autentica sólo la identidad (`get_current_user_identity`): no valida la
+  organización por defecto ni lee `X-Organization-Id`. Es la salida cuando la organización en la
+  que se actúa deja de ser válida. En el contrato OpenAPI desaparece el parámetro de cabecera (y
+  su 422) de ese endpoint; un cliente que la mande no se rompe, se ignora
+
 ## [1.51.0] - 2026-10-04
 
 **Migraciones.** Ninguna. La cabeza sigue en `036_organizacion_por_defecto`.

@@ -12,6 +12,7 @@ from app.api.deps import (
     BearerAuth,
     get_cuenta_de_marca,
     get_current_user_full,
+    get_current_user_identity,
     get_data_token_issuer,
     get_identity_provider,
     get_identity_provider_para_login,
@@ -413,7 +414,7 @@ def get_my_account(
 @router.get("/organizations", response_model=list[UserOrganizationOut])
 def list_my_organizations(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_identity),
 ):
     """
     Las organizaciones donde el usuario autenticado tiene membresía activa.
@@ -424,6 +425,13 @@ def list_my_organizations(
     organización activa es mandar su `organization_id` en la cabecera
     `X-Organization-Id` en las peticiones siguientes — `_load_current_user`
     (`app/api/deps.py`) la valida contra esta misma membresía en cada una.
+
+    Autentica sólo la identidad (`get_current_user_identity`): no valida la
+    organización por defecto ni lee la cabecera. Es la salida cuando la
+    organización en la que se actúa deja de ser válida, así que no puede
+    depender de ella. `OrganizationService.reparar_organizacion_por_defecto`
+    impide que la por defecto quede rota; esto es la red por si algún camino
+    futuro se la salta.
     """
     filas = (
         db.query(OrganizationUser, Organization)

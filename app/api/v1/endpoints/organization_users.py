@@ -313,6 +313,14 @@ def add_user_to_organization(
         role=data.role,
     )
     db.add(membership)
+    db.flush()
+
+    # Si no le quedaba ninguna membresía activa, ésta pasa a ser su
+    # organización por defecto — ver `OrganizationService.
+    # reparar_organizacion_por_defecto`.
+    nuevo_miembro = db.query(User).filter(User.id == data.user_id).first()
+    if nuevo_miembro is not None:
+        OrganizationService.reparar_organizacion_por_defecto(db, nuevo_miembro)
 
     # Registrar evento de auditoría
     AuditService.log_org_user_added(
@@ -510,9 +518,12 @@ def update_membership_status(
     **No es `DELETE`.** No borra la membresía, no toca `users.status` y no
     llama al proveedor de identidad — sólo cambia el estado de esta relación
     puntual `(organization_id, user_id)`. Alguien con otra membresía activa en
-    otra organización no se ve afectado en absoluto: sigue pudiendo iniciar
-    sesión y usar la app ahí. `DELETE` sigue siendo la baja completa (borra la
-    membresía y, si era su organización principal, desactiva la cuenta).
+    otra organización sigue pudiendo iniciar sesión y usar la app ahí. Si la
+    que se pausa era su organización por defecto, ésta pasa a otra de sus
+    membresías activas (ver `OrganizationService.
+    reparar_organizacion_por_defecto`): sin eso, toda petición sin
+    `X-Organization-Id` daba 403. `DELETE` sigue siendo la baja completa
+    (borra la membresía y, si era la última activa, desactiva la cuenta).
 
     Reglas:
     - Admin NO puede modificar a owners
@@ -575,6 +586,16 @@ def update_membership_status(
 
     membership.status = nuevo_estado
     db.add(membership)
+    db.flush()
+
+    # En las dos direcciones: pausar su organización por defecto la mueve a
+    # otra membresía activa, y reactivar una membresía a quien no le quedaba
+    # ninguna activa la vuelve su por defecto. Misma transacción que el cambio.
+    nueva_por_defecto = None
+    if target_user is not None:
+        nueva_por_defecto = OrganizationService.reparar_organizacion_por_defecto(
+            db, target_user
+        )
 
     AuditService.log_org_user_status_changed(
         db=db,
@@ -584,6 +605,7 @@ def update_membership_status(
         target_user_id=user_id,
         old_status=estado_anterior,
         new_status=nuevo_estado,
+        default_organization_reassigned_to=nueva_por_defecto,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
@@ -596,6 +618,9 @@ def update_membership_status(
         extra={
             "user_id": str(user_id),
             "organization_id": str(organization_id),
+            "default_organization_reassigned_to": (
+                str(nueva_por_defecto) if nueva_por_defecto else None
+            ),
             "old_status": estado_anterior,
             "new_status": nuevo_estado,
             "actor_user_id": str(auth.user_id),
@@ -697,7 +722,22 @@ def remove_user_from_organization(
                 detail="No se puede eliminar al último owner de la organización",
             )
 
-    # Registrar evento de auditoría ANTES de eliminar
+    # Eliminar la membresía
+    db.delete(membership)
+    db.flush()
+
+    # Si era su organización por defecto, la por defecto pasa a otra
+    # membresía activa — ver `OrganizationService.reparar_organizacion_por_defecto`.
+    target = db.query(User).filter(User.id == user_id).first()
+    nueva_por_defecto = None
+    if target is not None:
+        nueva_por_defecto = OrganizationService.reparar_organizacion_por_defecto(
+            db, target
+        )
+
+    # La auditoría va después del flush para poder decir si la por defecto
+    # cambió; sigue en la misma transacción, así que o quedan las dos cosas o
+    # ninguna.
     AuditService.log_org_user_removed(
         db=db,
         account_id=org.account_id,
@@ -705,13 +745,10 @@ def remove_user_from_organization(
         actor_user_id=auth.user_id,
         target_user_id=user_id,
         previous_role=current_role_str,
+        default_organization_reassigned_to=nueva_por_defecto,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-
-    # Eliminar la membresía
-    db.delete(membership)
-    db.flush()
 
     # Y desactivar la fila sólo si esta era su última membresía ACTIVA en
     # cualquier organización — lo que de verdad rompe el callejón sin
@@ -724,7 +761,6 @@ def remove_user_from_organization(
     # rediseño documentado junto a la migración 035, que es su prerrequisito:
     # sin el backfill de ahí, esta cuenta habría dado falsos ceros para
     # cualquiera invitado por la vía clásica.
-    target = db.query(User).filter(User.id == user_id).first()
     desactivado = False
     if target is not None:
         remaining_active = (
@@ -765,6 +801,9 @@ def remove_user_from_organization(
             "previous_role": current_role_str,
             "actor_user_id": str(auth.user_id),
             "deactivated": desactivado,
+            "default_organization_reassigned_to": (
+                str(nueva_por_defecto) if nueva_por_defecto else None
+            ),
         },
     )
 
