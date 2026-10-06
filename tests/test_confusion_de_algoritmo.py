@@ -1,29 +1,26 @@
-"""CVE-2026-85394 (`python-jose` <= 3.5.0) no es explotable aquí: lo prueba
-el ataque mismo, no un razonamiento.
+"""Confusión de algoritmo: un HS256 firmado con la llave pública no entra.
 
-El fallo: `python-jose` acepta como secreto HMAC una llave pública RSA en DER
-(sin la armadura PEM que el arreglo de CVE-2024-33663 sí detecta). Quien tenga
-la llave pública del servicio —y las JWKS de Cognito son públicas— puede
-firmar un token HS256 que pase la verificación **si `jwt.decode` no restringe
-los algoritmos**.
+Nació para CVE-2026-85394 (`python-jose` <= 3.5.0 aceptaba como secreto HMAC
+una llave pública RSA en DER, así que con la llave pública —y las JWKS de
+Cognito son públicas— se podía firmar un HS256 válido **si `jwt.decode` no
+restringía los algoritmos**). Desde el 06/10/2026 el servicio usa PyJWT y ese
+CVE ya no aplica, pero el ataque es genérico y el test se queda como guarda.
 
-Aquí hay dos barreras, medidas el 06/10/2026:
+Dos barreras, medidas con PyJWT 2.15.1 el 06/10/2026:
 
 1. Los dos únicos `jwt.decode` del servicio (`app/core/security.py`) pasan
    `algorithms=["RS256"]`, así que un token HS256 se rechaza antes de mirar
    la llave.
-2. La llave llega de las JWKS como JWK (`kty: RSA`), no como bytes. Aun
-   permitiendo HS256, `python-jose` no la acepta como secreto HMAC
-   (`JWKError: Incorrect key type`) — el ataque necesita la llave en bytes.
+2. La llave se construye del JWK (`jwt.PyJWK(...).key`, un objeto RSA), no
+   son bytes. Aun permitiendo HS256, PyJWT no la acepta como secreto HMAC
+   (`TypeError: Expected a string or bytes value`).
 
 Estos tests fabrican el token del ataque —HS256, firmado con la llave pública
 en DER y en PEM, con los claims de un access token válido— y exigen un 401 de
 las dos funciones. Quitar la primera barrera cambia ese resultado —medido: con
-HS256 permitido escapa un `JWKError` en vez del 401—, así que esto vigila el
-uso del que depende la excepción de `scripts/pip-audit-scan.sh`. Quitar sólo
-la segunda no lo cambiaría, porque la primera sigue rechazando: la segunda es
-defensa en profundidad, no lo que el test fija. Ver
-`docs/security/threat-model.md`, Riesgos aceptados.
+HS256 permitido escapa un `TypeError` en vez del 401—. Quitar sólo la segunda
+no lo cambiaría, porque la primera sigue rechazando: la segunda es defensa en
+profundidad, no lo que el test fija.
 """
 
 import base64
@@ -51,8 +48,8 @@ def _b64(datos: bytes) -> str:
 
 
 def _hs256_firmado_con(secreto: bytes) -> str:
-    """El token del ataque, construido a mano para no depender de lo que
-    `python-jose` deje o no deje firmar."""
+    """El token del ataque, construido a mano para no depender de lo que la
+    librería JWT deje o no deje firmar."""
     ahora = int(time.time())
     cabecera = {"alg": "HS256", "typ": "JWT", "kid": jwt_del_pool.KID}
     claims = {

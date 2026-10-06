@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`python-jose` se cambia por `PyJWT` (2.15.1).** Cierra las dos excepciones que había en los
+  escáneres, las dos por `python-jose`: `CVE-2026-85394` (confusión de algoritmo con llave pública
+  en DER) y `PYSEC-2026-1325` (`ecdsa`, Minerva). Ninguna era explotable aquí, pero eran permanentes
+  por una sola llamada a la librería. Salen también `ecdsa`, `rsa` y `pyasn1`
+  - `app/core/security.py`: `jwt.PyJWK(...).key` para la llave del JWK, `jwt.PyJWTError` en vez de
+    `JWTError`. Misma verificación: firma RS256, `exp` (salvo en el refresco D2), `iss`,
+    `token_use`, `client_id` y `sub`
+  - **`verify_iat` desactivado a propósito**: PyJWT rechaza un `iat` en el futuro con margen cero, y
+    `python-jose` sólo exigía que fuera entero (verificado en su código). Con el reloj del servidor
+    un segundo por detrás del de Cognito, un token recién emitido se habría rechazado
+  - `tests/test_pyjwt_paridad.py` fija lo que el cambio no podía mover: `iat` en el futuro, token
+    malformado (401, no 500), JWK sin `alg`, `exp` vencido sigue rechazándose
+  - Sin excepciones en `scripts/pip-audit-scan.sh` ni en `osv-scanner.toml`; `docs/security/threat-model.md`
+    las pasa a «Cerrados»
+
 ## [1.52.0] - 2026-10-06
 
 **Migraciones.** `037_por_defecto_activa`, solo datos: un `UPDATE` de `users.default_organization_id`

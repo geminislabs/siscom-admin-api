@@ -13,9 +13,10 @@ representar a Cognito sin que ningún test se quejara.
 
 import time
 
+import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jose import jwk, jwt
+from jwt.algorithms import RSAAlgorithm
 
 from app.core.config import settings
 from app.core.security import _issuer_esperado
@@ -36,23 +37,11 @@ def pem_privado(clave):
 
 
 def jwks_de(clave):
-    pem = (
-        clave.public_key()
-        .public_bytes(
-            serialization.Encoding.PEM,
-            serialization.PublicFormat.SubjectPublicKeyInfo,
-        )
-        .decode()
-    )
-    entrada = jwk.construct(pem, "RS256").to_dict()
-    entrada["kid"] = KID
-    # `to_dict()` devuelve `n` y `e` en bytes; el decodificador los quiere como
-    # texto, igual que vienen del endpoint real de Cognito.
-    return {
-        "keys": [
-            {k: (v.decode() if isinstance(v, bytes) else v) for k, v in entrada.items()}
-        ]
-    }
+    """Las JWKS con la forma que publica Cognito: `kty`, `n`, `e` como texto,
+    más `kid`, `alg` y `use`."""
+    entrada = RSAAlgorithm.to_jwk(clave.public_key(), as_dict=True)
+    entrada.update({"kid": KID, "alg": "RS256", "use": "sig"})
+    return {"keys": [entrada]}
 
 
 def _ahora() -> int:

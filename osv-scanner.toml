@@ -8,23 +8,3 @@ name = "pip"
 ecosystem = "PyPI"
 vulnerability.ignore = true
 reason = "pip is not pinned in requirements.txt; false positive from pip-* tooling packages"
-
-# Transitive via python-jose (JWT/Cognito). No fixed release; maintainers consider
-# Minerva timing attacks out of scope. Does not apply here: `app/core/security.py` only
-# calls `jwt.decode` with `algorithms=["RS256"]` — no signing, no key generation, no ECDH,
-# and signature verification is unaffected. pip-audit flags the same issue as
-# PYSEC-2026-1325 and is silenced in `scripts/pip-audit-scan.sh` with this reasoning.
-[[IgnoredVulns]]
-id = "GHSA-wj6h-64fc-37mp"
-reason = "ecdsa via python-jose; no fix available (CVE-2024-23342); not reachable — RS256 verification only. Full record: docs/security/threat-model.md, Riesgos aceptados"
-
-# python-jose <= 3.5.0 accepts a DER-encoded RSA public key as an HMAC secret, so an
-# HS256 token can be forged with the public key when `jwt.decode` does not restrict
-# algorithms. No fixed release. Not exploitable here: both `jwt.decode` calls in
-# `app/core/security.py` pass `algorithms=["RS256"]`, and the key comes from the JWKS
-# as a JWK, not bytes. `tests/test_confusion_de_algoritmo.py` forges the attack token
-# and requires a 401. pip-audit reports the same issue as CVE-2026-85394 and is
-# silenced in `scripts/pip-audit-scan.sh` with this reasoning.
-[[IgnoredVulns]]
-id = "GHSA-3qf3-8w2g-rqmx"
-reason = "python-jose DER key algorithm confusion (CVE-2026-85394); no fix available; not reachable — RS256-only decode with JWK keys, proven by tests/test_confusion_de_algoritmo.py. Full record: docs/security/threat-model.md, Riesgos aceptados"

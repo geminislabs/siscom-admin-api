@@ -139,8 +139,8 @@ def test_un_id_token_no_sirve(
 ):
     """Está firmado por el mismo pool y aun así no es este token.
 
-    Sin la comprobación de `token_use` pasaría: python-jose no la mira, y la
-    verificación normal tampoco.
+    Sin la comprobación de `token_use` pasaría: la librería JWT no la mira, y
+    la verificación normal tampoco.
     """
     respuesta = _renovar(client, _access_token(clave_del_pool, token_use="id"))
 

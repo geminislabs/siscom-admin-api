@@ -78,7 +78,7 @@ jobs:
           python-version: '3.12'
 
       # `pip-audit-scan.sh` instala `requirements.txt` por su cuenta, y lleva
-      # dentro el `--ignore-vuln` de `ecdsa` con su razonamiento. Correrlo tal
+      # dentro los `--ignore-vuln` que haya, con su razonamiento. Correrlo tal
       # cual evita que la lista de riesgos aceptados se duplique aquí y se
       # desincronice.
       - name: pip-audit dependency scan

@@ -107,55 +107,11 @@ esta sección porque la decisión estaba repartida entre la configuración de do
 escáneres y no en ningún sitio legible: quien viera la alerta por tercera vez
 volvía a investigarla desde cero.
 
-### `ecdsa` — Minerva, ataque de timing sobre P-256
-
-- **Identificadores**: `GHSA-wj6h-64fc-37mp`, `CVE-2024-23342`, `PYSEC-2026-1325`.
-- **Severidad declarada**: alta. **Sin versión corregida**: los mantenedores de
-  `python-ecdsa` consideran los ataques de canal lateral fuera de alcance.
-- **Cómo llega**: transitiva vía `python-jose`, que es la librería de JWT.
-- **Por qué no aplica aquí**: Minerva ataca el *firmado* ECDSA sobre P-256.
-  `app/core/security.py` hace una sola llamada a la librería —`jwt.decode(...,
-  algorithms=["RS256"])`— y RS256 es RSA, no curva elíptica. No se firma nada,
-  no se generan claves y no hay ECDH. El camino vulnerable no se ejecuta.
-- **Dónde está registrada la excepción**, que ahora son tres sitios y deben
-  seguir coincidiendo:
-  - `osv-scanner.toml` → `[[IgnoredVulns]] id = "GHSA-wj6h-64fc-37mp"`
-  - `scripts/pip-audit-scan.sh` → `--ignore-vuln PYSEC-2026-1325`
-  - La alerta de Dependabot (#18), descartada el 8/09/2026 con motivo `not_used`
-- **Qué la cerraría de verdad**: quitar `python-jose`. Se usa para exactamente
-  una llamada, y `PyJWT` + `cryptography` hace la misma verificación RS256 sin
-  arrastrar `ecdsa`. Es un cambio en el camino de verificación de tokens, así
-  que merece su propio PR y sus pruebas, no ir de pasada.
-
-### `python-jose` — confusión de algoritmo con llave pública en DER
-
-- **Identificadores**: `GHSA-3qf3-8w2g-rqmx` (OSV), `CVE-2026-85394`
-  (`pip-audit`). Es un arreglo incompleto de `CVE-2024-33663`, que OSV lista
-  como alias del mismo aviso.
-- **Sin versión corregida**: afecta hasta `python-jose` 3.5.0, la última.
-- **Qué es**: `python-jose` acepta como secreto HMAC una llave pública RSA en
-  DER (sin armadura PEM). Con la llave pública del servicio —las JWKS de
-  Cognito son públicas— se puede firmar un HS256 que pase la verificación si
-  `jwt.decode` no restringe los algoritmos.
-- **Por qué no aplica aquí**: dos barreras, medidas el 06/10/2026.
-  `app/core/security.py` llama a `jwt.decode` dos veces, las dos con
-  `algorithms=["RS256"]`; y la llave llega de las JWKS como JWK (`kty: RSA`),
-  que `python-jose` no acepta como secreto HMAC aunque se permitiera HS256.
-- **Cómo se sabe**: `tests/test_confusion_de_algoritmo.py` fabrica el token
-  del ataque (HS256 firmado con la llave pública en DER y en PEM) y exige 401
-  de las dos funciones. Permitir HS256 rompe el test (medido); pasar la llave
-  en bytes manteniendo `RS256` no lo rompería, porque la primera barrera
-  sigue rechazando — la que el test fija es esa.
-- **Dónde está registrada la excepción**:
-  - `osv-scanner.toml` → `[[IgnoredVulns]] id = "GHSA-3qf3-8w2g-rqmx"`
-  - `scripts/pip-audit-scan.sh` → `--ignore-vuln CVE-2026-85394`
-- **Qué la cerraría de verdad**: lo mismo que la de `ecdsa` — quitar
-  `python-jose` por `PyJWT` + `cryptography`. Con dos riesgos aceptados que
-  vienen de la misma librería, ese PR ya tiene más de un motivo.
+Hoy no hay ninguno abierto.
 
 **Al revisar esta lista**: una excepción deja de ser válida en cuanto cambia el
-uso. Si algún día se firma con ECDSA o se acepta ES256 en `jwt.decode`, esta
-entrada se invalida y hay que quitar la dependencia.
+uso del que depende su «por qué no aplica». Cada entrada tiene que decir cuál es
+ese uso y, cuando se pueda, un test que lo fije.
 
 **Cerrados**: `setuptools` (`PYSEC-2026-3447`) y `protobuf` (`PYSEC-2026-1805`)
 quedaron aquí hasta que `opentelemetry-instrumentation` saltara de 0.48b0 a una
@@ -164,3 +120,17 @@ línea que no importe `pkg_resources` — eso pasó al mismo tiempo que
 dos a la vez: `setuptools` sube a 84 y `protobuf` resuelve a 7.36.2. Las
 entradas en `scripts/pip-audit-scan.sh` y `osv-scanner.toml` se quitaron con
 el mismo cambio.
+
+**Cerrados el 06/10/2026**: `ecdsa` (Minerva; `GHSA-wj6h-64fc-37mp`,
+`CVE-2024-23342`, `PYSEC-2026-1325`) y `python-jose` (confusión de algoritmo
+con llave pública en DER; `GHSA-3qf3-8w2g-rqmx`, `CVE-2026-85394`). Los dos
+venían de `python-jose`, que se cambió por `PyJWT` + `cryptography`: con él
+salieron también `ecdsa`, `rsa` y `pyasn1`. Ninguno era explotable aquí —la
+verificación era RS256 con `algorithms=["RS256"]` y la llave como JWK—, pero
+eran dos excepciones permanentes por una sola llamada a la librería. Las
+entradas en `scripts/pip-audit-scan.sh` y `osv-scanner.toml` se quitaron con
+el mismo cambio. `tests/test_confusion_de_algoritmo.py` se queda como guarda
+genérica contra la confusión de algoritmo, y `tests/test_pyjwt_paridad.py` fija
+lo que el cambio de librería no podía mover (`iat` en el futuro, token
+malformado, JWK sin `alg`). La alerta de Dependabot de `ecdsa` (#18) se cierra
+sola al no estar el paquete.
