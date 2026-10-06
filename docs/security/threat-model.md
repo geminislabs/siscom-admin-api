@@ -127,6 +127,32 @@ volvía a investigarla desde cero.
   arrastrar `ecdsa`. Es un cambio en el camino de verificación de tokens, así
   que merece su propio PR y sus pruebas, no ir de pasada.
 
+### `python-jose` — confusión de algoritmo con llave pública en DER
+
+- **Identificadores**: `GHSA-3qf3-8w2g-rqmx` (OSV), `CVE-2026-85394`
+  (`pip-audit`). Es un arreglo incompleto de `CVE-2024-33663`, que OSV lista
+  como alias del mismo aviso.
+- **Sin versión corregida**: afecta hasta `python-jose` 3.5.0, la última.
+- **Qué es**: `python-jose` acepta como secreto HMAC una llave pública RSA en
+  DER (sin armadura PEM). Con la llave pública del servicio —las JWKS de
+  Cognito son públicas— se puede firmar un HS256 que pase la verificación si
+  `jwt.decode` no restringe los algoritmos.
+- **Por qué no aplica aquí**: dos barreras, medidas el 06/10/2026.
+  `app/core/security.py` llama a `jwt.decode` dos veces, las dos con
+  `algorithms=["RS256"]`; y la llave llega de las JWKS como JWK (`kty: RSA`),
+  que `python-jose` no acepta como secreto HMAC aunque se permitiera HS256.
+- **Cómo se sabe**: `tests/test_confusion_de_algoritmo.py` fabrica el token
+  del ataque (HS256 firmado con la llave pública en DER y en PEM) y exige 401
+  de las dos funciones. Permitir HS256 rompe el test (medido); pasar la llave
+  en bytes manteniendo `RS256` no lo rompería, porque la primera barrera
+  sigue rechazando — la que el test fija es esa.
+- **Dónde está registrada la excepción**:
+  - `osv-scanner.toml` → `[[IgnoredVulns]] id = "GHSA-3qf3-8w2g-rqmx"`
+  - `scripts/pip-audit-scan.sh` → `--ignore-vuln CVE-2026-85394`
+- **Qué la cerraría de verdad**: lo mismo que la de `ecdsa` — quitar
+  `python-jose` por `PyJWT` + `cryptography`. Con dos riesgos aceptados que
+  vienen de la misma librería, ese PR ya tiene más de un motivo.
+
 **Al revisar esta lista**: una excepción deja de ser válida en cuanto cambia el
 uso. Si algún día se firma con ECDSA o se acepta ES256 en `jwt.decode`, esta
 entrada se invalida y hay que quitar la dependencia.
