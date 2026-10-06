@@ -22,7 +22,8 @@ pip install -r requirements.txt >/dev/null
 # `jwt.decode` no restringe algoritmos. Sin versión corregida. No aplica a este
 # servicio por dos barreras: `algorithms=["RS256"]` en las dos llamadas, y la
 # llave llega de las JWKS como JWK, no como bytes. Lo prueba el ataque mismo en
-# `tests/test_confusion_de_algoritmo.py`. Registro completo en
+# `tests/test_confusion_de_algoritmo.py`. OSV la reporta como GHSA-3qf3-8w2g-rqmx y
+# está silenciada en `osv-scanner.toml` con el mismo razonamiento. Registro completo en
 # `docs/security/threat-model.md`, sección Riesgos aceptados.
 exec pip-audit -r requirements.txt --desc on \
   --ignore-vuln PYSEC-2026-1325 \

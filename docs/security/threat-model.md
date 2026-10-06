@@ -129,8 +129,9 @@ volvía a investigarla desde cero.
 
 ### `python-jose` — confusión de algoritmo con llave pública en DER
 
-- **Identificadores**: `CVE-2026-85394` (así lo reporta `pip-audit`). Es un
-  arreglo incompleto de `CVE-2024-33663`.
+- **Identificadores**: `GHSA-3qf3-8w2g-rqmx` (OSV), `CVE-2026-85394`
+  (`pip-audit`). Es un arreglo incompleto de `CVE-2024-33663`, que OSV lista
+  como alias del mismo aviso.
 - **Sin versión corregida**: afecta hasta `python-jose` 3.5.0, la última.
 - **Qué es**: `python-jose` acepta como secreto HMAC una llave pública RSA en
   DER (sin armadura PEM). Con la llave pública del servicio —las JWKS de
@@ -146,10 +147,8 @@ volvía a investigarla desde cero.
   en bytes manteniendo `RS256` no lo rompería, porque la primera barrera
   sigue rechazando — la que el test fija es esa.
 - **Dónde está registrada la excepción**:
+  - `osv-scanner.toml` → `[[IgnoredVulns]] id = "GHSA-3qf3-8w2g-rqmx"`
   - `scripts/pip-audit-scan.sh` → `--ignore-vuln CVE-2026-85394`
-  - `osv-scanner.toml` no la lleva: OSV no corre en la CI y no se ha
-    comprobado con qué identificador la reporta. Añadirla ahí cuando se
-    sepa, como la de `ecdsa`.
 - **Qué la cerraría de verdad**: lo mismo que la de `ecdsa` — quitar
   `python-jose` por `PyJWT` + `cryptography`. Con dos riesgos aceptados que
   vienen de la misma librería, ese PR ya tiene más de un motivo.
