@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`CVE-2026-85394` en `python-jose` se registra como riesgo aceptado, con prueba.** Sin
+  versión corregida; tumbaba el job `security` de cualquier PR. No es explotable aquí: los dos
+  `jwt.decode` restringen a `RS256` y la llave llega como JWK. `tests/test_confusion_de_algoritmo.py`
+  fabrica el token del ataque y exige 401. Registro en `docs/security/threat-model.md`; la salida
+  de fondo sigue siendo cambiar `python-jose` por `PyJWT`
+
 ## [1.51.0] - 2026-10-04
 
 **Migraciones.** Ninguna. La cabeza sigue en `036_organizacion_por_defecto`.
