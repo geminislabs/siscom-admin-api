@@ -88,7 +88,7 @@ sortedcontainers==2.4.0
 SQLAlchemy==2.0.36
 sqlmodel==0.0.47
 starlette==1.7.0
-stripe==10.12.0
+stripe==16.0.0
 tomli==2.4.1
 tomli_w==1.2.0
 typer==0.27.2
