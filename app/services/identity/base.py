@@ -80,8 +80,9 @@ class IdentityProvider(ABC):
     def renovar(self, *, handle: str, refresh_token: str) -> Sesion:
         """Renueva la sesión sin volver a pedir la contraseña.
 
-        El `refresh_token` no se renueva; la `Sesion` que vuelve trae el mismo
-        que entró o ninguno, según el proveedor.
+        Si el proveedor rota refresh tokens, la `Sesion` trae el nuevo y quien
+        llama tiene que entregarlo: el que entró deja de valer. Si no rota, el
+        campo viene vacío y el que entró sigue valiendo.
         """
 
     @abstractmethod
