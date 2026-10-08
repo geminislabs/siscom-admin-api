@@ -45,7 +45,7 @@ Maneja login, logout, verificación de email, recuperación de contraseña y ren
 |-------------------|--------|-----|
 | `/.well-known/jwks.json` | GET | Obtener claves públicas para validar JWT |
 | `InitiateAuth (USER_PASSWORD_AUTH)` | POST | Autenticación de usuarios |
-| `InitiateAuth (REFRESH_TOKEN_AUTH)` | POST | Renovar access/id tokens |
+| `GetTokensFromRefreshToken` | POST | Renovar access/id tokens (y el refresh, con rotación) |
 | `GlobalSignOut` | POST | Invalidar todas las sesiones del usuario |
 | `AdminSetUserPassword` | POST | Establecer nueva contraseña (reset/change) |
 | `AdminCreateUser` | POST | Crear usuario en Cognito (verificación master) |
@@ -139,9 +139,9 @@ Flujo C (Usuario normal):
 ### Refresh Token (`POST /auth/refresh`)
 
 ```
-1. Recibe refresh_token + email
-2. Llama a Cognito InitiateAuth (REFRESH_TOKEN_AUTH)
-3. Retorna nuevos access_token e id_token
+1. Recibe refresh_token + el access token (aunque esté vencido) en Authorization
+2. Llama a Cognito GetTokensFromRefreshToken con el secreto del cliente
+3. Retorna nuevos access_token e id_token, y el refresh_token rotado si lo hay
 ```
 
 ### Logout (`POST /auth/logout`)

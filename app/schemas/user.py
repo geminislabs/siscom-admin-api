@@ -413,9 +413,9 @@ class RefreshTokenRequest(BaseModel):
 class RefreshTokenResponse(BaseModel):
     """Schema para la respuesta de refresh token.
 
-    `refresh_token` es **opcional** porque hoy Cognito no rota: sin rotación
-    activada la respuesta no trae uno y el campo sale `null`. El día que se
-    active, viene el token nuevo y el cliente tiene que guardarlo — el viejo
+    `refresh_token` es **opcional** porque depende de que el app client rote:
+    sin rotación activada la respuesta no trae uno y el campo sale `null`. Con
+    ella, viene el token nuevo y el cliente tiene que guardarlo — el viejo
     deja de valer pasado el periodo de gracia. Declararlo antes de activar la
     rotación es lo que evita que ese cambio de configuración tumbe las
     sesiones de todo el mundo.

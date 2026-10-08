@@ -1493,7 +1493,8 @@ def refresh_token(
     1. Recibe el refresh token, y la identidad en la cabecera `Authorization`
        —el access token que el cliente ya tiene, **aunque esté vencido**—
     2. Resuelve la fila del usuario y toma su `external_id` como handle
-    3. Llama a initiate_auth de Cognito con el flujo REFRESH_TOKEN_AUTH
+    3. Llama a `GetTokensFromRefreshToken` de Cognito (no `REFRESH_TOKEN_AUTH`,
+       que la rotación de refresh tokens no admite)
     4. Retorna los nuevos access token e id token
 
     Notas:

@@ -126,7 +126,9 @@ cuenta de AWS, no por pool.
 - **Client secret**: Generate client secret ✅ (importante)
 - **Authentication flows**:
   - ✅ ALLOW_USER_PASSWORD_AUTH
-  - ✅ ALLOW_REFRESH_TOKEN_AUTH
+  - ✅ ALLOW_REFRESH_TOKEN_AUTH — sólo hasta activar la rotación de refresh
+    tokens: Cognito exige quitarlo para habilitarla, y el backend ya no lo usa
+    (renueva con `GetTokensFromRefreshToken`)
 - Clic en "Next"
 
 ### Paso 7: Revisar y Crear

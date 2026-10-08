@@ -446,19 +446,56 @@ def test_fijar_password_la_deja_permanente():
     assert cliente.kwargs_de("admin_set_user_password")["Permanent"] is True
 
 
-def test_renovar_usa_el_flujo_de_refresco():
+def test_renovar_usa_get_tokens_from_refresh_token():
+    """No `REFRESH_TOKEN_AUTH`: con la rotación activa Cognito lo rechaza.
+
+    Y el secreto va tal cual, sin SECRET_HASH — esta API no lo acepta.
+    """
     cliente = _ClienteFalso(
-        initiate_auth={"AuthenticationResult": {"AccessToken": "a", "IdToken": "i"}}
+        get_tokens_from_refresh_token={
+            "AuthenticationResult": {"AccessToken": "a", "IdToken": "i"}
+        }
     )
 
     sesion = CognitoIdentityProvider(cliente).renovar(handle="h", refresh_token="r")
 
-    kwargs = cliente.kwargs_de("initiate_auth")
-    assert kwargs["AuthFlow"] == "REFRESH_TOKEN_AUTH"
-    assert kwargs["AuthParameters"]["REFRESH_TOKEN"] == "r"
-    # El refresco no se renueva: Cognito no lo devuelve y la sesión lo refleja.
+    assert [n for n, _ in cliente.llamadas] == ["get_tokens_from_refresh_token"]
+    kwargs = cliente.kwargs_de("get_tokens_from_refresh_token")
+    assert kwargs == {
+        "ClientId": settings.COGNITO_CLIENT_ID,
+        "ClientSecret": settings.COGNITO_CLIENT_SECRET,
+        "RefreshToken": "r",
+    }
+    # Sin rotación Cognito no devuelve refresh token, y la sesión lo refleja.
     assert sesion.refresh_token is None
     assert sesion.expires_in == 3600
+
+
+def test_renovar_con_rotacion_devuelve_el_refresh_nuevo():
+    cliente = _ClienteFalso(
+        get_tokens_from_refresh_token={
+            "AuthenticationResult": {
+                "AccessToken": "a",
+                "IdToken": "i",
+                "RefreshToken": "rotado",
+                "ExpiresIn": 3600,
+            }
+        }
+    )
+
+    sesion = CognitoIdentityProvider(cliente).renovar(handle="h", refresh_token="r")
+
+    assert sesion.refresh_token == "rotado"
+
+
+def test_renovar_con_un_refresh_reusado_es_credencial_invalida():
+    """El reúso tras el periodo de gracia es un 401, no un 500."""
+    cliente = _ClienteFalso(
+        get_tokens_from_refresh_token=_error_de_cognito("RefreshTokenReuseException")
+    )
+
+    with pytest.raises(CredencialesInvalidas):
+        CognitoIdentityProvider(cliente).renovar(handle="h", refresh_token="viejo")
 
 
 def test_revocar_sesiones_cierra_todas_las_del_token():

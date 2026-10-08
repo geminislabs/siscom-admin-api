@@ -304,6 +304,11 @@ repositorio con un `boto3.client("cognito-idp")`. Antes había tres —`auth.py`
 > UUID no podrá renovar**. El fallo es `NotAuthorizedException`, indistinguible
 > de un refresh token inválido.
 >
+> *Actualización 07/10/2026:* el refresh ya no usa `REFRESH_TOKEN_AUTH` sino
+> `GetTokensFromRefreshToken`, que recibe el secreto del cliente sin
+> `SECRET_HASH`. La medición de arriba sigue siendo cierta para ese flujo, pero
+> ya no lo recorre nadie.
+>
 > Resolver la fila desde el access token cuesta una consulta más
 > (`WHERE cognito_sub = :sub`, ya indexada). Queda por comprobar si el endpoint
 > OAuth de Cognito (`/oauth2/token`) permite renovar sin nombre de usuario, que

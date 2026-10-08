@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`POST /auth/refresh` renueva con `GetTokensFromRefreshToken`** en vez de
+  `InitiateAuth(REFRESH_TOKEN_AUTH)`. Es el prerrequisito para activar la rotación de refresh
+  tokens: Cognito no deja habilitarla mientras el app client admita `ALLOW_REFRESH_TOKEN_AUTH`, y
+  con ella activa rechaza ese flujo. Con la rotación apagada —la configuración actual— la respuesta
+  es la misma, así que no cambia nada para los clientes. La API nueva recibe el secreto del cliente
+  sin `SECRET_HASH` y no pasa por IAM. Un refresh token reusado tras el periodo de gracia
+  (`RefreshTokenReuseException`) responde **401**, como uno vencido
+
 ### Fixed
 
 - Un token sin `kid` en la cabecera daba **500** en vez de 401 en todo endpoint autenticado:

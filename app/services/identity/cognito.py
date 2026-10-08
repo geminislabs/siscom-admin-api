@@ -59,6 +59,10 @@ _TRADUCCION = {
     "UsernameExistsException": HandleYaExiste,
     "InvalidPasswordException": PasswordRechazada,
     "InvalidParameterException": ParametroInvalido,
+    # Con la rotación activa, presentar un refresh token ya rotado —pasado el
+    # periodo de gracia— es reúso: Cognito revoca la familia entera. Para quien
+    # llama es lo mismo que un refresh vencido, un 401 que lleva al login.
+    "RefreshTokenReuseException": CredencialesInvalidas,
 }
 
 
@@ -152,16 +156,21 @@ class CognitoIdentityProvider(IdentityProvider):
         return self._sesion_de(respuesta)
 
     def renovar(self, *, handle: str, refresh_token: str) -> Sesion:
-        # El SECRET_HASH hace falta también aquí, y se calcula sobre el handle
-        # aunque el flujo no lo mande como USERNAME.
+        # `GetTokensFromRefreshToken` y no `initiate_auth(REFRESH_TOKEN_AUTH)`:
+        # Cognito no deja activar la rotación de refresh tokens mientras el app
+        # client admita ese flujo, y con la rotación activa lo rechaza. Con la
+        # rotación apagada las dos responden igual, así que el cambio se puede
+        # desplegar antes de tocar la configuración del pool.
+        #
+        # Esta API recibe el secreto del cliente tal cual, sin SECRET_HASH, así
+        # que el handle ya no le hace falta a Cognito. Se queda en la firma
+        # porque es de la interfaz y `/auth/refresh` resuelve la fila de todos
+        # modos (D2).
         try:
-            respuesta = self._cognito.initiate_auth(
+            respuesta = self._cognito.get_tokens_from_refresh_token(
                 ClientId=settings.COGNITO_CLIENT_ID,
-                AuthFlow="REFRESH_TOKEN_AUTH",
-                AuthParameters={
-                    "REFRESH_TOKEN": refresh_token,
-                    "SECRET_HASH": self._secret_hash(handle),
-                },
+                ClientSecret=settings.COGNITO_CLIENT_SECRET,
+                RefreshToken=refresh_token,
             )
         except ClientError as exc:
             raise _traducir(exc) from exc
