@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.54.0] - 2026-10-08
+
+**Migraciones.** Ninguna. La cabeza sigue en `037_por_defecto_activa`.
+
+**Rollback.** Redesplegar `v1.53.0` **mientras la rotación siga apagada en Cognito**: no toca el
+esquema. Si ya se activó la rotación (y se quitó `ALLOW_REFRESH_TOKEN_AUTH`), primero volver a
+permitir ese flujo y apagar la rotación, o el refresh deja de funcionar.
+
 ### Changed
 
 - **`POST /auth/refresh` renueva con `GetTokensFromRefreshToken`** en vez de
