@@ -29,7 +29,12 @@ from app.api.deps import get_identity_provider
 from app.core import security
 from app.main import app as fastapi_app
 from app.models.account import Account
-from app.services.identity import IdentityProvider, Sesion
+from app.services.identity import (
+    ErrorDelProveedor,
+    IdentityProvider,
+    ProveedorSaturado,
+    Sesion,
+)
 from tests import jwt_del_pool
 
 
@@ -342,3 +347,34 @@ def test_renovacion_usa_el_proveedor_de_la_marca_de_la_fila(
     proveedor_de_marca.renovar.assert_called_once_with(
         handle=test_user_data.external_id, refresh_token="refresh-guardado"
     )
+
+
+def test_cognito_limitado_es_429_y_no_500(
+    client, db_session, test_user_data, clave_del_pool, idp_falso
+):
+    """Con la rotación activa, varias pestañas renovando a la vez hacían que
+    Cognito respondiera `TooManyRequestsException` (producción, 09/10/2026), y
+    el endpoint lo devolvía como 500. El refresh token sigue valiendo: es un
+    «vuelve luego», y el cliente necesita poder distinguirlo de un rechazo.
+    """
+    idp_falso.renovar.side_effect = ProveedorSaturado(
+        "Rate exceeded", codigo="TooManyRequestsException"
+    )
+
+    respuesta = _renovar(client, _access_token(clave_del_pool))
+
+    assert respuesta.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert respuesta.headers["Retry-After"] == "30"
+    assert "Rate exceeded" not in respuesta.json()["detail"]
+
+
+def test_otro_fallo_del_proveedor_sigue_siendo_500(
+    client, db_session, test_user_data, clave_del_pool, idp_falso
+):
+    idp_falso.renovar.side_effect = ErrorDelProveedor(
+        "algo raro", codigo="InternalErrorException"
+    )
+
+    respuesta = _renovar(client, _access_token(clave_del_pool))
+
+    assert respuesta.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR

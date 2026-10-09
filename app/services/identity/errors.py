@@ -88,6 +88,16 @@ class ErrorDelProveedor(ErrorDeIdentidad):
     """Cualquier otro fallo del proveedor. Se traduce a 500."""
 
 
+class ProveedorSaturado(ErrorDelProveedor):
+    """El proveedor limitó la petición por exceso de llamadas.
+
+    Hereda de `ErrorDelProveedor` para que los endpoints que no la distinguen
+    sigan respondiendo como siempre. La distingue `/auth/refresh`, donde
+    apareció en producción el 09/10/2026: no es un fallo del servidor sino un
+    «vuelve a intentarlo luego», y el cliente lo trata distinto.
+    """
+
+
 class ProveedorDesconocido(ErrorDeIdentidad):
     """La cuenta pide un proveedor que este despliegue no sabe manejar.
 

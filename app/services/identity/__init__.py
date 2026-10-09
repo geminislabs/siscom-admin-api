@@ -34,6 +34,7 @@ from app.services.identity.errors import (
     ParametroInvalido,
     PasswordRechazada,
     ProveedorDesconocido,
+    ProveedorSaturado,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -51,6 +52,7 @@ __all__ = [
     "ParametroInvalido",
     "PasswordRechazada",
     "ProveedorDesconocido",
+    "ProveedorSaturado",
     "PROVEEDOR_POR_DEFECTO",
     "Sesion",
     "proveedor_para_cuenta",
