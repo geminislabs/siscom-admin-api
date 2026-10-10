@@ -43,6 +43,7 @@ from app.services.identity import (
     ParametroInvalido,
     PasswordRechazada,
     ProveedorDesconocido,
+    ProveedorSaturado,
     Sesion,
 )
 from app.services.identity.cognito import CognitoIdentityProvider
@@ -496,6 +497,18 @@ def test_renovar_con_un_refresh_reusado_es_credencial_invalida():
 
     with pytest.raises(CredencialesInvalidas):
         CognitoIdentityProvider(cliente).renovar(handle="h", refresh_token="viejo")
+
+
+def test_cognito_limitado_es_proveedor_saturado():
+    """Sigue siendo un `ErrorDelProveedor` para quien no lo distingue."""
+    cliente = _ClienteFalso(
+        get_tokens_from_refresh_token=_error_de_cognito("TooManyRequestsException")
+    )
+
+    with pytest.raises(ProveedorSaturado) as exc:
+        CognitoIdentityProvider(cliente).renovar(handle="h", refresh_token="r")
+
+    assert isinstance(exc.value, ErrorDelProveedor)
 
 
 def test_revocar_sesiones_cierra_todas_las_del_token():

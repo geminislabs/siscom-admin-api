@@ -66,6 +66,7 @@ from app.services.identity import (
     IdentityProvider,
     ParametroInvalido,
     PasswordRechazada,
+    ProveedorSaturado,
     proveedor_para_cuenta,
 )
 from app.services.notifications import (
@@ -1510,6 +1511,7 @@ def refresh_token(
     Códigos de error:
     - 401: Refresh token inválido, expirado o revocado, o cabecera no válida
     - 422: No vino la cabecera Authorization
+    - 429: Cognito limitó la renovación; el refresh token sigue valiendo
     - 500: Error al renovar los tokens en Cognito
 
     `idp` se sobreescribe con el proveedor de la marca de la fila resuelta —
@@ -1574,6 +1576,14 @@ def refresh_token(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Parámetros inválidos: {e.mensaje}",
+            )
+        elif isinstance(e, ProveedorSaturado):
+            # El refresh token sigue valiendo: es un «más tarde», no un rechazo,
+            # y tampoco un fallo del servidor.
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Demasiadas renovaciones seguidas. Intenta de nuevo en unos segundos.",
+                headers={"Retry-After": "30"},
             )
         else:
             raise HTTPException(

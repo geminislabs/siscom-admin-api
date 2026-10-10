@@ -44,6 +44,7 @@ from app.services.identity.errors import (
     HandleYaExiste,
     ParametroInvalido,
     PasswordRechazada,
+    ProveedorSaturado,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ _TRADUCCION = {
     # periodo de gracia— es reúso: Cognito revoca la familia entera. Para quien
     # llama es lo mismo que un refresh vencido, un 401 que lleva al login.
     "RefreshTokenReuseException": CredencialesInvalidas,
+    "TooManyRequestsException": ProveedorSaturado,
 }
 
 

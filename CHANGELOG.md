@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `POST /auth/refresh` responde **429** con `Retry-After: 30`, y no 500, cuando Cognito limita la renovación (`TooManyRequestsException`). Pasó en producción el 09/10/2026, con la rotación recién activada y varias pestañas de la web renovando a la vez. El refresh token sigue valiendo, así que no es un fallo del servidor. La nueva `ProveedorSaturado` hereda de `ErrorDelProveedor`, de modo que los demás endpoints siguen respondiendo como antes
+
 ## [1.54.0] - 2026-10-08
 
 **Migraciones.** Ninguna. La cabeza sigue en `037_por_defecto_activa`.
