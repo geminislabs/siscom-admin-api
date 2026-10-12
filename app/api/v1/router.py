@@ -69,6 +69,7 @@ from app.api.v1.endpoints import (
     users,
 )
 from app.api.v1.endpoints.api_platform.router import api_platform_router
+from app.api.v1.endpoints.internal import account_tenancy as internal_account_tenancy
 from app.api.v1.endpoints.internal import accounts as internal_accounts
 from app.api.v1.endpoints.internal import billing as internal_billing
 from app.api.v1.endpoints.internal import (
@@ -222,6 +223,12 @@ api_router.include_router(
 
 api_router.include_router(
     internal_accounts.router, prefix="/internal/accounts", tags=["internal-accounts"]
+)
+# Convertir una cuenta en marca desde GAC (B4): tipo de cuenta y capabilities.
+api_router.include_router(
+    internal_account_tenancy.router,
+    prefix="/internal/accounts",
+    tags=["internal-accounts"],
 )
 api_router.include_router(
     internal_organizations.router,

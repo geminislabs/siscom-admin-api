@@ -294,6 +294,14 @@ def get_account_by_id(
         "owner_email": owner_email,
         "total_organizations": total_organizations,
         "total_users": total_users,
+        # Papel en el árbol de reventa: GAC lo necesita para saber si la cuenta
+        # ya es marca antes de ofrecer convertirla (B4).
+        "account_type": str(
+            getattr(account.account_type, "value", account.account_type)
+        ),
+        "parent_account_id": (
+            str(account.parent_account_id) if account.parent_account_id else None
+        ),
         **get_account_nexus_status(db, account_id),
     }
 
