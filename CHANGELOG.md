@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Endpoints internos para que GAC convierta una cuenta en marca (B4, rebanada 4), solo con el token PASETO de GAC: `PATCH /internal/accounts/{id}` (tipo `RESELLER` o `CUSTOMER`; la cuenta `PLATFORM` no cambia por API, y una cuenta con subcuentas vivas no regresa a cliente final), `GET /internal/accounts/{id}/capabilities` (valor propio y efectivo, con el ancestro que lo recorta) y `PUT`/`DELETE /internal/accounts/{id}/capabilities/{code}`, solo para las cuatro capabilities comerciales y con el tipo validado sin convertir. Cada escritura queda en `account_events` con `actor_type = service` y el usuario de GAC en `metadata`. Sin migración
+
 ### Fixed
 
 - `POST /auth/refresh` responde **429** con `Retry-After: 30`, y no 500, cuando Cognito limita la renovación (`TooManyRequestsException`). Pasó en producción el 09/10/2026, con la rotación recién activada y varias pestañas de la web renovando a la vez. El refresh token sigue valiendo, así que no es un fallo del servidor. La nueva `ProveedorSaturado` hereda de `ErrorDelProveedor`, de modo que los demás endpoints siguen respondiendo como antes

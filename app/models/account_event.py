@@ -41,6 +41,10 @@ class EventType(str, enum.Enum):
     ORG_CAPABILITY_UPDATED = "org_capability_updated"
     ORG_CAPABILITY_DELETED = "org_capability_deleted"
 
+    # Account Capabilities (techos comerciales que fija GAC, B4)
+    ACCOUNT_CAPABILITY_SET = "account_capability_set"
+    ACCOUNT_CAPABILITY_REMOVED = "account_capability_removed"
+
     # Organization
     ORG_CREATED = "org_created"
     ORG_UPDATED = "org_updated"
@@ -56,6 +60,7 @@ class TargetType(str, enum.Enum):
 
     ORGANIZATION_USER = "organization_user"
     ORGANIZATION_CAPABILITY = "organization_capability"
+    ACCOUNT_CAPABILITY = "account_capability"
     ORGANIZATION = "organization"
     USER = "user"
     ACCOUNT = "account"
