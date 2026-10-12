@@ -22,7 +22,7 @@ Los nombres NO son identidad. Los UUID sí.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -278,6 +278,27 @@ class AuthMeResponse(BaseModel):
     account: AccountOut
     role: str = Field(..., description="Rol del usuario en su organización actual")
     organization_id: UUID = Field(..., description="ID de la organización actual")
+    account_role: Optional[str] = Field(
+        default=None,
+        description=(
+            "Rol del usuario en la cuenta (account_users). Null si no tiene "
+            "membresía en la cuenta, aunque sí la tenga en la organización."
+        ),
+    )
+    account_permissions: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Permisos de alcance cuenta que da ese rol. El menú de los clientes "
+            "se deriva de aquí; quien autoriza es el backend."
+        ),
+    )
+    account_capabilities: dict[str, Union[bool, int, str, None]] = Field(
+        default_factory=dict,
+        description=(
+            "Capabilities comerciales de la cuenta ya resueltas con el techo de "
+            "sus ancestros (white_label_enabled, max_custom_domains…)."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -292,6 +313,14 @@ class AuthMeResponse(BaseModel):
                 },
                 "role": "owner",
                 "organization_id": "223e4567-e89b-12d3-a456-426614174001",
+                "account_role": "owner",
+                "account_permissions": ["branding.write"],
+                "account_capabilities": {
+                    "can_resell": False,
+                    "max_custom_domains": 0,
+                    "max_sub_accounts": 0,
+                    "white_label_enabled": True,
+                },
             }
         }
 

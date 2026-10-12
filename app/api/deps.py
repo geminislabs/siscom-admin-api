@@ -291,6 +291,9 @@ class AuthResult:
     user_id: Optional[UUID] = None
     organization_id: Optional[UUID] = None
     organization_role: Optional[str] = None
+    # Solo para permisos de alcance cuenta (require_account_permission)
+    account_id: Optional[UUID] = None
+    account_role: Optional[str] = None
     # Solo para PASETO service tokens
     service: Optional[str] = None
     role: Optional[str] = None
@@ -820,6 +823,74 @@ def require_capability(capability_code: str):
         )
 
     return _require_capability
+
+
+def require_account_permission(permission: str):
+    """
+    Factory de una dependencia que exige un permiso de alcance **cuenta**.
+
+    Es la forma en que un endpoint pregunta «¿puede esta persona hacer X en
+    esta cuenta?» sin decir qué roles lo permiten: eso lo dice el catálogo
+    (`permissions`, `role_permissions`; migración 038). Cuando lleguen los
+    roles personalizados, el endpoint que use esto no cambia. Ver
+    `app.services.permisos`.
+
+    La cuenta es la del parámetro de ruta `account_id`, y se compara contra la
+    membresía real del usuario en `account_users`. Nunca se deriva del `Host`,
+    que solo elige apariencia (§3), ni de la organización activa: alguien puede
+    ser owner de la organización y no tener ningún rol en la cuenta.
+
+    Falla cerrado con 403 en los tres casos —sin membresía en esa cuenta,
+    con un rol que no tiene el permiso, o con un permiso que el catálogo no
+    conoce— y con el mismo mensaje, para no revelar si la cuenta existe.
+
+    Uso:
+        @router.put("/accounts/{account_id}/branding/draft")
+        def guardar(
+            account_id: UUID,
+            auth: AuthResult = Depends(require_account_permission("branding.write")),
+        ):
+            ...
+    """
+
+    def _require_account_permission(
+        account_id: UUID,
+        db: Session = Depends(get_db),
+        current_user: dict = Depends(get_current_user),
+    ) -> AuthResult:
+        from app.models.account_user import AccountUser
+        from app.models.permission import PermissionScope
+        from app.services import permisos
+
+        user = _load_user_by_sub(db, current_user.get("sub"))
+
+        membresia = (
+            db.query(AccountUser)
+            .filter(
+                AccountUser.account_id == account_id,
+                AccountUser.user_id == user.id,
+            )
+            .first()
+        )
+        rol = membresia.role if membresia else None
+
+        if not permisos.tiene_permiso(
+            db, PermissionScope.ACCOUNT.value, rol, permission
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Se requiere el permiso {permission} en esta cuenta",
+            )
+
+        return AuthResult(
+            auth_type="cognito",
+            payload=current_user,
+            user_id=user.id,
+            account_id=account_id,
+            account_role=rol,
+        )
+
+    return _require_account_permission
 
 
 # Dependencias pre-configuradas

@@ -69,6 +69,9 @@ from app.models.payment_gateway_customer import PaymentGatewayCustomer
 from app.models.payment_gateway_event import PaymentGatewayEvent
 from app.models.payment_method import PaymentMethod
 
+# Permisos y roles (D6 de B4)
+from app.models.permission import Permission, PermissionScope, Role, RolePermission
+
 # Subscriptions & Plans
 from app.models.plan import Plan
 
@@ -134,6 +137,11 @@ __all__ = [
     "PlanCapability",
     "OrganizationCapability",
     "AccountCapability",
+    # Permisos y roles (D6 de B4)
+    "Permission",
+    "PermissionScope",
+    "Role",
+    "RolePermission",
     # Tenancy
     "TenantDomain",
     "TenantBranding",
