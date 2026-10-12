@@ -7,8 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.55.0] - 2026-10-12
+
+**Migraciones.** `038_catalogo_de_permisos` y `039_permiso_de_marca`. Cabeza:
+`037_por_defecto_activa` → `039_permiso_de_marca`. La 038 crea `permissions`, `roles` y
+`role_permissions` y siembra los ocho roles de sistema; la 039 solo siembra datos (`branding.write`
+para el owner y el admin de cuenta). Ninguna toca una tabla existente.
+
+**Rollback.**
+
+1. **Casi siempre basta revertir la imagen** (`v1.54.0`): las migraciones son aditivas y el código
+   anterior ignora las tablas nuevas. El despliegue ya revierte la imagen solo si el contenedor no
+   levanta.
+2. **Solo si hace falta revertir también el esquema**, y antes de desplegar el tag viejo, porque el
+   archivo de la migración vive en la imagen nueva:
+
+   ```bash
+   docker run --rm --network siscom-network --env-file .env \
+     siscom-admin-api:latest alembic downgrade 037_por_defecto_activa
+   ```
+
+   Sin este paso, desplegar `v1.54.0` falla con
+   `Can't locate revision identified by '039_permiso_de_marca'`. El downgrade **borra** el catálogo
+   de permisos y los roles: es seguro poco después de liberar, y deja de serlo en cuanto haya
+   borradores o publicaciones de marca (las auditorías en `account_events` no se borran).
+
 ### Added
 
+- **Catálogo de permisos (B4, rebanada 1).** Tablas `permissions`, `roles` y `role_permissions` con
+  los cuatro roles de sistema (owner, admin, billing, member) por alcance —cuenta y organización—,
+  FK compuestas que impiden mezclar alcances y el catálogo vacío. `require_account_permission`
+  autoriza contra la membresía real en `account_users` (403 cerrado), y un test de paridad exige que
+  cada permiso que usa el código exista en la base y al revés. `GET /auth/me` suma `account_role`,
+  `account_permissions` y `account_capabilities` (aditivo)
+- **Endpoints de la pantalla de marca (B4, rebanada 2):** `GET /accounts/{id}/branding`,
+  `PUT`/`DELETE .../branding/draft` y `POST .../branding/publish`, con `branding.write` y
+  `white_label_enabled`. Contrato del tema `version: 1`: URLs `https://` con dominio, nunca
+  descargadas; tokens derivados en el servidor en OKLCH con contraste AA **garantizado** (la semilla
+  se ajusta al paso más cercano que cumple y se informa en `adjustments`). `brand_name` viaja en el
+  borrador y `publish` lo copia a la columna, así que guardar no cambia lo que ven los usuarios. Cada
+  escritura queda en `account_events`, y `publish` guarda lo publicado antes
 - Endpoints internos para que GAC convierta una cuenta en marca (B4, rebanada 4), solo con el token PASETO de GAC: `PATCH /internal/accounts/{id}` (tipo `RESELLER` o `CUSTOMER`; la cuenta `PLATFORM` no cambia por API, y una cuenta con subcuentas vivas no regresa a cliente final), `GET /internal/accounts/{id}/capabilities` (valor propio y efectivo, con el ancestro que lo recorta) y `PUT`/`DELETE /internal/accounts/{id}/capabilities/{code}`, solo para las cuatro capabilities comerciales y con el tipo validado sin convertir. Cada escritura queda en `account_events` con `actor_type = service` y el usuario de GAC en `metadata`. Sin migración
 
 ### Fixed
