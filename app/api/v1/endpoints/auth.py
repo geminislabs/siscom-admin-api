@@ -28,6 +28,7 @@ from app.models.organization_user import (
     OrganizationRole,
     OrganizationUser,
 )
+from app.models.permission import PermissionScope
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
 from app.models.user import User
 from app.observability.metrics import record_auth_attempt, record_session_delta
@@ -55,6 +56,7 @@ from app.schemas.user import (
     UserLoginResponse,
     UserOrganizationOut,
 )
+from app.services import account_capabilities, permisos
 from app.services.data_token_issuance import revoke_sessions_for_user
 from app.services.identity import (
     AutenticacionIncompleta,
@@ -402,11 +404,49 @@ def get_my_account(
     else:
         role = "member"
 
+    # El rol de cuenta es otra membresía (account_users), no el de la
+    # organización: quien entró por invitación a una organización no lo tiene.
+    membresia_de_cuenta = (
+        db.query(AccountUser)
+        .filter(
+            AccountUser.account_id == account.id,
+            AccountUser.user_id == current_user.id,
+        )
+        .first()
+    )
+    account_role = membresia_de_cuenta.role if membresia_de_cuenta else None
+
     return AuthMeResponse(
         account=AccountOut.model_validate(account),
         role=role,
         organization_id=current_user.organization_id,
+        account_role=account_role,
+        account_permissions=sorted(
+            permisos.permisos_de_rol(db, PermissionScope.ACCOUNT.value, account_role)
+        ),
+        account_capabilities=_capabilities_de_cuenta(db, account.id),
     )
+
+
+def _capabilities_de_cuenta(db: Session, account_id) -> dict:
+    """
+    Las capabilities comerciales resueltas, para la sesión.
+
+    Un `account_path` roto hace que el resolvedor se niegue a responder
+    (`CaminoDeCuentaInvalido`, §17). Aquí eso no tumba `/auth/me` —la sesión
+    entera de todos los clientes depende de este endpoint—: se registra y se
+    devuelve vacío, que el cliente lee como «nada concedido». Quien autoriza
+    sigue siendo cada endpoint, que vuelve a resolver y falla por su cuenta.
+    """
+    try:
+        resueltas = account_capabilities.resolver_todas(db, account_id)
+    except account_capabilities.CaminoDeCuentaInvalido:
+        logger.error(
+            "auth.me.capabilities_sin_camino",
+            extra={"account_id": str(account_id)},
+        )
+        return {}
+    return {code: cap.value for code, cap in resueltas.items()}
 
 
 # ------------------------------------------
