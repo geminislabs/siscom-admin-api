@@ -282,3 +282,19 @@ def test_el_downgrade_borra_las_tres_tablas_y_vuelve(engine):
     finally:
         if desechable.alembic(BASE, "upgrade", "head") != 0:
             raise RuntimeError("fallo el upgrade de vuelta a head")
+
+
+# ── La 039: branding.write ──────────────────────────────────────────────
+
+
+def test_branding_write_es_de_owner_y_admin_de_la_cuenta(conn):
+    """D4: owner o admin de la cuenta. Ni billing, ni member, ni ningún rol
+    de organización."""
+    filas = conn.execute(text("""
+            SELECT r.scope, r.code
+              FROM role_permissions rp
+              JOIN roles r ON r.id = rp.role_id
+             WHERE rp.permission_code = 'branding.write'
+             ORDER BY r.scope, r.code
+            """)).all()
+    assert [tuple(f) for f in filas] == [("account", "admin"), ("account", "owner")]
