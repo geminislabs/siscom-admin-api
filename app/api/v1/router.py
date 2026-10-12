@@ -38,6 +38,7 @@ from app.api.v1.endpoints import (
     alerts,
     auth,
     billing,
+    branding,
     capabilities,
     commands,
     contact,
@@ -92,6 +93,8 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 # Accounts (raíz comercial - onboarding + perfil progresivo)
 api_router.include_router(accounts.router, prefix="/accounts", tags=["accounts"])
+# Pantalla de marca (B4): borrador, publicación y descarte del tema
+api_router.include_router(branding.router, prefix="/accounts", tags=["branding"])
 
 # Organizations (raíz operativa - múltiples por account)
 api_router.include_router(

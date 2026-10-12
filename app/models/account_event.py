@@ -54,6 +54,11 @@ class EventType(str, enum.Enum):
     ACCOUNT_CREATED = "account_created"
     ACCOUNT_UPDATED = "account_updated"
 
+    # Marca (B4)
+    BRANDING_DRAFT_SAVED = "branding_draft_saved"
+    BRANDING_DRAFT_DISCARDED = "branding_draft_discarded"
+    BRANDING_PUBLISHED = "branding_published"
+
 
 class TargetType(str, enum.Enum):
     """Tipo de entidad objetivo de la acción."""
@@ -65,6 +70,7 @@ class TargetType(str, enum.Enum):
     USER = "user"
     ACCOUNT = "account"
     CAPABILITY = "capability"
+    TENANT_BRANDING = "tenant_branding"
 
 
 class AccountEvent(SQLModel, table=True):
