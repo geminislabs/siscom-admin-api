@@ -7,11 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-**Migración.** `040_permisos_de_organizacion`, solo datos: ocho permisos de alcance organización y sus
-filas en `role_permissions`. Corre antes de levantar la imagen nueva; sin ella, esa imagen responde
-403 en los quince endpoints operativos (falla cerrado). Rollback: basta revertir la imagen, porque el
-código anterior no lee esas filas. `alembic downgrade 039_permiso_de_marca` solo hace falta para
-desplegar un tag anterior.
+## [1.56.0] - 2026-10-13
+
+**Migración.** `040_permisos_de_organizacion`. Cabeza: `039_permiso_de_marca` →
+`040_permisos_de_organizacion`. Solo datos: ocho permisos de alcance organización y sus filas en
+`role_permissions`; no toca ninguna tabla existente. El despliegue la corre antes de levantar la
+imagen nueva; sin ella, esa imagen responde 403 en los quince endpoints operativos (falla cerrado).
+
+**Rollback.**
+
+1. **Casi siempre basta revertir la imagen** (`v1.55.0`): el código anterior no lee esas filas. El
+   despliegue ya revierte la imagen solo si el contenedor no levanta.
+2. **Solo para desplegar un tag anterior**, y antes de hacerlo, porque el archivo de la migración
+   vive en la imagen nueva:
+
+   ```bash
+   docker run --rm --network siscom-network --env-file .env \
+     siscom-admin-api:latest alembic downgrade 039_permiso_de_marca
+   ```
+
+   Sin este paso, desplegar `v1.55.0` falla con
+   `Can't locate revision identified by '040_permisos_de_organizacion'`. El downgrade borra los ocho
+   permisos y nada más; es seguro en cualquier momento.
 
 ### Changed
 
