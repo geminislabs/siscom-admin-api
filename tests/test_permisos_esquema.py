@@ -303,18 +303,25 @@ def test_branding_write_es_de_owner_y_admin_de_la_cuenta(conn):
 # ── La 040: los permisos operativos ─────────────────────────────────────
 
 
-def test_la_040_siembra_el_reparto_sobre_los_roles_de_organizacion(conn):
-    """Lo que siembra la migración real es lo que declara `PERMISOS`, solo en
-    roles de organización. Que ese reparto sea el de la jerarquía vieja lo
-    prueba `tests/test_permisos_de_organizacion.py`."""
+def _migracion(nombre):
     import importlib.util
 
-    ruta = RAIZ_APP / "db/migrations/versions/040_permisos_de_organizacion.py"
-    spec = importlib.util.spec_from_file_location("migracion_040", ruta)
-    migracion = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migracion)
+    ruta = RAIZ_APP / f"db/migrations/versions/{nombre}.py"
+    spec = importlib.util.spec_from_file_location(f"migracion_{nombre}", ruta)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
 
-    codes = [code for code, _, _ in migracion.PERMISOS]
+
+def test_head_tiene_el_reparto_de_la_040_menos_lo_que_retira_la_041(conn):
+    """Lo que dejan las migraciones reales es lo que declaran `PERMISOS` (040)
+    y `RETIRADOS` (041), solo en roles de organización. Que ese reparto sea el
+    de la jerarquía vieja salvo lo retirado lo prueba
+    `tests/test_permisos_de_organizacion.py`."""
+    permisos = _migracion("040_permisos_de_organizacion").PERMISOS
+    retirados = dict(_migracion("041_overrides_sin_autoservicio").RETIRADOS)
+
+    codes = [code for code, _, _ in permisos]
     filas = conn.execute(
         text("""
             SELECT rp.permission_code, r.scope, r.code
@@ -326,7 +333,26 @@ def test_la_040_siembra_el_reparto_sobre_los_roles_de_organizacion(conn):
     ).all()
 
     assert {s for _, s, _ in filas} == {"organization"}
-    sembrado = {}
+    vigente = {}
     for permiso, _, rol in filas:
-        sembrado.setdefault(permiso, set()).add(rol)
-    assert sembrado == {code: set(roles) for code, _, roles in migracion.PERMISOS}
+        vigente.setdefault(permiso, set()).add(rol)
+    esperado = {
+        code: set(roles) - set(retirados.get(code, ())) for code, _, roles in permisos
+    }
+    assert vigente == {code: roles for code, roles in esperado.items() if roles}
+
+
+def test_el_downgrade_de_la_041_le_devuelve_el_permiso_al_owner(engine):
+    if desechable.alembic(BASE, "downgrade", "040_permisos_de_organizacion") != 0:
+        raise RuntimeError("fallo el downgrade a la 040")
+    try:
+        with engine.connect() as c:
+            roles = c.execute(text("""
+                    SELECT r.code FROM role_permissions rp
+                      JOIN roles r ON r.id = rp.role_id
+                     WHERE rp.permission_code = 'capabilities.override'
+                    """)).scalars().all()
+        assert roles == ["owner"]
+    finally:
+        if desechable.alembic(BASE, "upgrade", "head") != 0:
+            raise RuntimeError("fallo el upgrade de vuelta a head")
