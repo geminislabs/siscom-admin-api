@@ -102,9 +102,9 @@ websockets==16.0
 opentelemetry-api==1.45.1
 opentelemetry-sdk==1.45.1
 opentelemetry-exporter-otlp-proto-http==1.45.1
-opentelemetry-instrumentation-fastapi==0.66b0
-opentelemetry-instrumentation-sqlalchemy==0.66b0
-opentelemetry-instrumentation-httpx==0.66b0
-opentelemetry-instrumentation-requests==0.66b0
-opentelemetry-instrumentation-logging==0.66b0
+opentelemetry-instrumentation-fastapi==0.66b1
+opentelemetry-instrumentation-sqlalchemy==0.66b1
+opentelemetry-instrumentation-httpx==0.66b1
+opentelemetry-instrumentation-requests==0.66b1
+opentelemetry-instrumentation-logging==0.66b1
 setuptools==84.0.0
