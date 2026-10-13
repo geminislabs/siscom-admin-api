@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Migraciones.** `041_overrides_sin_autoservicio` (solo datos) y `042_marca_de_la_invitacion` (una
+columna nullable con FK en `tokens_confirmacion`). Cabeza: `040_permisos_de_organizacion` →
+`042_marca_de_la_invitacion`. La 042 hace `ALTER TABLE`: **`siscom_migrator` tiene que ser dueño de
+`tokens_confirmacion`** (no existe `GRANT ALTER`). Rollback: revertir la imagen basta para la 042; la
+041 no se revierte con la imagen (el código anterior también lee el catálogo), sino con
+`alembic downgrade 040_permisos_de_organizacion`.
+
+### Security
+
+- **Una membresía pausada ya no conserva su rol.** `OrganizationService.get_user_role` solo cuenta
+  membresías `ACTIVE`. Antes, pausar la única membresía de alguien no le quitaba nada en los
+  endpoints con permiso de organización, mientras el resto de la API ya la rechazaba
+- **El owner de una organización ya no puede crear overrides de capabilities** de su propia
+  organización (migración 041). El override manda sobre el plan, y quien se registra queda de owner:
+  cualquiera podía subirse `max_devices` o `history_days` llamando a
+  `POST /organizations/{id}/capabilities`. Las dos rutas de escritura responden 403 hasta que exista
+  una interna para GAC; leerlas sigue abierto a los miembros. Los overrides existentes siguen
+  vigentes hasta que venzan
+
+### Fixed
+
+- **Las invitaciones viven en la marca de quien invita** (§26, migración 042). Invitar, reenviar y
+  aceptar —las tres consultas por correo que faltaban de acotar— buscan solo en esa marca, y
+  `accept_invitation` crea al usuario en ella y con su proveedor de identidad. Antes lo creaba en la
+  marca por defecto aunque el correo hubiera salido con la de quien invitó. Las invitaciones
+  pendientes de hoy no traen marca y siguen en la marca por defecto, que es donde están todos los
+  usuarios
+
 ## [1.56.0] - 2026-10-13
 
 **Migración.** `040_permisos_de_organizacion`. Cabeza: `039_permiso_de_marca` →

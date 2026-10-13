@@ -186,7 +186,10 @@ def create_or_update_capability_override(
     """
     Crea o actualiza un override de capability para la organización.
 
-    Requiere rol owner.
+    Exige `capabilities.override`, que desde la migración 041 no tiene ningún
+    rol: un override es una decisión comercial y el owner no puede dárselo a
+    su propia organización. Responde 403 a todos hasta que exista una ruta
+    interna para GAC.
 
     Si ya existe un override para esta capability, se actualiza.
     Si no existe, se crea uno nuevo.
@@ -334,7 +337,10 @@ def delete_capability_override(
     """
     Elimina un override de capability de la organización.
 
-    Requiere rol owner.
+    Exige `capabilities.override`, que desde la migración 041 no tiene ningún
+    rol: un override es una decisión comercial y el owner no puede dárselo a
+    su propia organización. Responde 403 a todos hasta que exista una ruta
+    interna para GAC.
 
     Al eliminar el override, la organización volverá a usar
     el valor del plan activo o el valor por defecto.

@@ -1,12 +1,14 @@
-"""`require_organization_permission` y el reparto de la migración 040.
+"""`require_organization_permission` y el reparto de las migraciones 040 y 041.
 
 Los quince endpoints que preguntaban por rol (`require_organization_role`)
-ahora preguntan por permiso. La promesa del cambio es que **nadie gana ni
-pierde acceso**; este fichero la comprueba en tres niveles:
+ahora preguntan por permiso. La promesa de la 040 fue que **nadie ganaba ni
+perdía acceso**; desde entonces, cada cambio de acceso es una migración que lo
+declara (`RETIRADOS` de la 041). Este fichero lo comprueba en tres niveles:
 
-1. El reparto: cada permiso de la 040 lo reciben exactamente los roles que la
-   jerarquía vieja dejaba pasar en los endpoints que lo exigen. La jerarquía
-   se copia aquí tal como estaba en `app/api/deps.py` hasta este cambio.
+1. El reparto: cada permiso lo reciben exactamente los roles que la jerarquía
+   vieja dejaba pasar en los endpoints que lo exigen, **menos** lo que alguna
+   migración posterior retiró a propósito. La jerarquía se copia aquí tal como
+   estaba en `app/api/deps.py` hasta la 040.
 2. Los endpoints: cada uno pide el permiso que dice la tabla, leído del AST.
 3. El guard, por HTTP y con la identidad de alguien real (la lección del plano
    de control: un 403 sin credencial no prueba la autorización), contra el
@@ -33,13 +35,26 @@ from app.models.user import User
 RAIZ = Path(__file__).resolve().parents[1]
 ENDPOINTS = RAIZ / "app/api/v1/endpoints"
 
-_spec = importlib.util.spec_from_file_location(
-    "migracion_040",
-    RAIZ / "app/db/migrations/versions/040_permisos_de_organizacion.py",
-)
-migracion = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(migracion)
-REPARTO = {code: set(roles) for code, _, roles in migracion.PERMISOS}
+
+def _migracion(nombre):
+    spec = importlib.util.spec_from_file_location(
+        f"migracion_{nombre}", RAIZ / f"app/db/migrations/versions/{nombre}.py"
+    )
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+# Lo que sembró la 040 y lo que la 041 retiró: el reparto vigente.
+SEMBRADO = {
+    code: set(roles)
+    for code, _, roles in _migracion("040_permisos_de_organizacion").PERMISOS
+}
+RETIRADO = {
+    code: set(roles)
+    for code, roles in _migracion("041_overrides_sin_autoservicio").RETIRADOS
+}
+REPARTO = {code: roles - RETIRADO.get(code, set()) for code, roles in SEMBRADO.items()}
 
 # La jerarquía de `require_organization_role`, copiada sin cambios.
 JERARQUIA_VIEJA = {
@@ -128,10 +143,25 @@ def _permiso_que_pide(fichero: str, funcion: str) -> str:
 
 
 @pytest.mark.parametrize("endpoint", sorted(ANTES_Y_AHORA))
-def test_el_endpoint_deja_pasar_a_los_mismos_roles_que_antes(endpoint):
+def test_la_040_dejo_pasar_a_los_mismos_roles_que_antes(endpoint):
     pedidos, permiso = ANTES_Y_AHORA[endpoint]
     assert _permiso_que_pide(*endpoint) == permiso
-    assert REPARTO[permiso] == _pasaban(pedidos)
+    assert SEMBRADO[permiso] == _pasaban(pedidos)
+
+
+def test_lo_unico_que_cambio_despues_es_lo_que_la_041_declara():
+    """Nadie gana acceso, y quien lo pierde está escrito en una migración."""
+    for permiso, roles in REPARTO.items():
+        assert roles <= SEMBRADO[permiso], permiso
+    perdido = {
+        p: SEMBRADO[p] - REPARTO[p] for p in SEMBRADO if SEMBRADO[p] - REPARTO[p]
+    }
+    assert perdido == {"capabilities.override": {"owner"}}
+
+
+def test_nadie_puede_escribir_overrides_desde_nexus():
+    """La 041: un override de capabilities es una decisión comercial, no autoservicio."""
+    assert REPARTO["capabilities.override"] == set()
 
 
 def test_cada_permiso_de_la_040_lo_pide_algun_endpoint_de_la_tabla():
@@ -247,15 +277,6 @@ def test_sin_membresia_no_pasa_ni_lo_que_es_de_todos(db_session, cliente):
     assert "organizations.read" in r.json()["detail"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Hueco previo a este cambio: OrganizationService.get_user_role no mira "
-        "OrganizationUser.status, así que pausar la única membresía de alguien "
-        "no le quita el rol. Este PR no cambia accesos; se corrige aparte, y "
-        "entonces este xfail estricto falla y hay que quitarlo."
-    ),
-)
 def test_una_membresia_inactiva_no_cuenta_aunque_sea_de_owner(db_session, cliente):
     org = _organizacion(db_session)
     persona = _persona(db_session, org, "owner", MembershipStatus.INACTIVE.value)
@@ -280,3 +301,35 @@ def test_un_token_sin_sub_es_401_y_un_desconocido_404(db_session, cliente):
         assert cliente.get("/p/organizations.read", headers=_AUTH).status_code == 401
     with patch("app.api.deps.verify_cognito_token", return_value={"sub": "nadie"}):
         assert cliente.get("/p/organizations.read", headers=_AUTH).status_code == 404
+
+
+# ── La 041, contra la ruta real ─────────────────────────────────────────
+
+
+def test_el_owner_no_puede_subirse_un_limite_con_un_override(db_session, client):
+    """El hueco que cierra la 041, por donde entraba: la ruta de verdad, con la
+    identidad del owner que acaba de registrarse."""
+    from app.models.capability import Capability, OrganizationCapability
+
+    org = _organizacion(db_session)
+    owner = _persona(db_session, org, "owner")
+    db_session.add(
+        Capability(code="max_devices", description="Límite", value_type="int")
+    )
+    db_session.commit()
+
+    with _como(owner):
+        creado = client.post(
+            f"/api/v1/organizations/{org.id}/capabilities",
+            json={"capability_code": "max_devices", "value_int": 100000},
+            headers=_AUTH,
+        )
+        listado = client.get(
+            f"/api/v1/organizations/{org.id}/capabilities", headers=_AUTH
+        )
+
+    assert creado.status_code == status.HTTP_403_FORBIDDEN
+    assert "capabilities.override" in creado.json()["detail"]
+    assert db_session.query(OrganizationCapability).count() == 0
+    # Leerlas sigue abierto para cualquier miembro.
+    assert listado.status_code == status.HTTP_200_OK

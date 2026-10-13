@@ -12,6 +12,7 @@ from app.api.deps import (
     get_identity_provider,
 )
 from app.db.session import get_db
+from app.models.account import Account
 from app.models.organization_user import (
     MembershipStatus,
     OrganizationRole,
@@ -28,7 +29,11 @@ from app.schemas.user import (
     UserInviteResponse,
     UserOut,
 )
-from app.services.identity import ErrorDeIdentidad, IdentityProvider
+from app.services.identity import (
+    ErrorDeIdentidad,
+    IdentityProvider,
+    proveedor_para_cuenta,
+)
 from app.services.notifications import send_invitation_email
 from app.utils.datetime import utcnow
 from app.utils.security import generate_verification_token
@@ -96,7 +101,16 @@ def invite_user(
     # no filtran por estado, así que Postgres rechazaría el INSERT. Y aunque
     # los filtrara, reactivar es lo correcto: conserva el handle de Cognito,
     # que es inmutable, y no deja dos filas con el mismo correo.
-    existing_user = db.query(User).filter(User.email == data.email).first()
+    #
+    # Dentro de la marca de quien invita, que es la del invitado (§26, 042): el
+    # mismo correo en otra marca es otra persona, y los índices de la 028 son
+    # por `(brand_account_id, email)`.
+    marca_id = current_user.brand_account_id
+    existing_user = (
+        db.query(User)
+        .filter(User.email == data.email, User.brand_account_id == marca_id)
+        .first()
+    )
     if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -109,6 +123,7 @@ def invite_user(
         .filter(
             TokenConfirmacion.email == data.email,
             TokenConfirmacion.type == TokenType.INVITATION,
+            TokenConfirmacion.brand_account_id == marca_id,
             ~TokenConfirmacion.used,
             TokenConfirmacion.expires_at > utcnow(),
         )
@@ -133,6 +148,7 @@ def invite_user(
         used=False,
         type=TokenType.INVITATION,
         user_id=None,  # No hay user_id todavía, se creará al aceptar
+        brand_account_id=marca_id,
     )
 
     db.add(token_record)
@@ -140,7 +156,7 @@ def invite_user(
 
     # 5️⃣ Enviar correo con la URL de invitación
     email_sent = send_invitation_email(
-        data.email, invitation_token, data.full_name, db, current_user.brand_account_id
+        data.email, invitation_token, data.full_name, db, marca_id
     )
     if not email_sent:
         logger.warning("user.invite.email_failed")
@@ -218,7 +234,16 @@ def accept_invitation(
     # Si está ACTIVE es un error, igual que antes. Si está INACTIVE es una
     # readmisión, y entonces **se reactiva esa fila**: es el caso que la 029
     # vino a destrabar.
-    existing_user = db.query(User).filter(User.email == email).first()
+    #
+    # Siempre dentro de la marca de la invitación (042), que es la de quien
+    # invitó. Las invitaciones anteriores a la 042 traen NULL: la marca por
+    # defecto, que es donde vivían todos los usuarios entonces.
+    marca_id = token_record.brand_account_id
+    existing_user = (
+        db.query(User)
+        .filter(User.email == email, User.brand_account_id == marca_id)
+        .first()
+    )
     if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -239,6 +264,12 @@ def accept_invitation(
     # ya nacen con UUID). Reconstruirlo a partir del correo se rompería en
     # silencio con cualquier handle UUID.
     handle = existing_user.external_id if reactivando else str(uuid4())
+
+    # Sobreescritura guardada, como `_proveedor_para_usuario` en `auth.py`: la
+    # credencial vive en el proveedor de la marca del invitado. Con
+    # `marca_id` None —todo producción hoy— gobierna el `idp` inyectado.
+    if marca_id is not None:
+        idp = proveedor_para_cuenta(db.get(Account, marca_id))
 
     try:
         cognito_sub = idp.sujeto_de(handle=handle)
@@ -313,6 +344,7 @@ def accept_invitation(
             default_organization_id=organization_id,
             cognito_sub=cognito_sub,
             external_id=handle,
+            brand_account_id=marca_id,
             is_master=False,
             email_verified=True,
             # password_hash no se usa, la autenticación es con Cognito
@@ -399,8 +431,13 @@ def resend_invitation(
     # Misma regla que `invite_user`, y por la misma razón: si la de allí
     # admite reinvitar a una fila `INACTIVE`, ésta tiene que admitir
     # reenviarle la invitación. Dejarla fuera haría que readmitir a alguien
-    # funcionara o no según por qué endpoint se entrara.
-    existing_user = db.query(User).filter(User.email == data.email).first()
+    # funcionara o no según por qué endpoint se entrara. Y en la misma marca.
+    marca_id = current_user.brand_account_id
+    existing_user = (
+        db.query(User)
+        .filter(User.email == data.email, User.brand_account_id == marca_id)
+        .first()
+    )
     if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -414,6 +451,7 @@ def resend_invitation(
             TokenConfirmacion.email == data.email,
             TokenConfirmacion.type == TokenType.INVITATION,
             TokenConfirmacion.organization_id == current_user.organization_id,
+            TokenConfirmacion.brand_account_id == marca_id,
             ~TokenConfirmacion.used,
         )
         .all()
@@ -445,6 +483,7 @@ def resend_invitation(
         expires_at=expires_at,
         used=False,
         type=TokenType.INVITATION,
+        brand_account_id=marca_id,
     )
 
     db.add(new_invitation)
@@ -452,9 +491,7 @@ def resend_invitation(
     db.refresh(new_invitation)
 
     # 7️⃣ Enviar email con la nueva URL de invitación
-    email_sent = send_invitation_email(
-        data.email, new_token, full_name, db, current_user.brand_account_id
-    )
+    email_sent = send_invitation_email(data.email, new_token, full_name, db, marca_id)
     if email_sent:
         logger.info("user.resend_invitation.email_sent")
     else:

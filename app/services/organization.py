@@ -59,19 +59,27 @@ class OrganizationService:
         """
         Obtiene el rol de un usuario en una organización.
 
+        Solo cuenta una membresía `ACTIVE`. Hasta el 13/10/2026 una pausada
+        (`PATCH .../status`) conservaba su rol aquí, y con él los guards de
+        rol y de permiso: pausar la única membresía de alguien no le quitaba
+        nada en los endpoints que pasan por esta función, mientras el resto
+        de la API (`_load_current_user` en `app/api/deps.py`) ya la rechazaba.
+        Ahora las dos rutas dicen lo mismo.
+
         Args:
             db: Sesión de base de datos
             user_id: ID del usuario
             organization_id: ID de la organización
 
         Returns:
-            OrganizationRole o None si no es miembro
+            OrganizationRole o None si no es miembro activo
         """
         membership = (
             db.query(OrganizationUser)
             .filter(
                 OrganizationUser.user_id == user_id,
                 OrganizationUser.organization_id == organization_id,
+                OrganizationUser.status == MembershipStatus.ACTIVE.value,
             )
             .first()
         )

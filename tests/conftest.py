@@ -171,28 +171,39 @@ def _create_enum_types(engine) -> None:
         conn.commit()
 
 
-def _sembrar_permisos_de_organizacion(engine) -> None:
-    """Los roles de organización y los permisos de la 040, como en producción.
+# Las migraciones de solo datos que tocan el catálogo de organización, en
+# orden. Cada una expone `sentencias()` con el SQL que ejecuta su `upgrade()`.
+_MIGRACIONES_DEL_CATALOGO = (
+    "040_permisos_de_organizacion",
+    "041_overrides_sin_autoservicio",
+)
 
-    Esta base sale de `create_all()`, que no siembra nada, y sin el catálogo
-    `require_organization_permission` daría 403 en cada endpoint operativo. El
-    SQL es el de la migración, importado de ella: si la 040 cambia, los tests
-    lo ven. Solo el alcance `organization`; los roles de cuenta los siembra
-    cada test de marca y de permisos en su fixture `catalogo`. Que la migración
-    siembre lo que debe sobre el esquema real lo prueba
-    `tests/test_permisos_esquema.py`.
-    """
+
+def _migracion(nombre: str):
+    """Importa un fichero de migración por su ruta (su nombre empieza por un número)."""
     import importlib.util
     from pathlib import Path
 
     ruta = (
-        Path(__file__).resolve().parents[1]
-        / "app/db/migrations/versions/040_permisos_de_organizacion.py"
+        Path(__file__).resolve().parents[1] / f"app/db/migrations/versions/{nombre}.py"
     )
-    spec = importlib.util.spec_from_file_location("migracion_040", ruta)
-    migracion = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migracion)
+    spec = importlib.util.spec_from_file_location(f"migracion_{nombre}", ruta)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    return modulo
 
+
+def _sembrar_permisos_de_organizacion(engine) -> None:
+    """Los roles de organización y el catálogo de la 040 en adelante, como en producción.
+
+    Esta base sale de `create_all()`, que no siembra nada, y sin el catálogo
+    `require_organization_permission` daría 403 en cada endpoint operativo. El
+    SQL es el de las migraciones, importado de ellas: si cambian, los tests lo
+    ven. Solo el alcance `organization`; los roles de cuenta los siembra cada
+    test de marca y de permisos en su fixture `catalogo`. Que las migraciones
+    siembren lo que deben sobre el esquema real lo prueba
+    `tests/test_permisos_esquema.py`.
+    """
     with engine.begin() as conn:
         for code in ("owner", "admin", "billing", "member"):
             conn.execute(
@@ -202,8 +213,9 @@ def _sembrar_permisos_de_organizacion(engine) -> None:
                 ),
                 {"c": code},
             )
-        for sql in migracion.sentencias():
-            conn.execute(text(sql))
+        for nombre in _MIGRACIONES_DEL_CATALOGO:
+            for sql in _migracion(nombre).sentencias():
+                conn.execute(text(sql))
 
 
 @pytest.fixture(scope="session")
