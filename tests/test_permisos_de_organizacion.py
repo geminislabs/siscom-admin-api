@@ -247,15 +247,6 @@ def test_sin_membresia_no_pasa_ni_lo_que_es_de_todos(db_session, cliente):
     assert "organizations.read" in r.json()["detail"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Hueco previo a este cambio: OrganizationService.get_user_role no mira "
-        "OrganizationUser.status, así que pausar la única membresía de alguien "
-        "no le quita el rol. Este PR no cambia accesos; se corrige aparte, y "
-        "entonces este xfail estricto falla y hay que quitarlo."
-    ),
-)
 def test_una_membresia_inactiva_no_cuenta_aunque_sea_de_owner(db_session, cliente):
     org = _organizacion(db_session)
     persona = _persona(db_session, org, "owner", MembershipStatus.INACTIVE.value)
