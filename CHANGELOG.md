@@ -7,12 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.57.0] - 2026-10-13
+
 **Migraciones.** `041_overrides_sin_autoservicio` (solo datos) y `042_marca_de_la_invitacion` (una
-columna nullable con FK en `tokens_confirmacion`). Cabeza: `040_permisos_de_organizacion` →
-`042_marca_de_la_invitacion`. La 042 hace `ALTER TABLE`: **`siscom_migrator` tiene que ser dueño de
-`tokens_confirmacion`** (no existe `GRANT ALTER`). Rollback: revertir la imagen basta para la 042; la
-041 no se revierte con la imagen (el código anterior también lee el catálogo), sino con
-`alembic downgrade 040_permisos_de_organizacion`.
+columna nullable con FK en `tokens_confirmacion`, sin relleno). Cabeza: `040_permisos_de_organizacion`
+→ `042_marca_de_la_invitacion`. Medido en producción antes de liberar: `tokens_confirmacion` es de
+`pgadmin` (el mismo dueño de las tablas que la `033` alteró sin problema) y hay **0** overrides en
+`organization_capabilities`, así que la 041 no deja a nadie a medias.
+
+**Rollback.**
+
+1. **Para la 042 basta revertir la imagen** (`v1.56.0`): el código anterior no lee la columna.
+2. **La 041 no se revierte con la imagen**, porque el código anterior también lee el catálogo. Para
+   devolverle `capabilities.override` al owner, o para desplegar un tag anterior, antes de hacerlo:
+
+   ```bash
+   docker run --rm --network siscom-network --env-file .env \
+     siscom-admin-api:latest alembic downgrade 040_permisos_de_organizacion
+   ```
+
+   Sin este paso, desplegar `v1.56.0` falla con
+   `Can't locate revision identified by '042_marca_de_la_invitacion'`. El downgrade borra la columna
+   (pierde la marca de las invitaciones pendientes de otras marcas; hoy no hay ninguna) y le devuelve
+   el permiso al owner.
 
 ### Security
 
