@@ -69,6 +69,17 @@ class TokenConfirmacion(SQLModel, table=True):
             nullable=True,
         ),
     )
+    # Marca de quien invita (solo INVITATION; migración 042). NULL es la marca
+    # por defecto, igual que en `users`. `accept_invitation` crea al usuario en
+    # esta marca: es la que ya pinta el correo de invitación.
+    brand_account_id: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(
+            PGUUID(as_uuid=True),
+            ForeignKey("accounts.id", ondelete="CASCADE"),
+            nullable=True,
+        ),
+    )
     # Contraseña temporal (solo para EMAIL_VERIFICATION)
     password_temp: Optional[str] = Field(
         default=None, sa_column=Column(String(255), nullable=True)
