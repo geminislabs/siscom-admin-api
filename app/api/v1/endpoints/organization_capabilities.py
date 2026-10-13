@@ -19,7 +19,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, require_organization_role
+from app.api.deps import AuthResult, require_organization_permission
 from app.db.session import get_db
 from app.models.capability import Capability, OrganizationCapability
 from app.models.organization import Organization
@@ -115,7 +115,7 @@ def _get_capability_by_code(db: Session, code: str) -> Capability:
 def list_organization_capabilities(
     organization_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("member")),
+    auth: AuthResult = Depends(require_organization_permission("capabilities.read")),
 ):
     """
     Lista todas las capabilities efectivas de una organización.
@@ -179,7 +179,9 @@ def create_or_update_capability_override(
     data: OrganizationCapabilityCreate,
     request: Request,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("owner")),
+    auth: AuthResult = Depends(
+        require_organization_permission("capabilities.override")
+    ),
 ):
     """
     Crea o actualiza un override de capability para la organización.
@@ -325,7 +327,9 @@ def delete_capability_override(
     capability_code: str,
     request: Request,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("owner")),
+    auth: AuthResult = Depends(
+        require_organization_permission("capabilities.override")
+    ),
 ):
     """
     Elimina un override de capability de la organización.

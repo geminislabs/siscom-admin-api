@@ -28,7 +28,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, get_identity_provider, require_organization_role
+from app.api.deps import (
+    AuthResult,
+    get_identity_provider,
+    require_organization_permission,
+)
 from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.organization_user import (
@@ -175,7 +179,9 @@ def _count_owners(db: Session, organization_id: UUID) -> int:
 def list_organization_users(
     organization_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("member")),
+    auth: AuthResult = Depends(
+        require_organization_permission("organization_users.read")
+    ),
 ):
     """
     Lista todos los usuarios de una organización.
@@ -228,7 +234,9 @@ def add_user_to_organization(
     data: AddUserToOrganizationRequest,
     request: Request,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("admin")),
+    auth: AuthResult = Depends(
+        require_organization_permission("organization_users.manage")
+    ),
 ):
     """
     Agrega un usuario existente a la organización.
@@ -374,7 +382,9 @@ def update_user_role(
     data: UpdateMemberRoleRequest,
     request: Request,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("admin")),
+    auth: AuthResult = Depends(
+        require_organization_permission("organization_users.manage")
+    ),
 ):
     """
     Actualiza el rol de un usuario en la organización.
@@ -508,7 +518,9 @@ def update_membership_status(
     data: UpdateMemberStatusRequest,
     request: Request,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("admin")),
+    auth: AuthResult = Depends(
+        require_organization_permission("organization_users.manage")
+    ),
 ):
     """
     Pausa o reactiva la membresía de un usuario en la organización.
@@ -649,7 +661,9 @@ def remove_user_from_organization(
     user_id: UUID,
     request: Request,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("admin")),
+    auth: AuthResult = Depends(
+        require_organization_permission("organization_users.manage")
+    ),
     idp: IdentityProvider = Depends(get_identity_provider),
 ):
     """

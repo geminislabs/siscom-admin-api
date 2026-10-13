@@ -23,7 +23,7 @@ from app.models.user import User
 def _agregar_usuario(client, actor, organizacion, user_id, rol="member"):
     """POST con la identidad del actor, entrando por donde entra producción.
 
-    `require_organization_role` es una *factory*: no se puede sustituir con
+    `require_organization_permission` es una *factory*: no se puede sustituir con
     `dependency_overrides`, igual que en `test_estado_de_usuario_codigo.py`.
     """
     with patch(

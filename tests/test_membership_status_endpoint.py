@@ -32,7 +32,7 @@ def _cambiar_estado(client, actor, organizacion, victima, nuevo_estado):
     """PATCH con la identidad del actor, entrando por donde entra producción.
 
     Mismo patrón que `_sacar_de_la_organizacion` en
-    `test_estado_de_usuario_codigo.py`: `require_organization_role` es una
+    `test_estado_de_usuario_codigo.py`: `require_organization_permission` es una
     *factory* y no se puede sustituir con `dependency_overrides`.
     """
     with patch(

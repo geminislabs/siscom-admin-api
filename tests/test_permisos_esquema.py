@@ -298,3 +298,35 @@ def test_branding_write_es_de_owner_y_admin_de_la_cuenta(conn):
              ORDER BY r.scope, r.code
             """)).all()
     assert [tuple(f) for f in filas] == [("account", "admin"), ("account", "owner")]
+
+
+# ── La 040: los permisos operativos ─────────────────────────────────────
+
+
+def test_la_040_siembra_el_reparto_sobre_los_roles_de_organizacion(conn):
+    """Lo que siembra la migración real es lo que declara `PERMISOS`, solo en
+    roles de organización. Que ese reparto sea el de la jerarquía vieja lo
+    prueba `tests/test_permisos_de_organizacion.py`."""
+    import importlib.util
+
+    ruta = RAIZ_APP / "db/migrations/versions/040_permisos_de_organizacion.py"
+    spec = importlib.util.spec_from_file_location("migracion_040", ruta)
+    migracion = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migracion)
+
+    codes = [code for code, _, _ in migracion.PERMISOS]
+    filas = conn.execute(
+        text("""
+            SELECT rp.permission_code, r.scope, r.code
+              FROM role_permissions rp
+              JOIN roles r ON r.id = rp.role_id
+             WHERE rp.permission_code = ANY(:codes)
+            """),
+        {"codes": codes},
+    ).all()
+
+    assert {s for _, s, _ in filas} == {"organization"}
+    sembrado = {}
+    for permiso, _, rol in filas:
+        sembrado.setdefault(permiso, set()).add(rol)
+    assert sembrado == {code: set(roles) for code, _, roles in migracion.PERMISOS}

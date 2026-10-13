@@ -20,7 +20,7 @@ from app.api.deps import (
     get_mobility_kafka_producer,
     get_rules_kafka_producer,
     require_capability,
-    require_organization_role,
+    require_organization_permission,
     resolve_current_client,
     resolve_current_organization,
 )
@@ -232,7 +232,7 @@ def test_auth_cognito_or_paseto_raises_when_both_fail(monkeypatch):
     assert ei.value.status_code == 401
 
 
-def test_require_organization_role_allows_matching_role(monkeypatch):
+def test_require_organization_permission_allows_role_with_permission(monkeypatch):
     uid = uuid4()
     oid = uuid4()
 
@@ -249,17 +249,26 @@ def test_require_organization_role_allows_matching_role(monkeypatch):
         "get_user_role",
         lambda db2, u, o: SimpleNamespace(value="admin"),
     )
+    pedidos = []
+
+    def tiene_permiso(db2, scope, rol, permiso):
+        pedidos.append((scope, rol, permiso))
+        return True
+
+    monkeypatch.setattr("app.services.permisos.tiene_permiso", tiene_permiso)
 
     creds = MagicMock()
     creds.credentials = "jwt"
 
-    role_dep = require_organization_role("admin", "billing")
-    result = role_dep(credentials=creds, db=db)
+    dep = require_organization_permission("organization_users.manage")
+    result = dep(credentials=creds, db=db)
 
     assert result.organization_role == "admin"
+    assert result.organization_id == oid
+    assert pedidos == [("organization", "admin", "organization_users.manage")]
 
 
-def test_require_organization_role_forbidden(monkeypatch):
+def test_require_organization_permission_forbidden(monkeypatch):
     user = MagicMock()
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
@@ -270,14 +279,15 @@ def test_require_organization_role_forbidden(monkeypatch):
         "get_user_role",
         lambda db2, u, o: SimpleNamespace(value="member"),
     )
+    monkeypatch.setattr("app.services.permisos.tiene_permiso", lambda *a, **k: False)
 
     creds = MagicMock()
     creds.credentials = "jwt"
 
-    role_dep = require_organization_role("owner")
+    dep = require_organization_permission("organizations.write")
 
     with pytest.raises(HTTPException) as ei:
-        role_dep(credentials=creds, db=db)
+        dep(credentials=creds, db=db)
     assert ei.value.status_code == 403
 
 

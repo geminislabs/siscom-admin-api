@@ -34,7 +34,7 @@ from app.api.deps import (
     AuthResult,
     get_current_organization_id,
     get_current_user_full,
-    require_organization_role,
+    require_organization_permission,
 )
 from app.db.session import get_db
 from app.models.account import Account
@@ -121,7 +121,7 @@ def update_account(
     account_id: UUID,
     data: AccountUpdate,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("owner")),
+    auth: AuthResult = Depends(require_organization_permission("accounts.write")),
 ):
     """
     Actualiza el perfil de un Account (perfil progresivo).

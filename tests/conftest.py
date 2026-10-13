@@ -171,6 +171,41 @@ def _create_enum_types(engine) -> None:
         conn.commit()
 
 
+def _sembrar_permisos_de_organizacion(engine) -> None:
+    """Los roles de organización y los permisos de la 040, como en producción.
+
+    Esta base sale de `create_all()`, que no siembra nada, y sin el catálogo
+    `require_organization_permission` daría 403 en cada endpoint operativo. El
+    SQL es el de la migración, importado de ella: si la 040 cambia, los tests
+    lo ven. Solo el alcance `organization`; los roles de cuenta los siembra
+    cada test de marca y de permisos en su fixture `catalogo`. Que la migración
+    siembre lo que debe sobre el esquema real lo prueba
+    `tests/test_permisos_esquema.py`.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    ruta = (
+        Path(__file__).resolve().parents[1]
+        / "app/db/migrations/versions/040_permisos_de_organizacion.py"
+    )
+    spec = importlib.util.spec_from_file_location("migracion_040", ruta)
+    migracion = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migracion)
+
+    with engine.begin() as conn:
+        for code in ("owner", "admin", "billing", "member"):
+            conn.execute(
+                text(
+                    "INSERT INTO roles (scope, code, name, is_system) "
+                    "VALUES ('organization', :c, :c, true)"
+                ),
+                {"c": code},
+            )
+        for sql in migracion.sentencias():
+            conn.execute(text(sql))
+
+
 @pytest.fixture(scope="session")
 def _engine():
     """Engine y esquema, una sola vez por sesion de tests.
@@ -215,6 +250,7 @@ def _engine():
     engine = create_engine(DATABASE_URL, future=True)
     _create_enum_types(engine)
     SQLModel.metadata.create_all(bind=engine)
+    _sembrar_permisos_de_organizacion(engine)
     try:
         yield engine
     finally:
