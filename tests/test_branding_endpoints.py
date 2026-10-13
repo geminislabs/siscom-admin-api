@@ -170,7 +170,39 @@ def test_sin_fila_todavia_el_get_responde_vacio(client, partner):
         "published": {},
         "published_at": None,
         "published_by": None,
+        "adjustments": [],
     }
+
+
+def test_los_ajustes_se_ven_al_volver_a_entrar_no_solo_al_guardar(client, partner):
+    """Un amarillo claro se oscurece en modo claro. El partner tiene que poder
+    leer por qué cada vez que abre la pantalla, no solo justo tras guardar."""
+    cuenta, _, owner = partner
+    amarillo = {**BORRADOR, "seed": {"primary": "#ffeb3b"}}
+    with _como(owner):
+        guardado = client.put(_url(cuenta, "/draft"), json=amarillo, headers=_AUTH)
+        leido = client.get(_url(cuenta), headers=_AUTH)
+
+    ajustes = guardado.json()["adjustments"]
+    assert [(a["modo"], a["semilla"]) for a in ajustes] == [("light", "#ffeb3b")]
+    assert leido.json()["adjustments"] == ajustes
+
+
+def test_sin_borrador_los_ajustes_son_los_de_lo_publicado(client, partner):
+    cuenta, _, owner = partner
+    amarillo = {**BORRADOR, "seed": {"primary": "#ffeb3b"}}
+    with _como(owner):
+        client.put(_url(cuenta, "/draft"), json=amarillo, headers=_AUTH)
+        publicado = client.post(_url(cuenta, "/publish"), headers=_AUTH)
+        leido = client.get(_url(cuenta), headers=_AUTH)
+        # Un borrador nuevo sin ajustes manda sobre lo publicado.
+        client.put(_url(cuenta, "/draft"), json=BORRADOR, headers=_AUTH)
+        con_borrador = client.get(_url(cuenta), headers=_AUTH)
+
+    assert publicado.json()["draft"] is None
+    assert len(publicado.json()["adjustments"]) == 1
+    assert leido.json()["adjustments"] == publicado.json()["adjustments"]
+    assert con_borrador.json()["adjustments"] == []
 
 
 # ── Guardar el borrador ─────────────────────────────────────────────────

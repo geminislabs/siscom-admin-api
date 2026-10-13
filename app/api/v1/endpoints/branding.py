@@ -95,6 +95,19 @@ def _fila(db: Session, account_id: UUID) -> Optional[TenantBranding]:
     )
 
 
+def _ajustes(tema_guardado: Optional[dict[str, Any]]) -> list[dict]:
+    """
+    Los ajustes de contraste de un tema ya guardado. No se persisten: se
+    recalculan desde sus semillas, que es determinista y barato. Sin ellos, la
+    pantalla solo los mostraba justo después de guardar y, al volver a entrar,
+    el partner veía un color distinto del que eligió sin saber por qué.
+    """
+    semilla = (tema_guardado or {}).get("seed") or {}
+    if not semilla.get("primary"):
+        return []
+    return marca_tema.derivar(semilla["primary"], semilla.get("accent")).ajustes
+
+
 def _como_salida(account_id: UUID, fila: Optional[TenantBranding]) -> dict[str, Any]:
     if fila is None:
         return {"account_id": account_id}
@@ -105,6 +118,8 @@ def _como_salida(account_id: UUID, fila: Optional[TenantBranding]) -> dict[str, 
         "published": fila.published or {},
         "published_at": fila.published_at,
         "published_by": fila.published_by,
+        # Los del tema que se edita: el borrador si lo hay, si no lo publicado.
+        "adjustments": _ajustes(fila.draft or fila.published),
     }
 
 
@@ -192,7 +207,6 @@ def guardar_borrador(
     return {
         **_como_salida(account_id, fila),
         "contrast": [p.como_dict() for p in tema.pares],
-        "adjustments": tema.ajustes,
     }
 
 
