@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     AuthResult,
     get_current_organization_id,
-    require_billing_access,
+    require_organization_permission,
 )
 from app.db.session import get_db
 from app.models.plan import Plan
@@ -249,7 +249,7 @@ def get_subscription(
 def cancel_subscription(
     subscription_id: UUID,
     request: SubscriptionCancelRequest,
-    auth: AuthResult = Depends(require_billing_access),
+    auth: AuthResult = Depends(require_organization_permission("subscriptions.manage")),
     db: Session = Depends(get_db),
 ):
     """
@@ -303,7 +303,7 @@ def cancel_subscription(
 def toggle_auto_renew(
     subscription_id: UUID,
     auto_renew: bool = Query(..., description="Nuevo valor de auto-renovación"),
-    auth: AuthResult = Depends(require_billing_access),
+    auth: AuthResult = Depends(require_organization_permission("subscriptions.manage")),
     db: Session = Depends(get_db),
 ):
     """

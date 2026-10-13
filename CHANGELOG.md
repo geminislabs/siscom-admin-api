@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Migración.** `040_permisos_de_organizacion`, solo datos: ocho permisos de alcance organización y sus
+filas en `role_permissions`. Corre antes de levantar la imagen nueva; sin ella, esa imagen responde
+403 en los quince endpoints operativos (falla cerrado). Rollback: basta revertir la imagen, porque el
+código anterior no lee esas filas. `alembic downgrade 039_permiso_de_marca` solo hace falta para
+desplegar un tag anterior.
+
+### Changed
+
+- **Los endpoints operativos preguntan por permiso, no por rol (D6 de B4).** `require_organization_role`
+  y sus atajos (`require_owner`, `require_admin_or_owner`, `require_billing_access`) se reemplazan por
+  `require_organization_permission`, que consulta el catálogo con el rol de la organización activa. Son
+  quince endpoints de organizaciones, miembros, capabilities de organización, `PATCH /accounts/{id}` y
+  suscripciones. **Nadie gana ni pierde acceso:** cada permiso lo reciben exactamente los roles que la
+  jerarquía vieja dejaba pasar, y `tests/test_permisos_de_organizacion.py` lo compara endpoint por
+  endpoint. El texto del 403 pasa de «Se requiere uno de los siguientes roles: …» a «Se requiere el
+  permiso … en esta organización»
+- La base de tests siembra los roles de organización y el catálogo de la 040 con el SQL de la propia
+  migración
+
 ## [1.55.0] - 2026-10-12
 
 **Migraciones.** `038_catalogo_de_permisos` y `039_permiso_de_marca`. Cabeza:

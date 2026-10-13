@@ -46,7 +46,7 @@ def idp_falso():
 def _sacar_de_la_organizacion(client, actor, organizacion, victima):
     """DELETE con la identidad del actor.
 
-    `require_organization_role` no se puede sustituir por
+    `require_organization_permission` no se puede sustituir por
     `dependency_overrides`: es una *factory*, asi que el objeto que la ruta
     capturo al importarse no es el que devolveria otra llamada. Se entra por
     donde entra produccion —un token que `verify_cognito_token` valida— y el
@@ -360,7 +360,7 @@ def test_aceptar_invitacion_nueva_crea_la_membresia(
 ):
     """El rediseño de la Parte 2: `accept_invitation` nunca creaba fila en
     `organization_users`, sólo escribía `users.organization_id`. Sin esto,
-    `require_organization_role` no deja pasar ningún rol para nadie invitado
+    `require_organization_permission` no deja pasar ningún rol para nadie invitado
     por esta vía — ver la migración 035."""
     db_session.add(
         TokenConfirmacion(

@@ -679,50 +679,40 @@ def get_auth_cognito_or_paseto(
     return _verify_auth
 
 
-def require_organization_role(*allowed_roles: str):
+def require_organization_permission(permission: str):
     """
-    Factory para crear una dependencia que requiere roles específicos.
+    Factory de una dependencia que exige un permiso de alcance **organización**.
 
-    DELEGACIÓN: Usa OrganizationService.get_user_role() como única fuente
-    de verdad para roles. Sin *fallback*: is_master ya no concede nada.
+    Lo operativo (miembros, organizaciones, capabilities, suscripciones) se
+    verifica contra el rol de la persona en su organización activa
+    (`organization_users`), igual que hacía `require_organization_role`. La
+    diferencia es que el endpoint no dice qué roles pasan: lo dice el catálogo
+    (`permissions`, `role_permissions`; migraciones 038 y 040), así que un rol
+    personalizado no obliga a tocar el endpoint. Ver `app.services.permisos` y
+    `require_account_permission`, su par para lo comercial.
 
-    JERARQUÍA DE ROLES:
-    - owner: Tiene todos los permisos
-    - admin: Tiene permisos de admin, billing y member
-    - billing: Tiene permisos de billing y member
-    - member: Solo permisos de member
+    Solo acepta Cognito. Falla cerrado con 403 sin membresía activa, con un rol
+    que no tiene el permiso o con un permiso que el catálogo no conoce.
 
     Uso:
-        @router.post("/admin-action")
-        def admin_action(
-            auth: AuthResult = Depends(require_organization_role("owner", "admin"))
+        @router.post("/{organization_id}/users")
+        def agregar(
+            auth: AuthResult = Depends(
+                require_organization_permission("organization_users.manage")
+            ),
         ):
             ...
-
-    Args:
-        allowed_roles: Roles mínimos permitidos (ej: "owner", "admin", "billing", "member")
-
-    Returns:
-        Dependencia que valida el rol y retorna AuthResult
     """
-    # Definir jerarquía de roles (de mayor a menor)
-    ROLE_HIERARCHY = {
-        "owner": ["owner", "admin", "billing", "member"],
-        "admin": ["admin", "billing", "member"],
-        "billing": ["billing", "member"],
-        "member": ["member"],
-    }
 
-    def _require_role(
+    def _require_organization_permission(
         credentials: HTTPAuthorizationCredentials = Depends(security),
         db: Session = Depends(get_db),
     ) -> AuthResult:
+        from app.models.permission import PermissionScope
         from app.models.user import User
+        from app.services import permisos
 
-        token = credentials.credentials
-
-        # Solo soporta Cognito para verificación de roles organizacionales
-        cognito_payload = verify_cognito_token(token)
+        cognito_payload = verify_cognito_token(credentials.credentials)
 
         cognito_sub = cognito_payload.get("sub")
         if not cognito_sub:
@@ -738,19 +728,16 @@ def require_organization_role(*allowed_roles: str):
                 detail="Usuario no encontrado",
             )
 
-        # Obtener rol usando OrganizationService (única fuente de verdad)
+        # Única fuente de verdad del rol; sin membresía activa devuelve None.
         org_role = OrganizationService.get_user_role(db, user.id, user.organization_id)
         org_role_str = org_role.value if org_role else None
 
-        # Validar rol con jerarquía
-        # El usuario tiene acceso si su rol incluye alguno de los roles permitidos
-        user_permissions = ROLE_HIERARCHY.get(org_role_str, [])
-        has_permission = any(role in user_permissions for role in allowed_roles)
-
-        if not has_permission:
+        if not permisos.tiene_permiso(
+            db, PermissionScope.ORGANIZATION.value, org_role_str, permission
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere uno de los siguientes roles: {', '.join(allowed_roles)}",
+                detail=f"Se requiere el permiso {permission} en esta organización",
             )
 
         return AuthResult(
@@ -761,7 +748,7 @@ def require_organization_role(*allowed_roles: str):
             organization_role=org_role_str,
         )
 
-    return _require_role
+    return _require_organization_permission
 
 
 def require_capability(capability_code: str):
@@ -898,8 +885,3 @@ get_auth_for_gac_admin = get_auth_cognito_or_paseto(
     required_service="gac",
     required_role="GAC_ADMIN",
 )
-
-# Dependencias de rol comunes
-require_owner = require_organization_role("owner")
-require_admin_or_owner = require_organization_role("owner", "admin")
-require_billing_access = require_organization_role("owner", "billing")

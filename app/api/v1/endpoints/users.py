@@ -324,7 +324,7 @@ def accept_invitation(
     # Y la membresía real en organization_users — hasta ahora este endpoint
     # nunca la creaba, solo escribía users.organization_id. Sin ella,
     # OrganizationService.get_user_role devuelve None para cualquiera
-    # invitado por esta vía, y require_organization_role no deja pasar
+    # invitado por esta vía, y require_organization_permission no deja pasar
     # ningún rol, ni siquiera "member". Ver la migración 035, que rellena
     # esto mismo para quien ya se invitó antes de este cambio.
     membership = (

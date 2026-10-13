@@ -22,7 +22,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, require_organization_role
+from app.api.deps import AuthResult, require_organization_permission
 from app.db.session import get_db
 from app.models.organization import Organization, OrganizationStatus
 from app.models.organization_user import OrganizationRole, OrganizationUser
@@ -44,7 +44,7 @@ router = APIRouter()
 def create_organization(
     data: OrganizationCreate,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("owner")),
+    auth: AuthResult = Depends(require_organization_permission("organizations.write")),
 ):
     """
     Crea una nueva organización dentro del Account del usuario.
@@ -115,7 +115,7 @@ def create_organization(
 @router.get("", response_model=list[OrganizationOut])
 def list_organizations(
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("member")),
+    auth: AuthResult = Depends(require_organization_permission("organizations.read")),
 ):
     """
     Lista todas las organizaciones del Account del usuario.
@@ -152,7 +152,7 @@ def list_organizations(
 def get_organization(
     organization_id: UUID,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("member")),
+    auth: AuthResult = Depends(require_organization_permission("organizations.read")),
 ):
     """
     Obtiene información de una organización específica.
@@ -196,7 +196,7 @@ def update_organization(
     organization_id: UUID,
     data: OrganizationUpdate,
     db: Session = Depends(get_db),
-    auth: AuthResult = Depends(require_organization_role("owner")),
+    auth: AuthResult = Depends(require_organization_permission("organizations.write")),
 ):
     """
     Actualiza una organización.
