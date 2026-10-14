@@ -47,8 +47,16 @@ A de la Fase 2, que es esquema sin modelos a proposito— pasa por aqui sin que
 se revise nada suyo salvo que aplique sin error. Para eso estan los tests que
 la ejercitan.
 
-Tampoco mira tipos ni valores por defecto. Se puede anadir con el mismo patron
-de linea base el dia que haga falta.
+Tampoco mira tipos.
+
+3. **Defaults del servidor** (anadido el 13/10/2026), con la misma linea base.
+   Si el modelo declara `server_default`, el codigo inserta sin ese valor y
+   cuenta con que la base lo ponga: la columna real tiene que tener un DEFAULT.
+   Solo se compara que exista, no su texto (`now()` y `CURRENT_TIMESTAMP` son
+   el mismo default escrito distinto). Lo destapo `account_events.id`: era
+   `NOT NULL` sin DEFAULT en produccion, y todo endpoint que auditaba —publicar
+   la marca, convertir una cuenta en marca, dar de alta un miembro— respondia
+   500. Los tests no lo veian porque su base sale de los modelos.
 
 Uso:
     ./scripts/db-local.sh up
@@ -100,6 +108,24 @@ def _registrar_modelos() -> None:
     )
 
 
+def _defaults(insp) -> list[str]:
+    """Columnas con `server_default` en el modelo y sin DEFAULT en la base."""
+    faltan = []
+    for tabla in SQLModel.metadata.tables.values():
+        esquema = tabla.schema or "public"
+        if tabla.name not in insp.get_table_names(schema=esquema):
+            continue
+        reales = {c["name"]: c for c in insp.get_columns(tabla.name, schema=esquema)}
+        for col in tabla.columns:
+            real = reales.get(col.name)
+            if real is None or col.server_default is None:
+                continue
+            # Una identidad o un serial no traen `default` pero si lo generan.
+            if real.get("default") is None and not real.get("identity"):
+                faltan.append(f"{esquema}.{tabla.name}.{col.name}")
+    return sorted(faltan)
+
+
 def _restricciones(insp) -> tuple[list[str], list[str]]:
     """Divergencias de nulabilidad y claves foraneas ausentes, en texto estable.
 
@@ -140,28 +166,42 @@ def _restricciones(insp) -> tuple[list[str], list[str]]:
     return sorted(nulabilidad), sorted(claves)
 
 
-def _linea_base() -> tuple[set[str], set[str]]:
+def _linea_base() -> tuple[set[str], set[str], set[str]]:
     if not LINEA_BASE.exists():
-        return set(), set()
+        return set(), set(), set()
     datos = tomllib.loads(LINEA_BASE.read_text(encoding="utf-8"))
-    return set(datos.get("nulabilidad", [])), set(datos.get("claves_foraneas", []))
+    return (
+        set(datos.get("nulabilidad", [])),
+        set(datos.get("claves_foraneas", [])),
+        set(datos.get("defaults", [])),
+    )
 
 
 def _revisar_restricciones(insp) -> int:
     """Compara contra la linea base. Devuelve 0 si no hay novedad."""
     nulabilidad, claves = _restricciones(insp)
-    base_nul, base_fk = _linea_base()
+    defaults = [f"{c}: sin DEFAULT" for c in _defaults(insp)]
+    base_nul, base_fk, base_def = _linea_base()
 
-    nuevas = sorted((set(nulabilidad) - base_nul) | (set(claves) - base_fk))
+    nuevas = sorted(
+        (set(nulabilidad) - base_nul)
+        | (set(claves) - base_fk)
+        | (set(defaults) - base_def)
+    )
     # Una entrada que ya no es divergencia sigue en la lista: alguien la
     # arreglo y no la quito. Tambien falla, porque una linea base que no se poda
     # deja de decir la verdad — y la siguiente persona la leera como vigente.
-    resueltas = sorted((base_nul - set(nulabilidad)) | (base_fk - set(claves)))
+    resueltas = sorted(
+        (base_nul - set(nulabilidad))
+        | (base_fk - set(claves))
+        | (base_def - set(defaults))
+    )
 
     print(
         f"\nRestricciones: {len(nulabilidad)} divergencias de nulabilidad y "
-        f"{len(claves)} claves foraneas ausentes "
-        f"({len(base_nul) + len(base_fk)} en la linea base)"
+        f"{len(claves)} claves foraneas ausentes y {len(defaults)} defaults "
+        f"del servidor ausentes ({len(base_nul) + len(base_fk) + len(base_def)} "
+        "en la linea base)"
     )
 
     if not nuevas and not resueltas:
