@@ -442,3 +442,34 @@ def test_dos_marcas_no_se_ven_entre_si(client, db_session):
     assert una["brand_name"] == "Mero Mero"
     assert otra["brand_name"] == "Otro Partner"
     assert una["theme"]["c"] != otra["theme"]["c"]
+
+
+def test_el_parametro_host_manda_sobre_la_cabecera(client, db_session):
+    """El servidor de nexus-web llama con su propio Host (el de esta API) y
+    manda en `host` el dominio por el que entró el navegador."""
+    _marca(db_session, "meromero.com", nombre="Mero Mero", tema={"c": "#111"})
+
+    r = client.get(
+        "/api/v1/tenant-config",
+        params={"host": "MeroMero.com:443"},
+        headers={"Host": "admin.geminislabs.com"},
+    )
+
+    assert r.json()["brand_name"] == "Mero Mero"
+    assert r.json()["hostname"] == "meromero.com"
+    assert r.json()["is_default"] is False
+
+
+def test_el_parametro_host_tampoco_sirve_un_dominio_sin_verificar(client, db_session):
+    _marca(db_session, "meromero.com", estado="PENDING")
+
+    r = client.get("/api/v1/tenant-config", params={"host": "meromero.com"})
+
+    assert r.json()["is_default"] is True
+
+
+def test_un_parametro_host_invalido_cae_en_la_marca_por_defecto(client):
+    r = client.get("/api/v1/tenant-config", params={"host": "no es un host"})
+
+    assert r.status_code == 200
+    assert r.json()["is_default"] is True

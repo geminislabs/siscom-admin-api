@@ -20,7 +20,7 @@ Confundir ambas resoluciones es el bug clásico de estas arquitecturas, y por es
 este módulo no importa nada de autenticación: no hay dónde equivocarse.
 """
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -48,10 +48,26 @@ CACHE_SEGUNDOS = 60
 def get_tenant_config(
     request: Request,
     response: Response,
+    host: str | None = Query(
+        default=None,
+        max_length=253,
+        description=(
+            "El host por el que entró el navegador. Lo manda el servidor de "
+            "nexus-web, que llama con su propio Host; sin él manda la cabecera."
+        ),
+    ),
     db: Session = Depends(get_db),
 ) -> TenantConfigResponse:
     """
-    Devuelve la marca que corresponde al `Host` de esta petición.
+    Devuelve la marca que corresponde al `Host` de esta petición, o al
+    parámetro `host` si viene.
+
+    El parámetro existe porque quien más lo consulta es el `hooks.server.js`
+    de nexus-web, que llama desde el servidor: su `Host` es el de esta API, no
+    el dominio del partner por el que entró el navegador. Pasarlo en la
+    cabecera tampoco sirve, porque el balanceador enruta por `Host`. Aceptarlo
+    no abre nada: el Host nunca autoriza y este endpoint ya es enumerable por
+    diseño. Con el parámetro, la URL ya distingue cada marca en cualquier caché.
 
     **Público y sin autenticación**, por diseño: hace falta antes de que exista
     sesión. Devuelve únicamente datos de marca.
@@ -66,7 +82,7 @@ def get_tenant_config(
     # marca de un partner a otro.
     response.headers["Vary"] = "Host"
 
-    hostname = normalizar_host(request.headers.get("host"))
+    hostname = normalizar_host(host or request.headers.get("host"))
     if hostname is None:
         return TenantConfigResponse(
             hostname="", brand_name=MARCA_POR_DEFECTO, theme={}, is_default=True

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `GET /tenant-config` acepta el parámetro `host`, que manda sobre la cabecera `Host` (Fase 4). Quien más lo consulta es el servidor de nexus-web, que llama con su propio `Host` —el de esta API—, y el balanceador enruta por esa cabecera, así que no hay otro modo de decirle por qué dominio entró el navegador. No abre nada: el Host nunca autoriza, el endpoint ya era enumerable y un dominio sin verificar sigue sirviendo la marca por defecto
 - Los logs de `/auth/refresh` (`auth.refresh.success`, `.rejected` e `.identity_failed`) llevan `usuario` y `sesion`: los primeros 12 hex del SHA-256 del id del usuario y del refresh token presentado; el de éxito añade `rotado`. Hasta ahora no había con qué atribuir una renovación —el puerto del access log es el del balanceador, que reutiliza conexiones entre clientes—, así que dos refresh en el mismo segundo no se podían distinguir entre una carrera (la misma `sesion` dos veces) y dos sesiones que coinciden. Ni el token ni el id aparecen en claro
 
 ## [1.59.1] - 2026-10-13
