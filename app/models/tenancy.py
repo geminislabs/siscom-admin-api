@@ -134,8 +134,11 @@ class TenantBranding(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
+    # `none_as_null`: sin él, `draft = None` se escribe como el JSON `'null'`,
+    # no como NULL de SQL, y `ck_tenant_branding_draft_objeto` lo rechaza. Así
+    # publicar y descartar respondían 500 en producción (13/10/2026).
     draft: Optional[dict[str, Any]] = Field(
-        default=None, sa_column=Column(JSONB, nullable=True)
+        default=None, sa_column=Column(JSONB(none_as_null=True), nullable=True)
     )
     published_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
