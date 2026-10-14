@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Publicar la marca y descartar el borrador ya no responden 500.** `tenant_branding.draft` era `Column(JSONB)` y asignarle `None` escribía el JSON `'null'`, no NULL de SQL; el `CHECK (draft IS NULL OR jsonb_typeof(draft) = 'object')` de la `027` lo rechazaba. La columna pasa a `JSONB(none_as_null=True)`. Sin migración. Los tests no lo veían porque `create_all()` no crea ese CHECK; `tests/test_borrador_nulo_esquema.py` lo prueba sobre el esquema migrado
+
 ## [1.59.0] - 2026-10-13
 
 **Migración.** `043_defaults_de_id`. Cabeza: `042_marca_de_la_invitacion` → `043_defaults_de_id`.
