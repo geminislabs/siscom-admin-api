@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import random
 from datetime import timedelta
@@ -124,6 +125,18 @@ def _revocar_todas_las_sesiones(idp: IdentityProvider, store, user: User) -> Non
     """
     revoke_sessions_for_user(store, user.id)
     idp.revocar_sesiones_de(handle=user.external_id)
+
+
+def _huella(valor: str) -> str:
+    """Los primeros 12 hex del SHA-256: identifica sin revelar.
+
+    Para los logs de `/auth/refresh`, que no traían nada con qué atribuir una
+    renovación. Con la del usuario se sabe de quién es; con la del refresh
+    token, si dos renovaciones son una carrera (el mismo token dos veces) o dos
+    sesiones que coinciden en el tiempo. 48 bits de un token de alta entropía no
+    sirven para reconstruirlo ni para probar candidatos.
+    """
+    return hashlib.sha256(valor.encode()).hexdigest()[:12]
 
 
 def _proveedor_para_usuario(db: Session, brand_account_id) -> IdentityProvider:
@@ -1564,6 +1577,10 @@ def refresh_token(
         db=db,
     )
     handle = usuario.external_id
+    huellas = {
+        "usuario": _huella(str(usuario.id)),
+        "sesion": _huella(request.refresh_token),
+    }
 
     if usuario.brand_account_id:
         idp = _proveedor_para_usuario(db, usuario.brand_account_id)
@@ -1584,7 +1601,10 @@ def refresh_token(
         # nada en los logs que lo explique.
         nuevo_refresh_token = sesion.refresh_token
 
-        logger.info("auth.refresh.success")
+        logger.info(
+            "auth.refresh.success",
+            extra={**huellas, "rotado": nuevo_refresh_token is not None},
+        )
 
     except AutenticacionIncompleta:
         raise HTTPException(
@@ -1600,7 +1620,7 @@ def refresh_token(
             )
         logger.warning(
             "auth.refresh.rejected",
-            extra={"error_code": e.codigo},
+            extra={**huellas, "error_code": e.codigo},
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1609,7 +1629,7 @@ def refresh_token(
     except ErrorDeIdentidad as e:
         logger.warning(
             "auth.refresh.identity_failed",
-            extra={"error_code": e.codigo},
+            extra={**huellas, "error_code": e.codigo},
         )
 
         if isinstance(e, ParametroInvalido):

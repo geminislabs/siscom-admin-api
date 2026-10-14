@@ -378,3 +378,47 @@ def test_otro_fallo_del_proveedor_sigue_siendo_500(
     respuesta = _renovar(client, _access_token(clave_del_pool))
 
     assert respuesta.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+
+
+# ── Huellas en el log ─────────────────────────────────────────────────────
+
+
+def _registros(caplog, mensaje):
+    return [r for r in caplog.records if r.getMessage() == mensaje]
+
+
+def test_el_log_atribuye_cada_renovacion_sin_revelar_nada(
+    client, db_session, test_user_data, clave_del_pool, idp_falso, caplog
+):
+    """Antes no había con qué saber de quién era una renovación: el puerto del
+    access log es el del balanceador, que reutiliza conexiones entre clientes.
+    La huella del refresh token distingue una carrera —el mismo token dos
+    veces— de dos sesiones que coinciden en el tiempo."""
+    token = _access_token(clave_del_pool)
+    with caplog.at_level("INFO", logger="app.api.v1.endpoints.auth"):
+        _renovar(client, token)
+        _renovar(client, token)
+        _renovar(client, token, cuerpo={"refresh_token": "otra-sesion"})
+
+    exitos = _registros(caplog, "auth.refresh.success")
+    assert len(exitos) == 3
+    assert len({r.usuario for r in exitos}) == 1
+    assert exitos[0].sesion == exitos[1].sesion != exitos[2].sesion
+    assert all(len(r.sesion) == 12 and r.rotado is False for r in exitos)
+    texto = " ".join(str(r.__dict__) for r in exitos)
+    assert "refresh-guardado" not in texto
+    assert str(test_user_data.id) not in texto
+
+
+def test_el_429_tambien_deja_huella(
+    client, db_session, test_user_data, clave_del_pool, idp_falso, caplog
+):
+    idp_falso.renovar.side_effect = ProveedorSaturado(
+        "Rate exceeded", codigo="TooManyRequestsException"
+    )
+    with caplog.at_level("WARNING", logger="app.api.v1.endpoints.auth"):
+        _renovar(client, _access_token(clave_del_pool))
+
+    (fallo,) = _registros(caplog, "auth.refresh.identity_failed")
+    assert fallo.error_code == "TooManyRequestsException"
+    assert len(fallo.usuario) == 12 and len(fallo.sesion) == 12
