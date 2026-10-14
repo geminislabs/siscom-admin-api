@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Los logs de `/auth/refresh` (`auth.refresh.success`, `.rejected` e `.identity_failed`) llevan `usuario` y `sesion`: los primeros 12 hex del SHA-256 del id del usuario y del refresh token presentado; el de éxito añade `rotado`. Hasta ahora no había con qué atribuir una renovación —el puerto del access log es el del balanceador, que reutiliza conexiones entre clientes—, así que dos refresh en el mismo segundo no se podían distinguir entre una carrera (la misma `sesion` dos veces) y dos sesiones que coinciden. Ni el token ni el id aparecen en claro
+
 ## [1.59.1] - 2026-10-13
 
 **Sin migraciones.** Cabeza: `043_defaults_de_id`, la misma de `v1.59.0`.
