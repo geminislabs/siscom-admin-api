@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auditar ya no responde 500** (migración `043_defaults_de_id`). En producción `account_events.id` era `uuid NOT NULL` sin DEFAULT y el modelo cuenta con `gen_random_uuid()`: cada inserción fallaba con `NotNullViolation`. Caían todos los endpoints que auditan —convertir una cuenta en marca y guardar sus capabilities desde GAC, publicar la marca, y alta, rol, estado y baja de miembros de una organización—, y la tabla nunca había guardado una fila. `organization_capabilities.id` tenía el mismo hueco (crear un override, cerrado con 403 desde la `041`). Los tests no lo veían porque su base sale de los modelos
+- `scripts/verificar-deriva.py` compara también los defaults del servidor: una columna con `server_default` en el modelo tiene que tener DEFAULT en el esquema migrado desde el snapshot de producción. Encuentra exactamente estas dos columnas, y `tests/test_defaults_de_id_esquema.py` prueba con el `AuditService` real que antes de la `043` fallaba y después no
+
 ## [1.58.0] - 2026-10-13
 
 **Sin migraciones.** Cabeza: `042_marca_de_la_invitacion`, la misma de `v1.57.0`.
