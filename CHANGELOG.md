@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.58.0] - 2026-10-13
+
+**Sin migraciones.** Cabeza: `042_marca_de_la_invitacion`, la misma de `v1.57.0`.
+
+**Rollback.** Basta revertir la imagen (`v1.57.0`): no hay cambio de esquema ni de datos. Con la
+imagen anterior, `GET …/branding` y `POST …/publish` dejan de traer `adjustments` y la pantalla de
+marca de nexus-web simplemente no muestra el aviso hasta guardar, como antes.
+
 ### Changed
 
 - `GET /accounts/{id}/branding` y `POST …/branding/publish` devuelven también `adjustments`: los ajustes de contraste del tema que se edita (el borrador si lo hay; si no, lo publicado). Antes solo venían en la respuesta de `PUT …/draft`, así que la pantalla de marca los mostraba justo después de guardar y, al volver a entrar, el partner veía un color distinto del que eligió sin explicación. No se persisten: se recalculan desde las semillas con `marca_tema.derivar`, que es determinista. El campo pasa de `BrandingDraftOut` a `BrandingOut`
