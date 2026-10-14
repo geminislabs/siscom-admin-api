@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.59.0] - 2026-10-13
+
+**Migración.** `043_defaults_de_id`. Cabeza: `042_marca_de_la_invitacion` → `043_defaults_de_id`.
+Solo catálogo: `SET DEFAULT gen_random_uuid()` en `account_events.id` y
+`organization_capabilities.id`, sin reescribir ni recorrer las tablas. Las dos son de `pgadmin`
+(medido en producción el 13/10), que `siscom_migrator` ya alteró en la `033` y la `042`.
+
+**Rollback.**
+
+1. **Casi siempre basta revertir la imagen** (`v1.58.0`) sin tocar la base: el código anterior
+   también cuenta con el default, así que conviene dejarlo puesto. El despliegue ya revierte la
+   imagen solo si el contenedor no levanta.
+2. **Solo para desplegar un tag anterior**, y antes de hacerlo, porque el archivo de la migración
+   vive en la imagen nueva:
+
+   ```bash
+   docker run --rm --network siscom-network --env-file .env \
+     siscom-admin-api:latest alembic downgrade 042_marca_de_la_invitacion
+   ```
+
+   Sin este paso, desplegar `v1.58.0` falla con
+   `Can't locate revision identified by '043_defaults_de_id'`.
+   El downgrade quita los defaults y auditar vuelve a responder 500.
+
 ### Fixed
 
 - **Auditar ya no responde 500** (migración `043_defaults_de_id`). En producción `account_events.id` era `uuid NOT NULL` sin DEFAULT y el modelo cuenta con `gen_random_uuid()`: cada inserción fallaba con `NotNullViolation`. Caían todos los endpoints que auditan —convertir una cuenta en marca y guardar sus capabilities desde GAC, publicar la marca, y alta, rol, estado y baja de miembros de una organización—, y la tabla nunca había guardado una fila. `organization_capabilities.id` tenía el mismo hueco (crear un override, cerrado con 403 desde la `041`). Los tests no lo veían porque su base sale de los modelos
