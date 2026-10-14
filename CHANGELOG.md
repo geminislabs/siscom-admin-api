@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `GET /accounts/{id}/branding` y `POST …/branding/publish` devuelven también `adjustments`: los ajustes de contraste del tema que se edita (el borrador si lo hay; si no, lo publicado). Antes solo venían en la respuesta de `PUT …/draft`, así que la pantalla de marca los mostraba justo después de guardar y, al volver a entrar, el partner veía un color distinto del que eligió sin explicación. No se persisten: se recalculan desde las semillas con `marca_tema.derivar`, que es determinista. El campo pasa de `BrandingDraftOut` a `BrandingOut`
+- Dependencias de Python al día (#158, 31 paquetes). Las cinco instrumentaciones de OpenTelemetry suben a 0.66b1 para ir a juego con el SDK 1.45.1; con 0.66b0 la resolución de dependencias fallaba
+
 ## [1.57.0] - 2026-10-13
 
 **Migraciones.** `041_overrides_sin_autoservicio` (solo datos) y `042_marca_de_la_invitacion` (una

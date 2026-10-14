@@ -124,19 +124,19 @@ class BrandingOut(BaseModel):
     published: dict[str, Any] = Field(default_factory=dict)
     published_at: Optional[datetime] = None
     published_by: Optional[UUID] = None
-
-
-class BrandingDraftOut(BrandingOut):
-    """El resultado de guardar: además, cada par comprobado y cada ajuste."""
-
-    contrast: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="Cada par texto/fondo comprobado, con su ratio y su mínimo",
-    )
     adjustments: list[dict[str, Any]] = Field(
         default_factory=list,
         description=(
             "Las semillas que no contrastaban en un modo y el color que se usó "
-            "en su lugar"
+            "en su lugar. Son las del borrador si lo hay; si no, las de lo publicado"
         ),
+    )
+
+
+class BrandingDraftOut(BrandingOut):
+    """El resultado de guardar: además, cada par comprobado."""
+
+    contrast: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Cada par texto/fondo comprobado, con su ratio y su mínimo",
     )
