@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.62.0] - 2026-10-20
+
+**Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.61.0`.
+
+**Rollback.** Basta revertir la imagen (`v1.61.0`): no hay cambio de esquema. Con ella vuelve el
+hueco del maestro que actúa en otra organización, y `user_device` vuelve a emitirse en cada
+apertura de la app.
+
 ### Fixed
 
 - **Ver y gestionar una organización ya no depende de `users.is_master`, sino de ser `owner` con membresía activa de la organización en la que actúa la sesión** (`User.is_owner_of`, `User.is_active_organization_owner`). `is_master` es del usuario, no de la membresía: con el selector de cuenta, un maestro que actuaba en otra organización donde solo es `member` veía todas sus unidades (lista, detalle, alertas, viajes, telemetría y data token) y podía gestionarla (crear y editar unidades, invitar, conceder unidades, mandar comandos). Es la misma regla que aplica alert-distributor (ADR-008 §6). Para quien actúa en su organización por defecto no cambia nada: `owner` ≡ maestro, verificado en producción el 19/10. La columna `is_master` se sigue escribiendo, pero ya no se lee para autorizar
