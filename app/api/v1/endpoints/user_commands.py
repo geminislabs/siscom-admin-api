@@ -87,7 +87,7 @@ def _build_command_for_device(command_type: UserCommandType, device: Device) -> 
 
 
 def _require_master(current_user: User) -> None:
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo el usuario master puede ejecutar este endpoint",

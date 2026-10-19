@@ -94,7 +94,7 @@ def check_unit_access(
         )
 
     # Si es maestro, tiene acceso total
-    if user.is_master:
+    if user.is_active_organization_owner:
         return unit
 
     # Si no es maestro, verificar en user_units
@@ -137,7 +137,7 @@ def get_units_for_user(db: Session, user: User, include_deleted: bool = False):
     if not include_deleted:
         query = query.filter(Unit.deleted_at.is_(None))
 
-    if user.is_master:
+    if user.is_active_organization_owner:
         # Maestro ve todas las unidades del cliente
         return query.all()
     else:
@@ -206,11 +206,11 @@ def list_units(
     )
 
     # Filtrar unidades eliminadas (solo maestros pueden ver eliminadas)
-    if not include_deleted or not current_user.is_master:
+    if not include_deleted or not current_user.is_active_organization_owner:
         query = query.filter(Unit.deleted_at.is_(None))
 
     # Aplicar lógica de visibilidad según tipo de usuario
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         # Usuario NO maestro: solo ve unidades en user_units
         user_unit_ids = (
             db.query(UserUnit.unit_id)
@@ -267,7 +267,7 @@ def create_unit(
     Si el body incluye datos de perfil/dispositivo, los crea/asigna en la misma transacción.
     """
     # Validar que sea maestro
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden crear unidades",
@@ -469,7 +469,7 @@ def delete_unit(
     Requiere: Usuario maestro del cliente.
     """
     # Solo maestros pueden eliminar
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden eliminar unidades",
@@ -1130,7 +1130,7 @@ def assign_user_to_unit(
     Roles disponibles: viewer, editor, admin
     """
     # Validar que sea maestro
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden asignar usuarios a unidades",
@@ -1169,7 +1169,7 @@ def assign_user_to_unit(
         )
 
     # No permitir asignar a usuarios maestros
-    if target_user.is_master:
+    if target_user.is_owner_of(current_user.organization_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No es necesario asignar usuarios maestros (ya tienen acceso a todas las unidades)",
@@ -1224,7 +1224,7 @@ def remove_user_from_unit(
     Elimina la asignación usuario→unidad.
     """
     # Validar que sea maestro
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden revocar accesos a unidades",

@@ -12,9 +12,16 @@ from app.services.kore import KoreAuthResponse, KoreSmsResponse
 
 
 def test_user_command_requires_master(authenticated_client, test_user_data, db_session):
-    test_user_data.is_master = False
-    db_session.add(test_user_data)
+    from app.models.organization_user import OrganizationUser
+
+    membresia = (
+        db_session.query(OrganizationUser)
+        .filter(OrganizationUser.user_id == test_user_data.id)
+        .one()
+    )
+    membresia.role = "member"
     db_session.commit()
+    db_session.refresh(test_user_data)
 
     payload = {
         "command_type": "ENGINE_RESUME",

@@ -34,7 +34,7 @@ def _validate_unit_access(db: Session, user: User, unit_id: UUID) -> None:
             detail="Unidad no encontrada",
         )
 
-    if user.is_master:
+    if user.is_active_organization_owner:
         return
 
     user_unit = (

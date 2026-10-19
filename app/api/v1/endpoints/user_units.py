@@ -25,7 +25,7 @@ router = APIRouter()
 
 def require_master(user: User):
     """Verifica que el usuario sea maestro"""
-    if not user.is_master:
+    if not user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden gestionar permisos de unidades",
@@ -144,7 +144,7 @@ def create_user_unit(
         )
 
     # No permitir asignar a usuarios maestros
-    if target_user.is_master:
+    if target_user.is_owner_of(current_user.organization_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No es necesario asignar permisos a usuarios maestros (ya tienen acceso a todas las unidades)",

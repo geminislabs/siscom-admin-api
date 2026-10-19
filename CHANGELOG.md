@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ver y gestionar una organización ya no depende de `users.is_master`, sino de ser `owner` con membresía activa de la organización en la que actúa la sesión** (`User.is_owner_of`, `User.is_active_organization_owner`). `is_master` es del usuario, no de la membresía: con el selector de cuenta, un maestro que actuaba en otra organización donde solo es `member` veía todas sus unidades (lista, detalle, alertas, viajes, telemetría y data token) y podía gestionarla (crear y editar unidades, invitar, conceder unidades, mandar comandos). Es la misma regla que aplica alert-distributor (ADR-008 §6). Para quien actúa en su organización por defecto no cambia nada: `owner` ≡ maestro, verificado en producción el 19/10. La columna `is_master` se sigue escribiendo, pero ya no se lee para autorizar
+
 ### Changed
 
 - `control-plane-events` ya no emite `user_device` cuando lo único que cambió es `last_seen_at`/`updated_at`. iOS llama a `register` varias veces por cada apertura de la app, y cada llamada producía un evento idéntico (cuatro por apertura el 19/10). Sigue emitiendo el alta, la baja y cualquier cambio de dueño, token, plataforma, endpoint o `is_active`
