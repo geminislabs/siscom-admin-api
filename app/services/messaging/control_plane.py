@@ -89,6 +89,17 @@ ENTIDADES: dict[str, Entidad] = {
 }
 
 
+# Las columnas de `user_device` cuyo cambio sí le importa a un consumidor.
+# `updated_at` está en el `data` del evento, pero cambiar solo él no es noticia.
+_USER_DEVICE_RELEVANTES = (
+    "user_id",
+    "device_token",
+    "platform",
+    "endpoint_arn",
+    "is_active",
+)
+
+
 def clave_kafka(entidad: str, valores: tuple) -> str:
     return ":".join([entidad, *(str(v) for v in valores)])
 
@@ -157,7 +168,16 @@ def _anotar(session: Session, _flush_context: Any) -> None:
             for v in _valores(obj, ("device_id",)):
                 claves.add(("unit_device", v))
         elif isinstance(obj, UserDevice):
-            claves.add(("user_device", (obj.id,)))
+            # Cada vez que la app vuelve a primer plano, `register` actualiza
+            # `last_seen_at` y `updated_at`, varias veces por apertura en iOS.
+            # Eso no cambia a quién se le manda el push: solo se emite si cambió
+            # algo que un consumidor use.
+            if (
+                id(obj) in nuevos
+                or obj in session.deleted
+                or any(_cambio(obj, a) for a in _USER_DEVICE_RELEVANTES)
+            ):
+                claves.add(("user_device", (obj.id,)))
         elif isinstance(obj, Unit) and id(obj) not in nuevos:
             # Borrar una unidad (lógicamente) o moverla de organización cambia
             # lo que dicen las vistas de sus concesiones y de su equipo, aunque

@@ -263,6 +263,35 @@ def test_desactivar_un_dispositivo_es_upsert_no_delete(
     assert set(baja["data"]) == set(control_plane.ENTIDADES["user_device"].columnas)
 
 
+def test_volver_a_registrar_sin_cambios_no_emite(db_session, test_user_data, eventos):
+    """iOS llama a `register` varias veces por cada apertura de la app. Solo
+    cambian `last_seen_at` y `updated_at`, y eso no es noticia para nadie: el
+    19/10 una apertura producía cuatro eventos idénticos."""
+    dispositivo = UserDevice(
+        user_id=test_user_data.id,
+        device_token="token-1",
+        platform="ios",
+        endpoint_arn="arn:aws:sns:test",
+        is_active=True,
+    )
+    db_session.add(dispositivo)
+    db_session.commit()
+    eventos.clear()
+
+    ahora = datetime.now(timezone.utc)
+    dispositivo.last_seen_at = ahora
+    dispositivo.updated_at = ahora
+    db_session.commit()
+    assert eventos.de("user_device") == []
+
+    # Un token nuevo, en cambio, sí: es otro destino para el push.
+    dispositivo.device_token = "token-2"
+    dispositivo.updated_at = datetime.now(timezone.utc)
+    db_session.commit()
+    ((_, evento),) = eventos.de("user_device")
+    assert evento["data"]["device_token"] == "token-2"
+
+
 # ---------------------------------------------------------------------------
 # Publicación
 # ---------------------------------------------------------------------------
