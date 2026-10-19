@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `control-plane-events` ya no emite `user_device` cuando lo único que cambió es `last_seen_at`/`updated_at`. iOS llama a `register` varias veces por cada apertura de la app, y cada llamada producía un evento idéntico (cuatro por apertura el 19/10). Sigue emitiendo el alta, la baja y cualquier cambio de dueño, token, plataforma, endpoint o `is_active`
+
 ## [1.61.0] - 2026-10-19
 
 **Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.60.0`.
