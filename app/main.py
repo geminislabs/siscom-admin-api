@@ -9,9 +9,6 @@ from app.api.deps import (
     close_geofences_kafka_producer,
     close_mobility_kafka_producer,
     close_rules_kafka_producer,
-    close_unit_devices_kafka_producer,
-    close_user_devices_kafka_producer,
-    close_user_units_kafka_producer,
 )
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -49,9 +46,6 @@ async def lifespan(_: FastAPI):
     # Shutdown: cierra recursos compartidos
     close_rules_kafka_producer()
     close_geofences_kafka_producer()
-    close_user_devices_kafka_producer()
-    close_unit_devices_kafka_producer()
-    close_user_units_kafka_producer()
     close_mobility_kafka_producer()
     control_plane.cerrar()
 

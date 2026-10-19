@@ -13,9 +13,6 @@ from app.api.deps import (
     close_geofences_kafka_producer,
     close_mobility_kafka_producer,
     close_rules_kafka_producer,
-    close_unit_devices_kafka_producer,
-    close_user_devices_kafka_producer,
-    close_user_units_kafka_producer,
     get_auth_for_gac_admin,
     get_mobility_kafka_producer,
     get_rules_kafka_producer,
@@ -121,16 +118,10 @@ def test_get_rules_kafka_producer_singleton_and_close(monkeypatch):
 
 def test_close_kafka_helpers_are_safe_when_already_none():
     deps_mod._rules_kafka_producer = None
-    deps_mod._user_devices_kafka_producer = None
-    deps_mod._unit_devices_kafka_producer = None
-    deps_mod._user_units_kafka_producer = None
     deps_mod._geofences_kafka_producer = None
     deps_mod._mobility_kafka_producer = None
 
     close_rules_kafka_producer()
-    close_user_devices_kafka_producer()
-    close_unit_devices_kafka_producer()
-    close_user_units_kafka_producer()
     close_geofences_kafka_producer()
     close_mobility_kafka_producer()
 

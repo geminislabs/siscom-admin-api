@@ -1,12 +1,10 @@
 # Eventos de control: el contrato de `control-plane-events`
 
-> **Estado:** Propuesto, junto con
-> [ADR-008](./adr/008-eventos-de-control-en-un-topic.md). Hasta que se acepte y
-> se implemente, admin-api sigue escribiendo los topics viejos
-> (`user-devices-updates`, `user-units-updates`, y `unit-devices-updates`, que
-> no existe en el clúster) con el sobre de `control_events.py` y **sin**
-> `schema_version`. Durante la migración escribe los dos que existen **y**
-> `control-plane-events` (ADR-008 §7).
+> **Estado:** en producción desde el 19/10/2026 (admin-api `v1.60.0`,
+> event-processor `v1.3.0`, alert-distributor `v0.3.0`), junto con el
+> [ADR-008](./adr/008-eventos-de-control-en-un-topic.md). admin-api ya no escribe
+> los topics viejos (`user-devices-updates`, `unit-devices-updates`,
+> `user-units-updates`): `control-plane-events` es el único.
 
 Este documento es la fuente de verdad del mensaje. El *porqué* de un solo topic,
 una partición y sin outbox está en el ADR-008; aquí está el *qué*: el sobre, el
@@ -58,9 +56,9 @@ fila sigue existiendo y puede reactivarse. `DELETE` se reserva para filas que se
 borran de verdad (`organization_users` al quitar a alguien, `user_units` al
 revocar).
 
-> Cambio respecto a hoy: `user-devices-updates` publica `DELETE` al desactivar un
-> dispositivo, aunque la fila siga existiendo. En `control-plane-events` eso es
-> un `UPSERT` con `is_active: false`.
+> Cambio respecto al topic viejo: `user-devices-updates` publicaba `DELETE` al
+> desactivar un dispositivo, aunque la fila siguiera existiendo. En
+> `control-plane-events` eso es un `UPSERT` con `is_active: false`.
 
 ### Cómo se emite
 

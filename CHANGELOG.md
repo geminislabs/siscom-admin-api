@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Los topics de control viejos** (ADR-008, paso 5): ya no se publica en `user-devices-updates`, `unit-devices-updates` ni `user-units-updates`. `control-plane-events` es el único, y lo emite el ORM; ningún consumidor leía los viejos desde alert-distributor `v0.3.0` y event-processor `v1.3.0`. Se van `UserDevicesKafkaProducer`, `UnitDevicesKafkaProducer`, `UserUnitsKafkaProducer`, sus dependencias, los constructores de eventos viejos y las variables `KAFKA_USER_DEVICES_UPDATES_TOPIC`, `KAFKA_UNIT_DEVICES_UPDATES_TOPIC` y `KAFKA_USER_UNITS_UPDATES_TOPIC`
+
 ## [1.60.0] - 2026-10-19
 
 **Migración.** `044_vistas_del_plano_de_control`. Cabeza: `043_defaults_de_id` →

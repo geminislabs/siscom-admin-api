@@ -13,8 +13,6 @@ from app.api.deps import (
     get_current_user_id,
     get_data_token_issuer,
     get_scope_store,
-    get_unit_devices_kafka_producer,
-    get_user_units_kafka_producer,
 )
 from app.core.config import settings
 from app.db.session import get_db
@@ -46,15 +44,6 @@ from app.services.data_token_issuance import (
     issue_share_token,
     revoke_sessions_for_user,
     revoke_shares_for_unit,
-)
-from app.services.messaging.control_events import (
-    build_unit_device_event,
-    build_user_unit_event,
-    publish_control_event,
-)
-from app.services.messaging.kafka_producer import (
-    UnitDevicesKafkaProducer,
-    UserUnitsKafkaProducer,
 )
 from app.services.scope_store import (
     RevocationIndexNotConfigured,
@@ -268,9 +257,6 @@ def create_unit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     user_id: UUID = Depends(get_current_user_id),
-    unit_devices_kafka_producer: UnitDevicesKafkaProducer = Depends(
-        get_unit_devices_kafka_producer
-    ),
 ):
     """
     Crea una nueva unidad.
@@ -385,20 +371,6 @@ def create_unit(
     # Commit de ambos
     db.commit()
     db.refresh(new_unit)
-
-    if device:
-        publish_control_event(
-            unit_devices_kafka_producer,
-            build_unit_device_event(
-                event_type="UPSERT",
-                device_id=device.device_id,
-                organization_id=new_unit.organization_id,
-                unit_id=new_unit.id,
-                is_active=True,
-            ),
-            key=device.device_id,
-            endpoint="create_unit",
-        )
 
     return new_unit
 
@@ -616,9 +588,6 @@ def assign_device_to_unit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     user_id: UUID = Depends(get_current_user_id),
-    unit_devices_kafka_producer: UnitDevicesKafkaProducer = Depends(
-        get_unit_devices_kafka_producer
-    ),
 ):
     """
     Asigna o reemplaza el dispositivo de una unidad.
@@ -669,9 +638,7 @@ def assign_device_to_unit(
         .first()
     )
 
-    released_device_id = None
     if current_assignment:
-        released_device_id = current_assignment.device_id
         # Desasignar dispositivo anterior
         current_assignment.unassigned_at = utcnow()
         db.add(current_assignment)
@@ -770,35 +737,6 @@ def assign_device_to_unit(
         )
 
     db.refresh(new_assignment)
-
-    if released_device_id and released_device_id != assignment.device_id:
-        publish_control_event(
-            unit_devices_kafka_producer,
-            build_unit_device_event(
-                event_type="UPSERT",
-                device_id=released_device_id,
-                organization_id=None,
-                unit_id=None,
-                previous_unit_id=unit_id,
-                previous_organization_id=unit.organization_id,
-                is_active=False,
-            ),
-            key=released_device_id,
-            endpoint="assign_device_to_unit",
-        )
-
-    publish_control_event(
-        unit_devices_kafka_producer,
-        build_unit_device_event(
-            event_type="UPSERT",
-            device_id=assignment.device_id,
-            organization_id=unit.organization_id,
-            unit_id=unit_id,
-            is_active=True,
-        ),
-        key=assignment.device_id,
-        endpoint="assign_device_to_unit",
-    )
 
     return new_assignment
 
@@ -1177,9 +1115,6 @@ def assign_user_to_unit(
     assignment: UserUnitAssign,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    user_units_kafka_producer: UserUnitsKafkaProducer = Depends(
-        get_user_units_kafka_producer
-    ),
 ):
     """
     Asigna un usuario a una unidad con un rol específico.
@@ -1264,19 +1199,6 @@ def assign_user_to_unit(
     db.commit()
     db.refresh(user_unit)
 
-    publish_control_event(
-        user_units_kafka_producer,
-        build_user_unit_event(
-            event_type="UPSERT",
-            organization_id=current_user.organization_id,
-            user_id=user_unit.user_id,
-            unit_id=user_unit.unit_id,
-            role=user_unit.role,
-        ),
-        key=str(user_unit.user_id),
-        endpoint="assign_user_to_unit",
-    )
-
     return {
         "message": "Usuario asignado exitosamente",
         "assignment_id": str(user_unit.id),
@@ -1292,9 +1214,6 @@ def remove_user_from_unit(
     user_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    user_units_kafka_producer: UserUnitsKafkaProducer = Depends(
-        get_user_units_kafka_producer
-    ),
     store=Depends(get_scope_store),
 ):
     """
@@ -1340,24 +1259,10 @@ def remove_user_from_unit(
 
     # Obtener información para el mensaje
     user = db.query(User).filter(User.id == user_id).first()
-    revoked_user_id = assignment.user_id
-    revoked_unit_id = assignment.unit_id
 
     # Eliminar la asignación
     db.delete(assignment)
     db.commit()
-
-    publish_control_event(
-        user_units_kafka_producer,
-        build_user_unit_event(
-            event_type="DELETE",
-            organization_id=current_user.organization_id,
-            user_id=revoked_user_id,
-            unit_id=revoked_unit_id,
-        ),
-        key=str(revoked_user_id),
-        endpoint="remove_user_from_unit",
-    )
 
     # Adelanta la caducidad del alcance del plano de datos. Best effort.
     revoke_sessions_for_user(store, user_id)

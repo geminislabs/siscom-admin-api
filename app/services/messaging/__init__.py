@@ -1,6 +1,3 @@
-from app.services.messaging.kafka_producer import (
-    RulesKafkaProducer,
-    UserDevicesKafkaProducer,
-)
+from app.services.messaging.kafka_producer import RulesKafkaProducer
 
-__all__ = ["RulesKafkaProducer", "UserDevicesKafkaProducer"]
+__all__ = ["RulesKafkaProducer"]
