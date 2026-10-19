@@ -28,6 +28,7 @@ Cada ADR sigue esta estructura:
 | [ADR-005](./005-data-token-plano-de-datos.md) | Data token del plano de datos (PASETO v4.public + Valkey) | Propuesto | 2026-08-21 |
 | [ADR-006](./006-camino-materializado-en-uuid.md) | El camino materializado del árbol de cuentas va en `uuid[]`, no en `ltree` | Aceptado | 2026-09-07 |
 | [ADR-007](./007-identidad-por-marca-y-handle-opaco.md) | La credencial pertenece a una marca, y el handle del proveedor es opaco | Aceptado | 2026-09-08 |
+| [ADR-008](./008-eventos-de-control-en-un-topic.md) | Los cambios de estado viajan por un solo topic (`control-plane-events`), y la foto de arranque por vistas | Propuesto | 2026-10-19 |
 
 ## Crear un nuevo ADR
 
