@@ -387,10 +387,14 @@ filas (la reconciliación a demanda) y a emitir cada `DELETE` también como
    regla de §6. En la misma versión, clasificar los errores de SNS por tipo (hoy
    `to_string()` devuelve `"service error"` y ningún endpoint muerto se
    desactiva).
-5. admin-api deja de escribir los topics viejos: nadie los lee desde 3 y 4.
-6. Limpieza del clúster: borrar los topics viejos, `geofences-update`
-   (singular), sus grupos y las ACL huérfanas, y pasar el resto de permisos de
-   admin-api al usuario `siscom-admin-api`.
+5. ~~admin-api deja de escribir los topics viejos.~~ `v1.61.0`, 19/10, con el
+   arreglo de `docker-compose.prod.yml` (#171): las variables
+   `KAFKA_CONTROL_PLANE_*` no llegaban al contenedor y nada se publicaba.
+6. ~~Limpieza del clúster: topics viejos, `geofences-update` (singular), sus
+   grupos y ACL.~~ Borrados en producción el 19/10 y del script de Redpanda
+   (redpanda-container#2). **Queda pendiente** pasar el resto de permisos de
+   admin-api al usuario `siscom-admin-api`: hoy produce reglas, geocercas,
+   movilidad y teams con `alerts-rules-producer`.
 7. **Outbox transaccional** en admin-api (ver «Alternativas»). Después, si se
    quiere, compaction y retiro de las vistas `control_plane.*`, en otro ADR.
 
