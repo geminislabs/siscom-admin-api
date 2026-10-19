@@ -105,8 +105,22 @@ def test_master_maps_to_an_organization_subject(test_user_data):
     assert subject.organization_id == test_user_data.organization_id
 
 
-def test_regular_user_maps_to_a_user_subject(test_user_data):
-    test_user_data.is_master = False
+def _hacer_miembro(db_session, user):
+    """Baja la membresía del usuario a `member`: `is_master` ya no decide."""
+    from app.models.organization_user import OrganizationUser
+
+    membresia = (
+        db_session.query(OrganizationUser)
+        .filter(OrganizationUser.user_id == user.id)
+        .one()
+    )
+    membresia.role = "member"
+    db_session.commit()
+    db_session.refresh(user)
+
+
+def test_regular_user_maps_to_a_user_subject(db_session, test_user_data):
+    _hacer_miembro(db_session, test_user_data)
     subject = subject_for_user(test_user_data)
 
     assert not subject.is_organization_wide

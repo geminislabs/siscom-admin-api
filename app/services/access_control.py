@@ -60,11 +60,17 @@ def subject_for_user(user: User) -> ScopeSubject:
     """
     Traduce un usuario autenticado al sujeto cuya visibilidad le corresponde.
 
-    Aquí es donde se aplica la política, y solo aquí. `is_master` está marcado
-    como DEPRECATED en el modelo; cuando se retire, este es el único punto que
-    hay que cambiar.
+    Ve toda la organización en la que actúa la sesión quien es su `owner` con
+    membresía activa (`User.is_owner_of`); los demás, solo sus `user_units`. Es
+    la misma regla que aplica alert-distributor a push y WebSocket (ADR-008 §6).
+
+    Antes era `users.is_master`, que es del usuario y no de la membresía: con el
+    selector de cuenta, un maestro que actuaba en otra organización donde solo
+    es `member` veía todas sus unidades. Para quien actúa en su organización por
+    defecto no cambia nada: `owner` ≡ maestro, verificado en producción el
+    19/10/2026.
     """
-    if user.is_master:
+    if user.is_active_organization_owner:
         return ScopeSubject(organization_id=user.organization_id)
     return ScopeSubject(organization_id=user.organization_id, user_id=user.id)
 

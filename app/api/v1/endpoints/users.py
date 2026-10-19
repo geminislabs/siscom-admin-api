@@ -76,7 +76,7 @@ def invite_user(
     Permite a un usuario maestro invitar a un nuevo usuario.
 
     Flujo:
-    1. Verificar que el usuario autenticado sea maestro (is_master=True)
+    1. Verificar que el usuario autenticado sea owner de la organización activa
     2. Verificar que el email no esté ya registrado en la tabla users
     3. Generar un token único en tokens_confirmacion
     4. Enviar email con la URL de invitación (TODO)
@@ -84,7 +84,7 @@ def invite_user(
     """
 
     # 1️⃣ Verificar que el usuario autenticado sea maestro
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden enviar invitaciones.",
@@ -420,7 +420,7 @@ def resend_invitation(
     """
 
     # 1️⃣ Verificar que el usuario autenticado sea maestro
-    if not current_user.is_master:
+    if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los usuarios maestros pueden reenviar invitaciones.",

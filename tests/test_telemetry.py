@@ -51,7 +51,10 @@ def _make_user(is_master: bool = True):
     user.cognito_sub = "test-sub"
     user.email = "test@test.com"
     user.full_name = "Test User"
+    # La visibilidad sale de la membresía (`is_active_organization_owner`),
+    # no de `is_master`; el parámetro conserva el nombre de los tests.
     user.is_master = is_master
+    user.is_active_organization_owner = is_master
     return user
 
 

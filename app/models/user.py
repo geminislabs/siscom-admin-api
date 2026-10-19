@@ -289,3 +289,27 @@ class User(SQLModel, table=True):
             if membership.organization_id == organization_id:
                 return membership.role
         return None
+
+    def is_owner_of(self, organization_id: UUID) -> bool:
+        """`owner` con membresía `ACTIVE` en esa organización.
+
+        Es la regla que reemplaza a `is_master` para decidir quién ve todas las
+        unidades de una organización y quién puede gestionarla (ADR-008 §6).
+        `is_master` es del usuario, no de la membresía: con el selector de
+        cuenta, un maestro que actuaba en otra organización donde solo es
+        `member` veía todas sus unidades y podía gestionarla.
+        """
+        from app.models.organization_user import MembershipStatus, OrganizationRole
+
+        for membership in self.organization_memberships:
+            if membership.organization_id == organization_id:
+                return (
+                    membership.role == OrganizationRole.OWNER.value
+                    and membership.status == MembershipStatus.ACTIVE.value
+                )
+        return False
+
+    @property
+    def is_active_organization_owner(self) -> bool:
+        """`is_owner_of` aplicado a la organización en la que actúa la sesión."""
+        return self.is_owner_of(self.organization_id)
