@@ -7,7 +7,7 @@ argon2-cffi-bindings==25.1.0
 bcrypt==4.1.2
 black==26.10.1
 boolean.py==5.0
-boto3==1.43.111
+boto3==1.43.114
 botocore==1.43.111
 CacheControl==0.14.4
 certifi==2026.7.22
