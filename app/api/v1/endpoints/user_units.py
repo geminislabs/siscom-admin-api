@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     get_current_user_full,
     get_scope_store,
-    get_user_units_kafka_producer,
 )
 from app.db.session import get_db
 from app.models.unit import Unit
@@ -15,11 +14,6 @@ from app.models.user import User
 from app.models.user_unit import UserUnit
 from app.schemas.user_unit import UserUnitCreate, UserUnitDetail, UserUnitOut
 from app.services.data_token_issuance import revoke_sessions_for_user
-from app.services.messaging.control_events import (
-    build_user_unit_event,
-    publish_control_event,
-)
-from app.services.messaging.kafka_producer import UserUnitsKafkaProducer
 
 router = APIRouter()
 
@@ -117,9 +111,6 @@ def create_user_unit(
     assignment: UserUnitCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    user_units_kafka_producer: UserUnitsKafkaProducer = Depends(
-        get_user_units_kafka_producer
-    ),
 ):
     """
     Otorga acceso de un usuario a una unidad.
@@ -211,19 +202,6 @@ def create_user_unit(
     db.commit()
     db.refresh(user_unit)
 
-    publish_control_event(
-        user_units_kafka_producer,
-        build_user_unit_event(
-            event_type="UPSERT",
-            organization_id=current_user.organization_id,
-            user_id=user_unit.user_id,
-            unit_id=user_unit.unit_id,
-            role=user_unit.role,
-        ),
-        key=str(user_unit.user_id),
-        endpoint="create_user_unit",
-    )
-
     return user_unit
 
 
@@ -232,9 +210,6 @@ def delete_user_unit(
     assignment_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    user_units_kafka_producer: UserUnitsKafkaProducer = Depends(
-        get_user_units_kafka_producer
-    ),
     store=Depends(get_scope_store),
 ):
     """
@@ -265,25 +240,11 @@ def delete_user_unit(
     # Obtener información para el mensaje
     user = db.query(User).filter(User.id == assignment.user_id).first()
     unit = db.query(Unit).filter(Unit.id == assignment.unit_id).first()
-
     revoked_user_id = assignment.user_id
-    revoked_unit_id = assignment.unit_id
 
     # Eliminar la asignación
     db.delete(assignment)
     db.commit()
-
-    publish_control_event(
-        user_units_kafka_producer,
-        build_user_unit_event(
-            event_type="DELETE",
-            organization_id=current_user.organization_id,
-            user_id=revoked_user_id,
-            unit_id=revoked_unit_id,
-        ),
-        key=str(revoked_user_id),
-        endpoint="delete_user_unit",
-    )
 
     # El permiso ya está retirado en Postgres; esto adelanta el momento en que el
     # plano de datos se entera. Best effort: si Valkey no responde, el alcance

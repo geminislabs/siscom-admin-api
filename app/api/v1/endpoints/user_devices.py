@@ -1,13 +1,12 @@
 import logging
 from datetime import datetime, timezone
-from uuid import UUID
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full, get_user_devices_kafka_producer
+from app.api.deps import get_current_user_full
 from app.db.session import get_db
 from app.models.user import User
 from app.models.user_device import UserDevice
@@ -17,34 +16,10 @@ from app.schemas.user_device import (
     DeviceRegisterIn,
     DeviceRegisterOut,
 )
-from app.services.messaging.control_events import (
-    build_user_device_event,
-    publish_control_event,
-)
-from app.services.messaging.kafka_producer import UserDevicesKafkaProducer
 from app.services.sns import get_or_recreate_endpoint
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-def _user_device_payload(
-    *,
-    event_type: str,
-    organization_id: UUID | None,
-    device: UserDevice,
-) -> dict:
-    return build_user_device_event(
-        event_type=event_type,
-        organization_id=organization_id,
-        device_row_id=device.id,
-        user_id=device.user_id,
-        device_token=device.device_token,
-        platform=device.platform,
-        endpoint_arn=device.endpoint_arn,
-        is_active=device.is_active,
-        updated_at=device.updated_at,
-    )
 
 
 @router.post("/register", response_model=DeviceRegisterOut)
@@ -52,9 +27,6 @@ def register_user_device(
     payload: DeviceRegisterIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    user_devices_kafka_producer: UserDevicesKafkaProducer = Depends(
-        get_user_devices_kafka_producer
-    ),
 ):
     now = datetime.now(timezone.utc)
     created_new = False
@@ -105,24 +77,6 @@ def register_user_device(
                 db.commit()
                 db.refresh(other_owner)
 
-                other_owner_user = (
-                    db.query(User).filter(User.id == other_owner.user_id).first()
-                )
-                publish_control_event(
-                    user_devices_kafka_producer,
-                    _user_device_payload(
-                        event_type="DELETE",
-                        organization_id=(
-                            other_owner_user.organization_id
-                            if other_owner_user
-                            else None
-                        ),
-                        device=other_owner,
-                    ),
-                    key=str(other_owner.id),
-                    endpoint="register_user_device",
-                )
-
             endpoint_arn, _ = get_or_recreate_endpoint(
                 device_token=payload.device_token,
                 platform=payload.platform,
@@ -157,16 +111,6 @@ def register_user_device(
                     raise
 
             if created_new:
-                publish_control_event(
-                    user_devices_kafka_producer,
-                    _user_device_payload(
-                        event_type="UPSERT",
-                        organization_id=current_user.organization_id,
-                        device=device,
-                    ),
-                    key=str(device.id),
-                    endpoint="register_user_device",
-                )
 
                 return DeviceRegisterOut(
                     id=device.id,
@@ -221,17 +165,6 @@ def register_user_device(
             db.commit()
             db.refresh(device)
 
-        publish_control_event(
-            user_devices_kafka_producer,
-            _user_device_payload(
-                event_type="UPSERT",
-                organization_id=current_user.organization_id,
-                device=device,
-            ),
-            key=str(device.id),
-            endpoint="register_user_device",
-        )
-
         return DeviceRegisterOut(
             id=device.id,
             device_token=device.device_token,
@@ -256,9 +189,6 @@ def deactivate_user_device(
     payload: DeviceDeactivateIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    user_devices_kafka_producer: UserDevicesKafkaProducer = Depends(
-        get_user_devices_kafka_producer
-    ),
 ):
     # Este endpoint no pedía credencial ninguna, y la omisión no era visible:
     # no la declaraba ni la firma ni el montaje del router.
@@ -308,16 +238,6 @@ def deactivate_user_device(
     # El dueño de la fila es quien pide la baja —lo impone el filtro de arriba—,
     # así que la consulta que resolvía la organización desde `device.user_id`
     # sobra: es la misma.
-    publish_control_event(
-        user_devices_kafka_producer,
-        _user_device_payload(
-            event_type="DELETE",
-            organization_id=current_user.organization_id,
-            device=device,
-        ),
-        key=str(device.id),
-        endpoint="deactivate_user_device",
-    )
 
     return DeviceDeactivateOut(
         message="Dispositivo desactivado exitosamente",

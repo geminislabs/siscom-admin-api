@@ -372,22 +372,22 @@ filas (la reconciliación a demanda) y a emitir cada `DELETE` también como
 
 0. ~~Hotfix de `alert-distributor`: la foto usa `default_organization_id`.~~
    `v0.2.0`, en producción el 19/10/2026.
-1. Crear el topic, el usuario `siscom-admin-api` y las ACL (comandos en el
-   contrato).
-2. admin-api: vistas `control_plane.*` con su test de esquema (§4b), y
-   emisión de las cinco entidades en `control-plane-events`, manteniendo los
-   dos topics viejos que existen (§7).
-3. **event-processor**, el primero en migrar porque es el cambio más chico y
+1. ~~Crear el topic, el usuario `siscom-admin-api` y las ACL.~~ A mano el
+   19/10, y en `setup-redpanda.sh` (redpanda-container#1) después de que la
+   ACL olvidada de alert-distributor dejara producción sin alertas.
+2. ~~admin-api: vistas `control_plane.*` con su test de esquema (§4b), y
+   emisión de las cinco entidades.~~ `v1.60.0`, 19/10.
+3. ~~**event-processor**~~ `v1.3.0`, 19/10: el primero en migrar porque es el cambio más chico y
    cierra la atribución equivocada de eventos tras una reasignación: lee
    `unit_device` del topic nuevo y su foto de `control_plane.unit_devices`. En la
    misma versión, geocercas: escucha `geofences-updates` (plural) con su propio
    grupo, separado de `events-processor-group`.
-4. **alert-distributor**: consumidor de control, foto desde las vistas, caché
+4. ~~**alert-distributor**~~ `v0.3.0`, 19/10: consumidor de control, foto desde las vistas, caché
    indexada para aplicar cada evento sobre su entrada, dispositivos por persona y
    regla de §6. En la misma versión, clasificar los errores de SNS por tipo (hoy
    `to_string()` devuelve `"service error"` y ningún endpoint muerto se
    desactiva).
-5. admin-api deja de escribir los topics viejos.
+5. admin-api deja de escribir los topics viejos: nadie los lee desde 3 y 4.
 6. Limpieza del clúster: borrar los topics viejos, `geofences-update`
    (singular), sus grupos y las ACL huérfanas, y pasar el resto de permisos de
    admin-api al usuario `siscom-admin-api`.

@@ -23,9 +23,6 @@ from app.api.deps import (
     get_geofences_kafka_producer,
     get_mobility_kafka_producer,
     get_rules_kafka_producer,
-    get_unit_devices_kafka_producer,
-    get_user_devices_kafka_producer,
-    get_user_units_kafka_producer,
 )
 from app.core.config import settings
 from app.db.session import get_db
@@ -304,9 +301,6 @@ class _SilentKafkaProducer:
 
 def _stub_kafka_producers():
     producer = _SilentKafkaProducer()
-    app.dependency_overrides[get_user_devices_kafka_producer] = lambda: producer
-    app.dependency_overrides[get_unit_devices_kafka_producer] = lambda: producer
-    app.dependency_overrides[get_user_units_kafka_producer] = lambda: producer
     app.dependency_overrides[get_geofences_kafka_producer] = lambda: producer
     app.dependency_overrides[get_rules_kafka_producer] = lambda: producer
     app.dependency_overrides[get_mobility_kafka_producer] = lambda: producer
@@ -317,7 +311,7 @@ def _el_arranque_no_marca_a_kafka():
     """Silencia el sondeo de Kafka del `lifespan`, como ya se silencian los
     productores.
 
-    `_stub_kafka_producers()` deja mudos los seis productores desde hace tiempo:
+    `_stub_kafka_producers()` deja mudos los productores desde hace tiempo:
     la politica «los tests no hablan con Kafka» ya estaba tomada. Lo que se colo
     es que `check_kafka_accessibility()` **no es una dependencia** — vive en el
     `lifespan` de `app/main.py`, asi que ningun `dependency_overrides` lo

@@ -36,9 +36,6 @@ from app.services.messaging.kafka_producer import (
     MobilityKafkaProducer,
     RulesKafkaProducer,
     TeamRulesKafkaProducer,
-    UnitDevicesKafkaProducer,
-    UserDevicesKafkaProducer,
-    UserUnitsKafkaProducer,
 )
 from app.services.organization import OrganizationService
 from app.utils.paseto_token import decode_service_token
@@ -86,9 +83,6 @@ class BearerAuth(HTTPBearer):
 security = BearerAuth()
 _rules_kafka_producer: Optional[RulesKafkaProducer] = None
 _geofences_kafka_producer: Optional[GeofencesKafkaProducer] = None
-_user_devices_kafka_producer: Optional[UserDevicesKafkaProducer] = None
-_unit_devices_kafka_producer: Optional[UnitDevicesKafkaProducer] = None
-_user_units_kafka_producer: Optional[UserUnitsKafkaProducer] = None
 _mobility_kafka_producer: Optional[MobilityKafkaProducer] = None
 _team_rules_kafka_producer: Optional[TeamRulesKafkaProducer] = None
 
@@ -99,30 +93,6 @@ def get_rules_kafka_producer() -> RulesKafkaProducer:
     if _rules_kafka_producer is None:
         _rules_kafka_producer = RulesKafkaProducer()
     return _rules_kafka_producer
-
-
-def get_user_devices_kafka_producer() -> UserDevicesKafkaProducer:
-    """Retorna una instancia singleton del producer de user devices."""
-    global _user_devices_kafka_producer
-    if _user_devices_kafka_producer is None:
-        _user_devices_kafka_producer = UserDevicesKafkaProducer()
-    return _user_devices_kafka_producer
-
-
-def get_unit_devices_kafka_producer() -> UnitDevicesKafkaProducer:
-    """Retorna una instancia singleton del producer de asignaciones unit-device."""
-    global _unit_devices_kafka_producer
-    if _unit_devices_kafka_producer is None:
-        _unit_devices_kafka_producer = UnitDevicesKafkaProducer()
-    return _unit_devices_kafka_producer
-
-
-def get_user_units_kafka_producer() -> UserUnitsKafkaProducer:
-    """Retorna una instancia singleton del producer de user_units."""
-    global _user_units_kafka_producer
-    if _user_units_kafka_producer is None:
-        _user_units_kafka_producer = UserUnitsKafkaProducer()
-    return _user_units_kafka_producer
 
 
 def get_geofences_kafka_producer() -> GeofencesKafkaProducer:
@@ -226,27 +196,6 @@ def close_rules_kafka_producer() -> None:
     if _rules_kafka_producer is not None:
         _rules_kafka_producer.close()
         _rules_kafka_producer = None
-
-
-def close_user_devices_kafka_producer() -> None:
-    global _user_devices_kafka_producer
-    if _user_devices_kafka_producer is not None:
-        _user_devices_kafka_producer.close()
-        _user_devices_kafka_producer = None
-
-
-def close_unit_devices_kafka_producer() -> None:
-    global _unit_devices_kafka_producer
-    if _unit_devices_kafka_producer is not None:
-        _unit_devices_kafka_producer.close()
-        _unit_devices_kafka_producer = None
-
-
-def close_user_units_kafka_producer() -> None:
-    global _user_units_kafka_producer
-    if _user_units_kafka_producer is not None:
-        _user_units_kafka_producer.close()
-        _user_units_kafka_producer = None
 
 
 def close_geofences_kafka_producer() -> None:
