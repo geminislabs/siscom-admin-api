@@ -149,6 +149,14 @@ class Settings(BaseSettings):
     KAFKA_SASL_MECHANISM: str = "SCRAM-SHA-256"
     KAFKA_SECURITY_PROTOCOL: str = "SASL_PLAINTEXT"
 
+    # Kafka - Eventos del plano de control (ADR-008). Vacío apaga la emisión.
+    # Tiene usuario propio (`siscom-admin-api`, ADR-008 §8); sin él cae al de
+    # arriba, que en producción no tiene ACL sobre este topic.
+    KAFKA_CONTROL_PLANE_TOPIC: str = "control-plane-events"
+    KAFKA_CONTROL_PLANE_SASL_USERNAME: Optional[str] = None
+    KAFKA_CONTROL_PLANE_SASL_PASSWORD: Optional[str] = None
+    CONTROL_PLANE_PUBLISH_ATTEMPTS: int = 3
+
     # NoDecode evita que EnvSettingsSource intente json.loads sobre el valor
     # crudo: sin él, un CSV revienta en la fuente antes de llegar al validador.
     ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = [

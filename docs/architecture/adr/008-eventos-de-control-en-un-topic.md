@@ -138,11 +138,11 @@ El incidente de la 036 muestra que la foto de arranque es parte del contrato
 aunque nadie la haya escrito. Por eso admin-api publica, por migración, una
 vista por entidad con las mismas columnas que el `data` del evento:
 
-- `control_plane.user`
-- `control_plane.organization_user`
-- `control_plane.user_unit`
-- `control_plane.unit_device`
-- `control_plane.user_device`
+- `control_plane.users`
+- `control_plane.organization_users`
+- `control_plane.user_units`
+- `control_plane.unit_devices`
+- `control_plane.user_devices`
 
 Viven en un esquema propio, y la lectura es un `GRANT SELECT` sobre ese esquema
 para el usuario de cada consumidor. A partir de aquí:
@@ -321,9 +321,10 @@ LOCKED` para que dos workers no envíen la misma fila. Garantiza que nada
 confirmado se pierda y que nada no confirmado salga, sin sondear la base.
 
 No entra en la adopción para no retrasar los arreglos que ya están rotos en
-producción, y porque con la emisión centralizada (contrato, «Regla de
-implementación») se vuelve un cambio interno de esa función más el relay: los
-consumidores no se enteran. Con el outbox en su sitio se puede pasar a
+producción, y porque con la emisión en el listener del ORM (contrato §2, «Cómo
+se emite») se vuelve un cambio interno: construir los eventos en
+`before_commit` e insertarlos en vez de publicarlos en `after_commit`, más el
+relay. Los consumidores no se enteran. Con el outbox en su sitio se puede pasar a
 compaction (ver abajo) y retirar las vistas de §4b. Si se quiere un relay sin
 proceso propio, la evolución es leer el WAL de la tabla outbox (log tailing).
 
@@ -378,7 +379,7 @@ filas (la reconciliación a demanda) y a emitir cada `DELETE` también como
    dos topics viejos que existen (§7).
 3. **event-processor**, el primero en migrar porque es el cambio más chico y
    cierra la atribución equivocada de eventos tras una reasignación: lee
-   `unit_device` del topic nuevo y su foto de `control_plane.unit_device`. En la
+   `unit_device` del topic nuevo y su foto de `control_plane.unit_devices`. En la
    misma versión, geocercas: escucha `geofences-updates` (plural) con su propio
    grupo, separado de `events-processor-group`.
 4. **alert-distributor**: consumidor de control, foto desde las vistas, caché
@@ -408,3 +409,4 @@ filas (la reconciliación a demanda) y a emitir cada `DELETE` también como
 | Fecha | Versión | Cambios |
 |-------|---------|---------|
 | 2026-10-19 | 1.0 | Documento inicial |
+| 2026-10-19 | 1.1 | Vistas en plural (`user` es palabra reservada). La emisión la hace un listener del ORM que lee de las vistas, en vez de una función por endpoint (contrato §2) |

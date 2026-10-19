@@ -24,11 +24,15 @@ from app.services.health import (
     check_kafka_accessibility,
     get_schema_revision,
 )
+from app.services.messaging import control_plane
 from app.startup import print_startup_banner
 
 configure_json_logging(settings)
 setup_telemetry(settings)
 logger = logging.getLogger(__name__)
+
+# Toda sesión del ORM emite los eventos de control al confirmar (ADR-008).
+control_plane.registrar()
 
 
 @asynccontextmanager
@@ -49,6 +53,7 @@ async def lifespan(_: FastAPI):
     close_unit_devices_kafka_producer()
     close_user_units_kafka_producer()
     close_mobility_kafka_producer()
+    control_plane.cerrar()
 
 
 app = FastAPI(

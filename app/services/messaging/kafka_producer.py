@@ -897,3 +897,128 @@ class UserUnitsKafkaProducer:
             logger.exception("[KAFKA USER UNITS] Error cerrando producer.")
         finally:
             self._producer = None
+
+
+class ControlPlaneKafkaProducer:
+    """Producer de `control-plane-events` (ADR-008).
+
+    No se inyecta por endpoint: lo usa `app/services/messaging/control_plane.py`
+    al confirmar cada transacción. Los reintentos viven allí; aquí cada
+    publicación es un intento, con plazos cortos porque la respuesta HTTP espera.
+    """
+
+    def __init__(self) -> None:
+        self.topic = settings.KAFKA_CONTROL_PLANE_TOPIC
+        self.brokers = [
+            broker.strip()
+            for broker in settings.KAFKA_BROKERS.split(",")
+            if broker.strip()
+        ]
+        self.security_protocol = settings.KAFKA_SECURITY_PROTOCOL
+        self.sasl_username = (
+            settings.KAFKA_CONTROL_PLANE_SASL_USERNAME or settings.KAFKA_SASL_USERNAME
+        )
+        self.sasl_password = (
+            settings.KAFKA_CONTROL_PLANE_SASL_PASSWORD or settings.KAFKA_SASL_PASSWORD
+        )
+        self.sasl_mechanism = settings.KAFKA_SASL_MECHANISM
+        self._producer: Optional[Any] = None
+
+    @property
+    def configurado(self) -> bool:
+        """Si falta el cliente o los brokers, reintentar no cambia nada."""
+        return KafkaProducer is not None and bool(self.brokers) and bool(self.topic)
+
+    def _build_client_config(self) -> dict[str, Any]:
+        config: dict[str, Any] = {
+            "bootstrap_servers": self.brokers,
+            "acks": "all",
+            "retries": 0,
+            "request_timeout_ms": 2000,
+            "max_block_ms": 2000,
+            "api_version_auto_timeout_ms": 2000,
+            "value_serializer": lambda value: json.dumps(
+                value, ensure_ascii=False
+            ).encode("utf-8"),
+            "key_serializer": lambda value: value.encode("utf-8") if value else None,
+        }
+
+        if self.security_protocol:
+            config["security_protocol"] = self.security_protocol
+
+        if self.sasl_username:
+            config["sasl_plain_username"] = self.sasl_username
+
+        if self.sasl_password:
+            config["sasl_plain_password"] = self.sasl_password
+
+        if self.sasl_mechanism:
+            config["sasl_mechanism"] = self.sasl_mechanism
+
+        return config
+
+    def _get_or_create(self):
+        if self._producer is not None:
+            return self._producer
+
+        if not self.configurado:
+            logger.error(
+                "[KAFKA CONTROL PLANE] Sin cliente kafka-python, brokers o topic; "
+                "se omite publicacion.",
+                extra={"extra_data": {"topic": self.topic, "brokers": self.brokers}},
+            )
+            return None
+
+        try:
+            self._producer = KafkaProducer(**self._build_client_config())
+            return self._producer
+        except Exception:
+            logger.exception(
+                "[KAFKA CONTROL PLANE] Error inicializando producer.",
+                extra={
+                    "extra_data": {
+                        "topic": self.topic,
+                        "brokers": self.brokers,
+                        "security_protocol": self.security_protocol,
+                        "sasl_username": self.sasl_username,
+                    }
+                },
+            )
+            return None
+
+    def publish_update(
+        self, payload: dict[str, Any], key: Optional[str] = None
+    ) -> bool:
+        producer = self._get_or_create()
+        if producer is None:
+            return False
+
+        try:
+            future = producer.send(self.topic, key=key, value=payload)
+            future.get(timeout=2)
+            return True
+        except Exception:
+            logger.exception(
+                "[KAFKA CONTROL PLANE] Error publicando evento.",
+                extra={
+                    "extra_data": {
+                        "topic": self.topic,
+                        "key": key,
+                        "entity": payload.get("entity"),
+                        "event_type": payload.get("event_type"),
+                    }
+                },
+            )
+            return False
+
+    def close(self) -> None:
+        if self._producer is None:
+            return
+
+        try:
+            self._producer.flush(timeout=3)
+            self._producer.close(timeout=3)
+        except Exception:
+            logger.exception("[KAFKA CONTROL PLANE] Error cerrando producer.")
+        finally:
+            self._producer = None

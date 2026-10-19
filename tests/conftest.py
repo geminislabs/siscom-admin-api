@@ -218,6 +218,20 @@ def _sembrar_permisos_de_organizacion(engine) -> None:
                 conn.execute(text(sql))
 
 
+def _crear_vistas_del_plano_de_control(engine) -> None:
+    """Las vistas `control_plane.*` de la 044, como en producción.
+
+    `create_all()` no crea vistas, y los eventos de control se construyen
+    leyendo de ellas: sin esto, ningún test que escriba una membresía, una
+    asignación o un dispositivo podría hacer commit. El SQL es el de la
+    migración, importado de ella; que la migración las cree sobre el esquema
+    real lo prueba `tests/test_vistas_del_plano_de_control_esquema.py`.
+    """
+    with engine.begin() as conn:
+        for sql in _migracion("044_vistas_del_plano_de_control").sentencias():
+            conn.execute(text(sql))
+
+
 @pytest.fixture(scope="session")
 def _engine():
     """Engine y esquema, una sola vez por sesion de tests.
@@ -263,6 +277,7 @@ def _engine():
     _create_enum_types(engine)
     SQLModel.metadata.create_all(bind=engine)
     _sembrar_permisos_de_organizacion(engine)
+    _crear_vistas_del_plano_de_control(engine)
     try:
         yield engine
     finally:
@@ -320,6 +335,46 @@ def _el_arranque_no_marca_a_kafka():
     """
     with patch("app.main.check_kafka_accessibility", return_value=False):
         yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _el_plano_de_control_no_marca_a_kafka():
+    """Los eventos de control no salen por `dependency_overrides`: los emite el
+    ORM al confirmar (`app/services/messaging/control_plane.py`). Mismo
+    productor mudo que el resto. El que quiera ver qué se publicó pide el
+    fixture `eventos_de_control`.
+    """
+    from app.services.messaging import control_plane
+
+    control_plane.usar_productor(_SilentKafkaProducer)
+    yield
+    control_plane.usar_productor(None)
+
+
+class _GrabadorDeEventos(list):
+    """Productor que guarda `(key, evento)` en vez de publicar."""
+
+    configurado = True
+
+    def publish_update(self, payload=None, key=None):
+        self.append((key, payload))
+        return True
+
+    def close(self):
+        return None
+
+    def de(self, entidad):
+        return [(k, e) for k, e in self if e["entity"] == entidad]
+
+
+@pytest.fixture
+def eventos_de_control():
+    from app.services.messaging import control_plane
+
+    grabador = _GrabadorDeEventos()
+    control_plane.usar_productor(lambda: grabador)
+    yield grabador
+    control_plane.usar_productor(_SilentKafkaProducer)
 
 
 @pytest.fixture(autouse=True)

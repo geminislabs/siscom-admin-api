@@ -51,7 +51,7 @@ con un enlace aquí. No copia el contrato.
 | `entity` | texto | Una de las de §3. Un consumidor **ignora** las que no conoce. |
 | `timestamp` | ISO-8601 UTC con `Z` | Momento de publicación, no del cambio. |
 | `organization_id` | UUID o `null` | Organización del cambio, informativa. **No** se usa para indexar: lo que importa está en `data`. |
-| `data` | objeto | Estado **completo** de la fila (§3), nunca un delta. |
+| `data` | objeto | En `UPSERT`, estado **completo** de la fila (§3), nunca un delta. En `DELETE`, solo los campos de la clave. |
 
 **`UPSERT` con `is_active: false` o `status: "INACTIVE"` no es un `DELETE`.** La
 fila sigue existiendo y puede reactivarse. `DELETE` se reserva para filas que se
@@ -61,6 +61,22 @@ revocar).
 > Cambio respecto a hoy: `user-devices-updates` publica `DELETE` al desactivar un
 > dispositivo, aunque la fila siga existiendo. En `control-plane-events` eso es
 > un `UPSERT` con `is_active: false`.
+
+### Cómo se emite
+
+Ningún endpoint publica estos eventos. Un listener de la sesión del ORM
+(`app/services/messaging/control_plane.py`) anota en cada flush qué claves se
+tocaron y, después del commit, lee la fila de cada una **desde su vista** (§4):
+si existe, `UPSERT` con esa fila; si no, `DELETE` con la clave. Así:
+
+- toda escritura emite, la haga el endpoint, el servicio o el script que sea;
+- el evento y la foto de arranque salen de la misma vista y no pueden divergir;
+- lo único que se salta la emisión es escribir sin el ORM (`query(...).update()`,
+  `.delete()` o SQL crudo sobre estas tablas), y
+  `tests/test_control_plane_sin_escrituras_masivas.py` falla si aparece.
+
+Las tablas «Dónde» de §3 son el inventario de lo que hoy escribe cada entidad,
+para orientarse; no son una lista que haya que mantener.
 
 ## 3. Entidades
 
@@ -126,11 +142,8 @@ Una membresía: quién pertenece a qué organización, con qué rol y si está a
 | `organization_users.py` · `DELETE /organizations/{org}/users/{user}` | `DELETE` | Baja de la membresía |
 
 `OrganizationService.add_member`, `update_member_role` y `remove_member` también
-escriben membresías, aunque hoy ninguna ruta los llama. Si se usan, emiten igual.
-
-**Regla de implementación:** toda escritura de `OrganizationUser` pasa por una
-sola función que emite el evento, y un test de paridad falla si alguna la evita.
-La misma regla aplica a `users.status`.
+escriben membresías, aunque hoy ninguna ruta los llama. Si se usan, emiten igual:
+la emisión es del ORM (§2, «Cómo se emite»).
 
 ### `user_unit`
 
@@ -174,23 +187,20 @@ organización que necesitan los consumidores.
 {
   "device_id": "866…",
   "unit_id": "482a054c-…",
-  "organization_id": "23f7dcc8-…",
-  "previous_unit_id": null,
-  "previous_organization_id": null,
-  "is_active": true
+  "organization_id": "23f7dcc8-…"
 }
 ```
 
 | Campo | Tipo | Notas |
 |---|---|---|
 | `device_id` | texto | IMEI |
-| `unit_id` | UUID o `null` | `null` si el equipo quedó sin unidad |
-| `organization_id` | UUID o `null` | De la unidad. **Nuevo** en `data`. |
-| `previous_unit_id` | UUID o `null` | Si el equipo se movió de unidad |
-| `previous_organization_id` | UUID o `null` | |
-| `is_active` | booleano | `false` al desasignar |
+| `unit_id` | UUID | La unidad de su asignación vigente |
+| `organization_id` | UUID | De esa unidad |
 
-Siempre `UPSERT`. Se emite en:
+`UPSERT` mientras el equipo tiene una asignación vigente (`unassigned_at IS NULL`)
+en una unidad no borrada; `DELETE` cuando deja de tenerla. Si un equipo se mueve
+de unidad, el `UPSERT` trae la nueva: con estado completo no hace falta decir
+cuál era la anterior. Se escribe en:
 
 | Dónde | Cuándo |
 |---|---|
@@ -200,8 +210,9 @@ Siempre `UPSERT`. Se emite en:
 | `unit_devices.py` · `DELETE /unit-devices/{assignment_id}` | Desasignación |
 | `devices.py` · `PATCH /devices/{device_id}/status` | Cambios de estado que asignan o liberan |
 
-El borrado lógico de una unidad no emite: `DELETE /units/{unit_id}` exige que no
-tenga equipos activos, así que su desasignación ya se publicó.
+Borrar una unidad (lógicamente) o moverla de organización publica de nuevo sus
+concesiones (`user_unit`) y su equipo (`unit_device`), aunque esas filas no se
+toquen: las vistas dejan de mostrarlas, o las muestran con otra organización.
 
 ### `user_device`
 
@@ -232,7 +243,7 @@ Un dispositivo móvil registrado para push.
 | `is_active` | booleano | |
 | `updated_at` | ISO-8601 UTC | |
 
-Siempre `UPSERT`. Se emite en:
+Siempre `UPSERT`. Se escribe en:
 
 | Dónde | Cuándo |
 |---|---|
@@ -252,11 +263,11 @@ las tablas. Cada vista tiene exactamente las columnas del `data` de su entidad
 
 | Vista | Filas |
 |---|---|
-| `control_plane.user` | Todos los usuarios |
-| `control_plane.organization_user` | Todas las membresías, de cualquier `status` |
-| `control_plane.user_unit` | Todas las concesiones, de unidades no borradas |
-| `control_plane.unit_device` | Asignaciones vigentes (`unassigned_at IS NULL`) de unidades no borradas |
-| `control_plane.user_device` | Todos los dispositivos, de cualquier `is_active` |
+| `control_plane.users` | Todos los usuarios |
+| `control_plane.organization_users` | Todas las membresías, de cualquier `status` |
+| `control_plane.user_units` | Todas las concesiones, de unidades no borradas |
+| `control_plane.unit_devices` | Asignaciones vigentes (`unassigned_at IS NULL`) de unidades no borradas |
+| `control_plane.user_devices` | Todos los dispositivos, de cualquier `is_active` |
 
 Las vistas no filtran por permisos ni aplican la regla de visibilidad; eso es
 cosa de cada consumidor. Un test de esquema de admin-api, sobre la base migrada,
@@ -292,6 +303,22 @@ de lectura del topic y el `GRANT SELECT` sobre `control_plane`.
 Los comandos los ejecuta quien administra el clúster. El usuario
 `siscom-admin-api` es nuevo (ADR-008 §8): admin-api lo usa para este topic y,
 tras la limpieza, para todo lo que produce.
+
+En admin-api, la emisión se enciende con la variable de GitHub
+`KAFKA_CONTROL_PLANE_TOPIC=control-plane-events`, más
+`KAFKA_CONTROL_PLANE_SASL_USERNAME=siscom-admin-api` y el secreto
+`KAFKA_CONTROL_PLANE_SASL_PASSWORD`. Sin la primera, el topic queda vacío y no se
+publica nada: un despliegue no puede encenderla antes de que existan el topic y
+las ACL.
+
+En la base, la migración `044` da `USAGE` y `SELECT` sobre `control_plane` al
+`DB_USER` de admin-api. `alert-distributor` y `event-processor` se conectan como
+`siscom`; si ese no fuera el `DB_USER` de admin-api, necesitan:
+
+```sql
+GRANT USAGE ON SCHEMA control_plane TO siscom;
+GRANT SELECT ON ALL TABLES IN SCHEMA control_plane TO siscom;
+```
 
 ```bash
 # Usuario del productor
