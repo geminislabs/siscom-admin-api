@@ -164,3 +164,115 @@ def test_una_membresia_owner_pausada_no_cuenta(
     db_session.refresh(e["maestro"])
 
     assert not e["maestro"].is_owner_of(e["propia"].id)
+
+
+# ---------------------------------------------------------------------------
+# Pertenencia: la membresía, no la organización por defecto
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def miembro_que_viene_de_otra(db_session, test_organization_data):
+    """Nació en otra organización y es `member` activo de la del owner."""
+    origen = Organization(
+        id=uuid4(),
+        name="Origen",
+        status="ACTIVE",
+        account_id=test_organization_data.account_id,
+    )
+    db_session.add(origen)
+    db_session.flush()
+    miembro = User(
+        id=uuid4(),
+        default_organization_id=origen.id,
+        cognito_sub=f"sub-{uuid4()}",
+        email="viene-de-otra@example.com",
+        full_name="Viene de otra",
+        is_master=False,
+    )
+    db_session.add(miembro)
+    db_session.flush()
+    db_session.add_all(
+        [
+            OrganizationUser(
+                organization_id=origen.id, user_id=miembro.id, role="owner"
+            ),
+            OrganizationUser(
+                organization_id=test_organization_data.id,
+                user_id=miembro.id,
+                role="member",
+            ),
+        ]
+    )
+    db_session.commit()
+    return miembro
+
+
+def test_la_lista_de_usuarios_incluye_a_quien_viene_de_otra(
+    client, test_user_data, test_organization_data, miembro_que_viene_de_otra
+):
+    respuesta = _como(
+        client, test_user_data, test_organization_data, "get", "/api/v1/users"
+    )
+
+    assert respuesta.status_code == status.HTTP_200_OK, respuesta.text
+    assert str(miembro_que_viene_de_otra.id) in {u["id"] for u in respuesta.json()}
+
+
+def test_se_le_puede_conceder_una_unidad_a_quien_viene_de_otra(
+    client,
+    test_user_data,
+    test_organization_data,
+    test_unit_data,
+    miembro_que_viene_de_otra,
+):
+    """Antes respondía 404: el destino se buscaba por su organización por
+    defecto. Con la regla por membresía, eso lo dejaba sin ver nada aquí y sin
+    forma de arreglarlo desde Nexus."""
+    respuesta = _como(
+        client,
+        test_user_data,
+        test_organization_data,
+        "post",
+        "/api/v1/user-units",
+        json={
+            "user_id": str(miembro_que_viene_de_otra.id),
+            "unit_id": str(test_unit_data.id),
+        },
+    )
+
+    assert respuesta.status_code == status.HTTP_201_CREATED, respuesta.text
+
+
+def test_no_se_le_concede_una_unidad_a_quien_ya_no_es_miembro(
+    client,
+    db_session,
+    test_user_data,
+    test_organization_data,
+    test_unit_data,
+    miembro_que_viene_de_otra,
+):
+    membresia = (
+        db_session.query(OrganizationUser)
+        .filter(
+            OrganizationUser.user_id == miembro_que_viene_de_otra.id,
+            OrganizationUser.organization_id == test_organization_data.id,
+        )
+        .one()
+    )
+    membresia.status = "INACTIVE"
+    db_session.commit()
+
+    respuesta = _como(
+        client,
+        test_user_data,
+        test_organization_data,
+        "post",
+        "/api/v1/user-units",
+        json={
+            "user_id": str(miembro_que_viene_de_otra.id),
+            "unit_id": str(test_unit_data.id),
+        },
+    )
+
+    assert respuesta.status_code == status.HTTP_404_NOT_FOUND

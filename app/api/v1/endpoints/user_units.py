@@ -13,6 +13,7 @@ from app.models.unit import Unit
 from app.models.user import User
 from app.models.user_unit import UserUnit
 from app.schemas.user_unit import UserUnitCreate, UserUnitDetail, UserUnitOut
+from app.services.access_control import es_miembro
 from app.services.data_token_issuance import revoke_sessions_for_user
 
 router = APIRouter()
@@ -132,7 +133,7 @@ def create_user_unit(
         db.query(User)
         .filter(
             User.id == assignment.user_id,
-            User.default_organization_id == current_user.organization_id,
+            es_miembro(current_user.organization_id),
         )
         .first()
     )

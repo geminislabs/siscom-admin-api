@@ -29,6 +29,7 @@ from app.schemas.user import (
     UserInviteResponse,
     UserOut,
 )
+from app.services.access_control import es_miembro
 from app.services.identity import (
     ErrorDeIdentidad,
     IdentityProvider,
@@ -50,7 +51,7 @@ def list_users(
     """
     Lista todos los usuarios de la organización autenticada.
     """
-    users = db.query(User).filter(User.default_organization_id == organization_id).all()
+    users = db.query(User).filter(es_miembro(organization_id)).all()
     return users
 
 
