@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`control-plane-events` no recibía nada.** `docker-compose.prod.yml` pasa al contenedor solo las variables que nombra en `environment:`, y `KAFKA_CONTROL_PLANE_TOPIC`, `_SASL_USERNAME` y `_SASL_PASSWORD` no estaban: el deploy las escribía en el `.env`, pero la API no las veía. Sin ellas, el topic tomaba su valor por defecto y la publicación caía al usuario de Kafka general, sin ACL sobre el topic: cada evento terminaba en `TopicAuthorizationFailedError` y `control_event_publish_failed`. Corrige además lo que decía la entrada de `1.60.0`: la emisión **no** estaba apagada por defecto, porque una variable ausente no es una variable vacía. Ahora el compose las pasa con `:-` (vacío = apagado) y `tests/test_variables_del_contenedor.py` falla si una variable del `.env` del deploy no llega al contenedor, o al revés
+
 ### Removed
 
 - **Los topics de control viejos** (ADR-008, paso 5): ya no se publica en `user-devices-updates`, `unit-devices-updates` ni `user-units-updates`. `control-plane-events` es el único, y lo emite el ORM; ningún consumidor leía los viejos desde alert-distributor `v0.3.0` y event-processor `v1.3.0`. Se van `UserDevicesKafkaProducer`, `UnitDevicesKafkaProducer`, `UserUnitsKafkaProducer`, sus dependencias, los constructores de eventos viejos y las variables `KAFKA_USER_DEVICES_UPDATES_TOPIC`, `KAFKA_UNIT_DEVICES_UPDATES_TOPIC` y `KAFKA_USER_UNITS_UPDATES_TOPIC`
