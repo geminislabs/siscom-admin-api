@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.61.0] - 2026-10-19
+
+**Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.60.0`.
+
+**Rollback.** Basta revertir la imagen (`v1.60.0`): no hay cambio de esquema. Con ella vuelven
+los dos problemas que esta versión corrige: la API no ve `KAFKA_CONTROL_PLANE_*` y vuelve a
+publicar también en los topics viejos (si ya se borraron del clúster, esas publicaciones fallan y
+quedan en el log, sin afectar a las respuestas).
+
 ### Fixed
 
 - **`control-plane-events` no recibía nada.** `docker-compose.prod.yml` pasa al contenedor solo las variables que nombra en `environment:`, y `KAFKA_CONTROL_PLANE_TOPIC`, `_SASL_USERNAME` y `_SASL_PASSWORD` no estaban: el deploy las escribía en el `.env`, pero la API no las veía. Sin ellas, el topic tomaba su valor por defecto y la publicación caía al usuario de Kafka general, sin ACL sobre el topic: cada evento terminaba en `TopicAuthorizationFailedError` y `control_event_publish_failed`. Corrige además lo que decía la entrada de `1.60.0`: la emisión **no** estaba apagada por defecto, porque una variable ausente no es una variable vacía. Ahora el compose las pasa con `:-` (vacío = apagado) y `tests/test_variables_del_contenedor.py` falla si una variable del `.env` del deploy no llega al contenedor, o al revés
