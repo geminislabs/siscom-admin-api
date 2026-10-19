@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.60.0] - 2026-10-19
+
+**Migración.** `044_vistas_del_plano_de_control`. Cabeza: `043_defaults_de_id` →
+`044_vistas_del_plano_de_control`. Crea el esquema `control_plane` con cinco vistas y da `USAGE`
+y `SELECT` al `DB_USER` de runtime (`siscom`). No toca ninguna tabla. Antes de crear nada
+comprueba que el migrador puede crear esquemas (`has_database_privilege`, medido `true` en
+producción el 19/10).
+
+**Emisión apagada.** Esta versión no publica en `control-plane-events` hasta que exista la
+variable de GitHub `KAFKA_CONTROL_PLANE_TOPIC`; los topics viejos se escriben igual que antes.
+
+**Rollback.**
+
+1. **Casi siempre basta revertir la imagen** (`v1.59.1`) sin tocar la base: nada del código
+   anterior lee las vistas. El despliegue ya revierte la imagen solo si el contenedor no levanta.
+2. **Solo para desplegar un tag anterior**, y antes de hacerlo, porque el archivo de la migración
+   vive en la imagen nueva:
+
+   ```bash
+   docker run --rm --network siscom-network --env-file .env \
+     siscom-admin-api:latest alembic downgrade 043_defaults_de_id
+   ```
+
+   Sin este paso, desplegar `v1.59.1` falla con
+   `Can't locate revision identified by '044_vistas_del_plano_de_control'`.
+   El downgrade borra el esquema `control_plane`: event-processor, si ya lee de ahí, deja de
+   arrancar.
+
 ### Added
 
 - `GET /tenant-config` acepta el parámetro `host`, que manda sobre la cabecera `Host` (Fase 4). Quien más lo consulta es el servidor de nexus-web, que llama con su propio `Host` —el de esta API—, y el balanceador enruta por esa cabecera, así que no hay otro modo de decirle por qué dominio entró el navegador. No abre nada: el Host nunca autoriza, el endpoint ya era enumerable y un dominio sin verificar sigue sirviendo la marca por defecto
