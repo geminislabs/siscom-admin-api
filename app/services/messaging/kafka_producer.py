@@ -558,12 +558,8 @@ class ControlPlaneKafkaProducer:
             if broker.strip()
         ]
         self.security_protocol = settings.KAFKA_SECURITY_PROTOCOL
-        self.sasl_username = (
-            settings.KAFKA_CONTROL_PLANE_SASL_USERNAME or settings.KAFKA_SASL_USERNAME
-        )
-        self.sasl_password = (
-            settings.KAFKA_CONTROL_PLANE_SASL_PASSWORD or settings.KAFKA_SASL_PASSWORD
-        )
+        self.sasl_username = settings.KAFKA_SASL_USERNAME
+        self.sasl_password = settings.KAFKA_SASL_PASSWORD
         self.sasl_mechanism = settings.KAFKA_SASL_MECHANISM
         self._producer: Optional[Any] = None
 
