@@ -28,6 +28,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models.account import AccountStatus
+from app.schemas.tenant_config import MarcaDeSesionOut
 from app.utils.validators import validate_password
 
 # =====================================================
@@ -298,6 +299,10 @@ class AuthMeResponse(BaseModel):
             "Capabilities comerciales de la cuenta ya resueltas con el techo de "
             "sus ancestros (white_label_enabled, max_custom_domains…)."
         ),
+    )
+    brand: Optional[MarcaDeSesionOut] = Field(
+        default=None,
+        description="La marca de la credencial con la que se inició sesión.",
     )
 
     class Config:

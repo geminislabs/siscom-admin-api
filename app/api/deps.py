@@ -159,20 +159,25 @@ def get_identity_provider() -> "IdentityProvider":
 def get_cuenta_de_marca(
     request: Request, db: Session = Depends(get_db)
 ) -> Optional["Account"]:
-    """La `Account` de marca para esta petición, resuelta por `Host`.
+    """La `Account` de marca para esta petición sin sesión.
 
-    `None` significa «marca por defecto» — el suelo de §26 del documento de
-    arquitectura, nunca un error. Hoy es siempre `None` en producción: no hay
-    ningún `tenant_domains` verificado todavía, y el `Host` que ve esta API en
-    peticiones de `nexus-web-page` es el suyo propio, no el del visitante —
-    conectar eso es trabajo de la Fase 4/5, no de esta rebanada (B3).
+    Por `Host` y, si el `Host` no es de ninguna marca, por la declaración
+    explícita `X-Brand-Host` que mandan las apps nativas (§26 del documento de
+    arquitectura). `None` significa «marca por defecto»: el suelo, nunca un
+    error. El `Host` que ve esta API en peticiones de `nexus-web-page` es el
+    suyo propio; la web no declara marca, y se resolverá sirviendo la API bajo
+    el dominio del partner (Fase 5, §8).
+
+    Deja en `request.state.fuente_de_marca` de dónde salió (`host`, `header` o
+    `default`), para el log del login.
     """
     from app.models.account import Account
-    from app.services.tenancy import normalizar_host, resolver_account_id_de_host
+    from app.services.tenancy import CABECERA_DE_MARCA, resolver_marca_de_peticion
 
-    account_id = resolver_account_id_de_host(
-        normalizar_host(request.headers.get("host")), db
+    account_id, fuente = resolver_marca_de_peticion(
+        request.headers.get("host"), request.headers.get(CABECERA_DE_MARCA), db
     )
+    request.state.fuente_de_marca = fuente
     return db.get(Account, account_id) if account_id else None
 
 

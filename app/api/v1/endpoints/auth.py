@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,7 @@ from app.schemas.account import (
     OnboardingRequest,
     OnboardingResponse,
 )
+from app.schemas.tenant_config import MarcaDeSesionOut
 from app.schemas.user import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -76,6 +77,7 @@ from app.services.notifications import (
     send_password_reset_email,
     send_verification_email,
 )
+from app.services.tenancy import marca_de_sesion
 from app.utils.datetime import utcnow
 from app.utils.security import generate_temporary_password, generate_verification_token
 
@@ -438,6 +440,7 @@ def get_my_account(
             permisos.permisos_de_rol(db, PermissionScope.ACCOUNT.value, account_role)
         ),
         account_capabilities=_capabilities_de_cuenta(db, account.id),
+        brand=MarcaDeSesionOut(**marca_de_sesion(current_user.brand_account_id, db)),
     )
 
 
@@ -522,6 +525,7 @@ def list_my_organizations(
 @router.post("/login", response_model=UserLoginResponse, status_code=status.HTTP_200_OK)
 def login_user(
     credentials: UserLogin,
+    request: Request,
     db: Session = Depends(get_db),
     issuer=Depends(get_data_token_issuer),
     store=Depends(get_scope_store),
@@ -538,11 +542,11 @@ def login_user(
     4. Actualiza el last_login_at
     5. Retorna la información del usuario y los tokens de Cognito
 
-    `marca` (rebanada B3) es `None` cuando el `Host` no resuelve a ningún
-    `tenant_domains` verificado — el caso de todo el tráfico hoy, porque
-    `nexus-web-page` todavía llama a esta API con una URL absoluta y no hay
-    ningún partner con dominio propio en producción. `None` es la marca por
-    defecto, nunca un error: ver §26 del documento de arquitectura.
+    `marca` (rebanada B3) es `None` cuando ni el `Host` ni la cabecera
+    `X-Brand-Host` resuelven a un `tenant_domains` verificado — el caso de todo
+    el tráfico hoy. `None` es la marca por defecto, nunca un error: ver §26 del
+    documento de arquitectura. La respuesta lleva en `brand` la marca con la que
+    quedó la sesión, que es la que el cliente debe guardar.
 
     Códigos de error:
     - 404: Usuario no encontrado
@@ -642,7 +646,13 @@ def login_user(
     record_session_delta(1)
     logger.info(
         "auth.login.success",
-        extra={"user_id": str(user.id), "method": "cognito"},
+        extra={
+            "user_id": str(user.id),
+            "method": "cognito",
+            # De dónde salió la marca: con el primer partner, es lo que dice si
+            # los móviles están declarando bien (§26).
+            "brand_source": getattr(request.state, "fuente_de_marca", "default"),
+        },
     )
 
     # 5️⃣ Retornar la información del usuario y los tokens
@@ -654,6 +664,7 @@ def login_user(
         token_type="Bearer",
         expires_in=expires_in,
         data_token=_try_issue_data_token(db, user, issuer, store),
+        brand=MarcaDeSesionOut(**marca_de_sesion(marca_id, db)),
     )
 
 

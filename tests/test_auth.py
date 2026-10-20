@@ -509,6 +509,216 @@ def test_register_el_duplicado_es_por_marca_no_global(client, db_session, idp_fa
 
 
 # ---------------------------------------------------------------------------
+# Declaración explícita de marca: `X-Brand-Host` (§26, el «camino»)
+#
+# Las apps nativas no tienen `Host` de marca: su URL base es la de esta API.
+# Declaran el dominio de su proveedor en una cabecera, que sólo cuenta si el
+# `Host` no resuelve ya a una marca.
+# ---------------------------------------------------------------------------
+
+
+def _usuario_de_marca(db_session, test_organization_data, marca, email):
+    from app.models.user import User
+
+    user = User(
+        id=uuid4(),
+        default_organization_id=test_organization_data.id,
+        email=email,
+        full_name="Usuario de marca",
+        email_verified=True,
+        external_id=str(uuid4()),
+        cognito_sub=str(uuid4()),
+        brand_account_id=marca.id if marca else None,
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+def test_login_con_declaracion_de_marca_autentica_en_esa_marca(
+    client, db_session, test_organization_data, idp_falso
+):
+    marca = _marca_verificada(db_session, "meromero.com")
+    _usuario_de_marca(db_session, test_organization_data, None, "dual@example.com")
+    de_marca = _usuario_de_marca(
+        db_session, test_organization_data, marca, "dual@example.com"
+    )
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "dual@example.com", "password": "irrelevante"},
+        headers={"X-Brand-Host": "MeroMero.com:443"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    idp_falso.autenticar.assert_called_once_with(
+        handle=de_marca.external_id, password="irrelevante"
+    )
+    assert response.json()["brand"] == {
+        "hostname": "meromero.com",
+        "brand_name": "Nexus",
+        "is_default": False,
+    }
+
+
+def test_el_host_manda_sobre_la_declaracion(
+    client, db_session, test_organization_data, idp_falso
+):
+    """Regla 1: un dominio de marca nunca lo contradice una cabecera."""
+    marca_host = _marca_verificada(db_session, "otra.com", nombre="Otra")
+    marca_declarada = _marca_verificada(db_session, "meromero.com")
+    del_host = _usuario_de_marca(
+        db_session, test_organization_data, marca_host, "dual@example.com"
+    )
+    _usuario_de_marca(
+        db_session, test_organization_data, marca_declarada, "dual@example.com"
+    )
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "dual@example.com", "password": "irrelevante"},
+        headers={"Host": "otra.com", "X-Brand-Host": "meromero.com"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    idp_falso.autenticar.assert_called_once_with(
+        handle=del_host.external_id, password="irrelevante"
+    )
+    assert response.json()["brand"]["hostname"] == "otra.com"
+
+
+@pytest.mark.parametrize("declarada", ["nadie.com", "pendiente.com", "", "a" * 300])
+def test_una_declaracion_que_no_resuelve_cae_en_la_marca_por_defecto(
+    client, db_session, test_organization_data, idp_falso, declarada
+):
+    """Regla 3: sólo resuelven dominios verificados, y lo demás nunca es error."""
+    from app.models.tenancy import TenantDomain
+
+    marca = _marca_verificada(db_session, "verificada.com")
+    db_session.add(
+        TenantDomain(
+            account_id=marca.id,
+            hostname="pendiente.com",
+            is_primary=False,
+            status="PENDING",
+        )
+    )
+    db_session.commit()
+    por_defecto = _usuario_de_marca(
+        db_session, test_organization_data, None, "solo@example.com"
+    )
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "solo@example.com", "password": "irrelevante"},
+        headers={"X-Brand-Host": declarada},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    idp_falso.autenticar.assert_called_once_with(
+        handle=por_defecto.external_id, password="irrelevante"
+    )
+    assert response.json()["brand"] == {
+        "hostname": None,
+        "brand_name": "Nexus",
+        "is_default": True,
+    }
+
+
+def test_la_marca_equivocada_no_encuentra_la_credencial(
+    client, db_session, test_organization_data, idp_falso
+):
+    """Declarar marca es un selector de búsqueda, no un permiso."""
+    _marca_verificada(db_session, "meromero.com")
+    _usuario_de_marca(db_session, test_organization_data, None, "solo@example.com")
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "solo@example.com", "password": "irrelevante"},
+        headers={"X-Brand-Host": "meromero.com"},
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    idp_falso.autenticar.assert_not_called()
+
+
+def test_register_con_declaracion_nace_en_esa_marca(client, db_session, idp_falso):
+    from app.models.user import User
+
+    marca = _marca_verificada(db_session, "meromero.com")
+    idp_falso.crear_credencial.return_value = str(uuid4())
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json=_datos_registro(email="declarado@example.com"),
+        headers={"X-Brand-Host": "meromero.com"},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    user = db_session.query(User).filter(User.email == "declarado@example.com").one()
+    assert user.brand_account_id == marca.id
+
+
+def test_el_log_del_login_dice_de_donde_salio_la_marca(
+    client, db_session, test_organization_data, idp_falso, caplog
+):
+    """Regla 5: con el primer partner, esto dice si los móviles declaran bien."""
+    marca = _marca_verificada(db_session, "meromero.com")
+    _usuario_de_marca(db_session, test_organization_data, marca, "log@example.com")
+
+    with caplog.at_level("INFO"):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": "log@example.com", "password": "irrelevante"},
+            headers={"X-Brand-Host": "meromero.com"},
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    exitos = [r for r in caplog.records if r.getMessage() == "auth.login.success"]
+    assert [r.brand_source for r in exitos] == ["header"]
+
+
+def test_la_marca_de_sesion_usa_el_nombre_publicado(db_session):
+    from app.models.tenancy import TenantBranding
+    from app.services.tenancy import marca_de_sesion
+
+    marca = _marca_verificada(db_session, "meromero.com")
+    db_session.add(TenantBranding(account_id=marca.id, brand_name="Mero Mero"))
+    db_session.commit()
+
+    assert marca_de_sesion(marca.id, db_session) == {
+        "hostname": "meromero.com",
+        "brand_name": "Mero Mero",
+        "is_default": False,
+    }
+
+
+def _preflight(client, cabeceras):
+    from app.core.config import settings
+
+    return client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": settings.ALLOWED_ORIGINS[0],
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": cabeceras,
+        },
+    )
+
+
+def test_un_navegador_no_puede_declarar_marca(client):
+    """Regla 2: `X-Brand-Host` queda fuera de CORS; la web sigue el `Host`."""
+    assert _preflight(client, "content-type, X-Brand-Host").status_code == 400
+
+
+def test_el_resto_de_cabeceras_sigue_permitido(client):
+    respuesta = _preflight(client, "content-type, authorization, x-organization-id")
+
+    assert respuesta.status_code == 200
+    assert "x-organization-id" in respuesta.headers["access-control-allow-headers"]
+
+
+# ---------------------------------------------------------------------------
 # Filtrado por marca en forgot/reset-password y resend-verification
 #
 # La rebanada B3 dejó fichado este hueco sin cerrarlo: los tres buscaban al

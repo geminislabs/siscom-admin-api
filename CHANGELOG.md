@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Declaración explícita de marca para las apps nativas: cabecera `X-Brand-Host: <dominio>` en `/auth/login`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password` y `/auth/resend-verification`. Sólo cuenta si el `Host` no resuelve ya a una marca, pasa por la misma normalización y sólo resuelve dominios verificados; cualquier otra cosa cae en la marca por defecto, nunca en un error (§26 del documento de arquitectura, `docs/architecture/identidad-y-marca.md`)
+- `brand` en la respuesta de `/auth/login` y `/auth/me` (`hostname`, `brand_name`, `is_default`): la marca con la que quedó la sesión, que es la que el cliente debe guardar
+- `auth.login.success` registra `brand_source` (`host`, `header` o `default`)
+
+### Security
+
+- El preflight de CORS que pide `X-Brand-Host` se rechaza: los navegadores no pueden declarar marca y la web la sigue resolviendo por `Host`
+
 ## [1.63.0] - 2026-10-20
 
 **Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.62.1`.
