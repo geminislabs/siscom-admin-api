@@ -2,7 +2,6 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
-from fastapi.middleware.cors import CORSMiddleware  # type: ignore[attr-defined]
 from fastapi.responses import JSONResponse
 
 from app.api.deps import (
@@ -12,6 +11,7 @@ from app.api.deps import (
 )
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.cors import CORSSinDeclaracionDeMarca
 from app.observability.init import instrument_app, setup_telemetry
 from app.observability.logging import configure_json_logging
 from app.observability.metrics import record_api_error
@@ -135,7 +135,7 @@ async def attach_request_id(request: Request, call_next):
 
 
 app.add_middleware(
-    CORSMiddleware,  # type: ignore[arg-type]
+    CORSSinDeclaracionDeMarca,  # type: ignore[arg-type]
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],

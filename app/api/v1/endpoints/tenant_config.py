@@ -26,13 +26,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.tenancy import TenantBranding
 from app.schemas.tenant_config import TenantConfigResponse
-from app.services.tenancy import normalizar_host, resolver_account_id_de_host
+from app.services.tenancy import (
+    MARCA_POR_DEFECTO,
+    normalizar_host,
+    resolver_account_id_de_host,
+)
 
 router = APIRouter()
-
-# Lo que se sirve cuando el Host no es de nadie: localhost, la IP del ALB, un
-# dominio que aún no se ha verificado, o alguien probando hostnames.
-MARCA_POR_DEFECTO = "Nexus"
 
 # El navegador puede cachearlo un rato: cambia cuando el partner publica su
 # tema, que es una acción manual y poco frecuente. Corto de todos modos, para

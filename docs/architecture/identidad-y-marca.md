@@ -103,6 +103,40 @@ accounts.id  ──►  la marca: logo, colores, textos legales, y el
 Sólo se sirven dominios `VERIFIED`. Uno en `PENDING` lo puede reclamar
 cualquiera hasta que demuestre control por DNS.
 
+### Quien no tiene `Host`: `X-Brand-Host`
+
+Las apps nativas llaman a esta API con su propia URL base, así que su `Host`
+nunca es el de una marca. Declaran el dominio de su proveedor en una cabecera:
+
+```
+POST /api/v1/auth/login
+X-Brand-Host: meromero.com
+```
+
+Vale en los cinco endpoints sin sesión que resuelven marca
+(`get_cuenta_de_marca`): `login`, `register`, `forgot-password`,
+`reset-password` y `resend-verification`. Es el «camino» de §26 del documento
+de arquitectura, y sus reglas son éstas:
+
+1. **El `Host` manda.** La cabecera sólo cuenta si el `Host` no resuelve a una
+   marca. Cuando la API se sirva bajo el dominio de un partner, ninguna cabecera
+   podrá contradecirlo.
+2. **Fuera de CORS.** `app/core/cors.py` rechaza el preflight que la pida: la
+   web no declara marca, la resuelve por `Host`. No la añadas a una lista de
+   cabeceras permitidas.
+3. **La misma validación que el `Host`**: `normalizar_host` y sólo dominios
+   `VERIFIED`. Lo que no resuelve cae en la marca por defecto, nunca en un
+   error. La app puede comprobar el dominio antes con `GET /tenant-config?host=`.
+4. **La respuesta confirma la marca.** `/auth/login` y `/auth/me` devuelven
+   `brand` (`hostname`, `brand_name`, `is_default`). El cliente guarda eso, no
+   lo que el usuario escribió.
+5. **El log dice de dónde salió**: `auth.login.success` lleva `brand_source`
+   (`host`, `header` o `default`).
+
+Declarar marca es un selector de búsqueda, no un permiso: con la marca
+equivocada la credencial no se encuentra y el login responde 404, igual que con
+un correo que no existe.
+
 ---
 
 ## 4. El esquema
@@ -327,7 +361,8 @@ repositorio con un `boto3.client("cognito-idp")`. Antes había tres —`auth.py`
    construye a mano.
 3. **Un correo no identifica a una persona.** Toda búsqueda por correo lleva
    marca, o es un bug esperando al primer partner.
-4. **El `Host` resuelve apariencia, nunca autorización.**
+4. **El `Host` resuelve apariencia, nunca autorización.** Tampoco
+   `X-Brand-Host`, que sólo se mira cuando el `Host` no es de ninguna marca.
 5. **`NULL` en `brand_account_id` es un valor con significado**, no un hueco:
    es la marca por defecto. Un `WHERE brand_account_id = :marca` con `:marca`
    nulo no devuelve nada.

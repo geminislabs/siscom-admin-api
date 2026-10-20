@@ -141,10 +141,14 @@ def test_request_id_envuelve_al_manejador_de_500():
 
 def test_la_cabecera_del_request_id_es_legible_por_el_browser():
     """De poco sirve devolver el identificador si el cliente no puede leerlo."""
+    from starlette.middleware.cors import CORSMiddleware
+
     import app.main as main_mod
 
     cors = [
-        mw for mw in main_mod.app.user_middleware if mw.cls.__name__ == "CORSMiddleware"
+        mw
+        for mw in main_mod.app.user_middleware
+        if isinstance(mw.cls, type) and issubclass(mw.cls, CORSMiddleware)
     ]
     assert cors, "no hay CORSMiddleware registrado"
     assert "X-Request-ID" in cors[0].kwargs.get("expose_headers", [])

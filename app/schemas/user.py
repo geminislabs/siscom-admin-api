@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.schemas.tenant_config import MarcaDeSesionOut
 from app.utils.validators import validate_name, validate_password
 
 
@@ -58,6 +59,9 @@ class UserLoginResponse(BaseModel):
     # el cliente la pide en `POST /auth/data-token`, que es la autoridad. Un
     # fallo ahí nunca impide iniciar sesión.
     data_token: Optional["DataTokenResponse"] = None
+    # La marca con la que quedó la sesión. Los clientes guardan ésta y no la que
+    # declararon en `X-Brand-Host`: si no coinciden, el dominio no es de nadie.
+    brand: Optional[MarcaDeSesionOut] = None
 
     class Config:
         json_schema_extra = {
