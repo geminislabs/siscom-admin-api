@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
@@ -32,6 +33,31 @@ from app.models.unit import Unit
 from app.models.unit_device import UnitDevice
 from app.models.user import User
 from app.models.user_unit import UserUnit
+
+
+def es_miembro(organization_id: UUID, solo_activos: bool = True):
+    """Condición SQL: `User.id` tiene membresía en `organization_id`.
+
+    Es la única definición de «pertenecer a una organización». La autoridad es
+    `organization_users`; `users.default_organization_id` es solo la
+    organización con la que nació el usuario (y con la que abre sesión si no
+    pide otra), y no dice a qué organizaciones pertenece. Filtrar por ella
+    dejaba fuera a quien llegó desde otra organización: no aparecía en la
+    lista de usuarios y no se le podían conceder unidades.
+
+    `tests/test_pertenencia_por_membresia.py` falla si un endpoint vuelve a
+    decidir pertenencia comparando `default_organization_id`.
+    """
+    from app.models.organization_user import MembershipStatus, OrganizationUser
+
+    miembros = select(OrganizationUser.user_id).where(
+        OrganizationUser.organization_id == organization_id
+    )
+    if solo_activos:
+        miembros = miembros.where(
+            OrganizationUser.status == MembershipStatus.ACTIVE.value
+        )
+    return User.id.in_(miembros)
 
 
 @dataclass(frozen=True)

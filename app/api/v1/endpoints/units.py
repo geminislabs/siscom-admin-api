@@ -40,6 +40,7 @@ from app.schemas.vehicle_profile import (
     VehicleProfileOut,
     VehicleProfileUpdate,
 )
+from app.services.access_control import es_miembro
 from app.services.data_token_issuance import (
     issue_share_token,
     revoke_sessions_for_user,
@@ -1157,7 +1158,7 @@ def assign_user_to_unit(
         db.query(User)
         .filter(
             User.id == assignment.user_id,
-            User.default_organization_id == current_user.organization_id,
+            es_miembro(current_user.organization_id),
         )
         .first()
     )

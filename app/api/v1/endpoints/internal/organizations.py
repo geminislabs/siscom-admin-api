@@ -28,6 +28,7 @@ from app.schemas.organization import (
     OrganizationOut,
     OrganizationUpdate,
 )
+from app.services.access_control import es_miembro
 from app.services.account_nexus_status import get_organization_nexus_status
 from app.utils.datetime import utcnow
 
@@ -253,7 +254,9 @@ def get_organization_users(
             detail="Organización no encontrada",
         )
 
-    users = db.query(User).filter(User.default_organization_id == organization_id).all()
+    # Toda membresía, también las pausadas: GAC administra, y una membresía
+    # pausada sigue siendo de esta organización.
+    users = db.query(User).filter(es_miembro(organization_id, solo_activos=False)).all()
 
     return [
         {

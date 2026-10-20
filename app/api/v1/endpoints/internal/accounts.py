@@ -22,7 +22,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import and_, distinct, func
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthResult, get_auth_solo_servicio
@@ -31,6 +31,7 @@ from app.models.account import Account, AccountStatus
 from app.models.account_user import AccountRole, AccountUser
 from app.models.device import Device
 from app.models.organization import Organization
+from app.models.organization_user import MembershipStatus, OrganizationUser
 from app.models.unit_device import UnitDevice
 from app.models.user import User
 from app.services.account_nexus_status import (
@@ -80,13 +81,16 @@ def list_all_accounts(
         .subquery()
     )
 
-    # Subquery para contar usuarios por account (a través de organizations)
+    # Personas con membresía activa en alguna organización de la cuenta. Antes
+    # se contaba por `users.default_organization_id`: quien llegó desde otra
+    # organización no contaba, y quien se fue seguía contando.
     user_count_subq = (
         db.query(
             Organization.account_id,
-            func.count(User.id).label("user_count"),
+            func.count(distinct(OrganizationUser.user_id)).label("user_count"),
         )
-        .join(User, User.default_organization_id == Organization.id)
+        .join(OrganizationUser, OrganizationUser.organization_id == Organization.id)
+        .filter(OrganizationUser.status == MembershipStatus.ACTIVE.value)
         .group_by(Organization.account_id)
         .subquery()
     )
@@ -266,11 +270,12 @@ def get_account_by_id(
         .scalar()
     ) or 0
 
-    # Contar usuarios (a través de organizations)
+    # Personas con membresía activa en alguna organización de la cuenta.
     total_users = (
-        db.query(func.count(User.id))
-        .join(Organization, User.default_organization_id == Organization.id)
+        db.query(func.count(distinct(OrganizationUser.user_id)))
+        .join(Organization, OrganizationUser.organization_id == Organization.id)
         .filter(Organization.account_id == account_id)
+        .filter(OrganizationUser.status == MembershipStatus.ACTIVE.value)
         .scalar()
     ) or 0
 
@@ -340,9 +345,15 @@ def get_account_organizations(
             Organization.timezone,
             Organization.created_at,
             Organization.updated_at,
-            func.count(User.id).label("total_users"),
+            func.count(OrganizationUser.user_id).label("total_users"),
         )
-        .outerjoin(User, User.default_organization_id == Organization.id)
+        .outerjoin(
+            OrganizationUser,
+            and_(
+                OrganizationUser.organization_id == Organization.id,
+                OrganizationUser.status == MembershipStatus.ACTIVE.value,
+            ),
+        )
         .filter(Organization.account_id == account_id)
         .group_by(Organization.id)
         .order_by(Organization.created_at.desc())
