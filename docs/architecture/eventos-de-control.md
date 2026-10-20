@@ -300,16 +300,15 @@ de lectura del topic y el `GRANT SELECT` sobre `control_plane`.
 
 Los comandos los ejecuta quien administra el clúster. `siscom-admin-api` es el
 único usuario con que admin-api produce, en este topic y en todos los demás
-(ADR-008 §8, desde el 20/10/2026). Las variables `KAFKA_CONTROL_PLANE_SASL_*`
-sobran desde entonces: sin ellas, el productor usa `KAFKA_SASL_*`, que ya es el
-mismo usuario.
+(ADR-008 §8, desde el 20/10/2026), y llega en `KAFKA_SASL_USERNAME` /
+`KAFKA_SASL_PASSWORD`. Hasta `v1.62.1` este topic tenía además sus propias
+variables `KAFKA_CONTROL_PLANE_SASL_*`; se quitaron al quedar todo en el mismo
+usuario.
 
 En admin-api, la emisión se enciende con la variable de GitHub
-`KAFKA_CONTROL_PLANE_TOPIC=control-plane-events`, más
-`KAFKA_CONTROL_PLANE_SASL_USERNAME=siscom-admin-api` y el secreto
-`KAFKA_CONTROL_PLANE_SASL_PASSWORD`. Sin la primera, el topic queda vacío y no se
-publica nada: un despliegue no puede encenderla antes de que existan el topic y
-las ACL.
+`KAFKA_CONTROL_PLANE_TOPIC=control-plane-events`. Sin ella, el topic queda vacío
+y no se publica nada: un despliegue no puede encenderla antes de que existan el
+topic y las ACL.
 
 En la base, la migración `044` da `USAGE` y `SELECT` sobre `control_plane` al
 `DB_USER` de admin-api. `alert-distributor` y `event-processor` se conectan como

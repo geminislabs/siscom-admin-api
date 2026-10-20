@@ -82,11 +82,9 @@ services:
       KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-SASL_PLAINTEXT}
       # Eventos del plano de control (ADR-008). Este bloque es lo único que llega
       # al contenedor: una variable que esté en el .env pero no aquí no existe
-      # para la API. Pasó con estas tres el 19/10/2026, y la API publicaba con el
-      # usuario general, sin ACL sobre el topic. Vacío apaga la emisión.
+      # para la API. Pasó con las de este bloque el 19/10/2026, y la API
+      # publicaba con un usuario sin ACL sobre el topic. Vacío apaga la emisión.
       KAFKA_CONTROL_PLANE_TOPIC: ${KAFKA_CONTROL_PLANE_TOPIC:-}
-      KAFKA_CONTROL_PLANE_SASL_USERNAME: ${KAFKA_CONTROL_PLANE_SASL_USERNAME:-}
-      KAFKA_CONTROL_PLANE_SASL_PASSWORD: ${KAFKA_CONTROL_PLANE_SASL_PASSWORD:-}
     healthcheck:
       test:
         [
