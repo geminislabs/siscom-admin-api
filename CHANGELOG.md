@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.64.0] - 2026-10-20
+
+**Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.63.0`.
+
+**Rollback.** Basta revertir la imagen (`v1.63.0`): no hay cambio de esquema. Ningún cliente
+manda todavía `X-Brand-Host` ni lee `brand`, así que revertir no afecta a nadie.
+
 ### Added
 
 - Declaración explícita de marca para las apps nativas: cabecera `X-Brand-Host: <dominio>` en `/auth/login`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password` y `/auth/resend-verification`. Sólo cuenta si el `Host` no resuelve ya a una marca, pasa por la misma normalización y sólo resuelve dominios verificados; cualquier otra cosa cae en la marca por defecto, nunca en un error (§26 del documento de arquitectura, `docs/architecture/identidad-y-marca.md`)
