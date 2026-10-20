@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.62.1] - 2026-10-20
+
+**Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.62.0`.
+
+**Rollback.** Basta revertir la imagen (`v1.62.0`): no hay cambio de esquema. Con ella, quien
+llega desde otra organización vuelve a no aparecer en `GET /users` ni a poder recibir unidades.
+
 ### Fixed
 
 - **Pertenecer a una organización se decide por la membresía, no por `users.default_organization_id`.** Esa columna es la organización con la que nació el usuario; quien llegó desde otra organización (selector de cuenta) quedaba fuera en siete sitios: no aparecía en `GET /users`, y `POST /user-units` y `POST /units/{id}/users` respondían 404 al concederle una unidad, así que con la regla por membresía no podía ver nada ni había forma de arreglarlo desde Nexus. En GAC, los usuarios de una organización y los conteos por cuenta y por organización tampoco lo contaban. Ahora todos usan `access_control.es_miembro` (`organization_users`, `ACTIVE`; GAC lista también las pausadas). Los conteos de GAC pasan a ser personas con membresía activa, sin repetir a quien está en varias organizaciones de la misma cuenta
