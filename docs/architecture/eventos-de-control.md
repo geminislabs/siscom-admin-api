@@ -298,9 +298,11 @@ de lectura del topic y el `GRANT SELECT` sobre `control_plane`.
 
 ## 7. Operación
 
-Los comandos los ejecuta quien administra el clúster. El usuario
-`siscom-admin-api` es nuevo (ADR-008 §8): admin-api lo usa para este topic y,
-tras la limpieza, para todo lo que produce.
+Los comandos los ejecuta quien administra el clúster. `siscom-admin-api` es el
+único usuario con que admin-api produce, en este topic y en todos los demás
+(ADR-008 §8, desde el 20/10/2026). Las variables `KAFKA_CONTROL_PLANE_SASL_*`
+sobran desde entonces: sin ellas, el productor usa `KAFKA_SASL_*`, que ya es el
+mismo usuario.
 
 En admin-api, la emisión se enciende con la variable de GitHub
 `KAFKA_CONTROL_PLANE_TOPIC=control-plane-events`, más

@@ -141,8 +141,11 @@ class Settings(BaseSettings):
     KAFKA_MOBILITY_TOPIC: str = "mobility-locations-raw"
     KAFKA_TEAM_RULES_TOPIC: str = "team-rules-updates"
     KAFKA_RULES_UPDATES_GROUP_ID: str = "alert-rules-updates-group"
-    KAFKA_SASL_USERNAME: Optional[str] = "events-alert-consumer"
-    KAFKA_SASL_PASSWORD: Optional[str] = "eventsalertconsumerpassword"
+    # Sin valores por defecto: eran las credenciales de otro servicio
+    # (events-alert-consumer) escritas en el código. En producción el usuario es
+    # `siscom-admin-api` (ADR-008 §8) y llega por el deploy.
+    KAFKA_SASL_USERNAME: Optional[str] = None
+    KAFKA_SASL_PASSWORD: Optional[str] = None
     KAFKA_SASL_MECHANISM: str = "SCRAM-SHA-256"
     KAFKA_SECURITY_PROTOCOL: str = "SASL_PLAINTEXT"
 

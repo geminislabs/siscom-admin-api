@@ -523,8 +523,8 @@ La BD es la fuente de verdad. Si falla la publicacion en Kafka:
 KAFKA_BROKERS=localhost:9092
 KAFKA_RULES_UPDATES_TOPIC=alert-rules-updates
 KAFKA_RULES_UPDATES_GROUP_ID=alert-rules-updates-group
-KAFKA_SASL_USERNAME=events-alert-consumer
-KAFKA_SASL_PASSWORD=eventsalertconsumerpassword
+KAFKA_SASL_USERNAME=siscom-admin-api
+KAFKA_SASL_PASSWORD=<contraseña>
 KAFKA_SASL_MECHANISM=SCRAM-SHA-256
 KAFKA_SECURITY_PROTOCOL=SASL_PLAINTEXT
 ```

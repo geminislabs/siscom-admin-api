@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `KAFKA_SASL_USERNAME` y `KAFKA_SASL_PASSWORD` ya no tienen valor por defecto en `config.py`: eran las credenciales de otro servicio (`events-alert-consumer`) escritas en el código. En producción el usuario de admin-api pasa a ser `siscom-admin-api` para todo lo que produce (ADR-008 §8); `.env.example` y la documentación lo reflejan
+
 ## [1.62.1] - 2026-10-20
 
 **Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.62.0`.

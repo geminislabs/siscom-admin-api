@@ -392,9 +392,9 @@ filas (la reconciliación a demanda) y a emitir cada `DELETE` también como
    `KAFKA_CONTROL_PLANE_*` no llegaban al contenedor y nada se publicaba.
 6. ~~Limpieza del clúster: topics viejos, `geofences-update` (singular), sus
    grupos y ACL.~~ Borrados en producción el 19/10 y del script de Redpanda
-   (redpanda-container#2). **Queda pendiente** pasar el resto de permisos de
-   admin-api al usuario `siscom-admin-api`: hoy produce reglas, geocercas,
-   movilidad y teams con `alerts-rules-producer`.
+   (redpanda-container#2). El resto de lo que produce admin-api (reglas,
+   geocercas, movilidad, teams) pasa a `siscom-admin-api` el 20/10
+   (redpanda-container#3 y #4), y `alerts-rules-producer` se retira.
 7. **Outbox transaccional** en admin-api (ver «Alternativas»). Después, si se
    quiere, compaction y retiro de las vistas `control_plane.*`, en otro ADR.
 
