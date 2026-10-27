@@ -10,7 +10,7 @@ boolean.py==5.0
 boto3==1.43.111
 botocore==1.43.111
 CacheControl==0.14.4
-certifi==2026.7.22
+certifi==2026.10.23
 cffi==2.1.1
 charset-normalizer==3.5.2
 click==8.5.0
@@ -23,7 +23,7 @@ fastapi==0.143.0
 fastapi-cli==0.0.32
 fastapi-cloud-cli==0.26.0
 fastar==0.12.0
-filelock==4.1.0
+filelock==4.2.4
 fonttools==4.66.1
 fpdf2==2.8.9
 greenlet==3.5.6
@@ -48,7 +48,7 @@ packageurl-python==0.17.6
 packaging==26.3
 passlib==1.7.4
 pathspec==1.1.1
-Pillow==12.3.0
+Pillow==13.0.0
 pip-api==0.0.35
 pip-requirements-parser==32.0.1
 pip_audit==2.10.1
@@ -107,4 +107,4 @@ opentelemetry-instrumentation-sqlalchemy==0.66b1
 opentelemetry-instrumentation-httpx==0.66b1
 opentelemetry-instrumentation-requests==0.66b1
 opentelemetry-instrumentation-logging==0.66b1
-setuptools==84.0.0
+setuptools==84.2.1
