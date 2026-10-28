@@ -12,9 +12,11 @@ from app.api.deps import (
     get_current_user_full,
     get_current_user_id,
     get_data_token_issuer,
+    get_request_locale,
     get_scope_store,
 )
 from app.core.config import settings
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.device import Device, DeviceEvent
 from app.models.unit import Unit
@@ -67,7 +69,11 @@ logger = logging.getLogger(__name__)
 
 
 def check_unit_access(
-    db: Session, unit_id: UUID, user: User, required_role: str = None
+    db: Session,
+    unit_id: UUID,
+    user: User,
+    required_role: str = None,
+    locale: str = "es",
 ) -> Unit:
     """
     Verifica que el usuario tenga acceso a la unidad.
@@ -91,7 +97,8 @@ def check_unit_access(
 
     if not unit:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Unidad no encontrada"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("units.not_found", locale),
         )
 
     # Si es maestro, tiene acceso total
@@ -108,7 +115,7 @@ def check_unit_access(
     if not user_unit:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para acceder a esta unidad",
+            detail=t("units.access_denied", locale),
         )
 
     # Validar rol si se requiere
@@ -120,7 +127,7 @@ def check_unit_access(
         if user_role_level < required_level:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere rol '{required_role}' o superior",
+                detail=t("units.role_required", locale, required_role=required_role),
             )
 
     return unit
@@ -258,6 +265,7 @@ def create_unit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     user_id: UUID = Depends(get_current_user_id),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Crea una nueva unidad.
@@ -271,7 +279,7 @@ def create_unit(
     if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los usuarios maestros pueden crear unidades",
+            detail=t("units.only_master_can_create", locale),
         )
 
     # Validar dispositivo opcional antes de crear registros
@@ -289,13 +297,13 @@ def create_unit(
         if not device:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Dispositivo no encontrado o no pertenece a tu organización",
+                detail=t("units.device_not_found_or_not_in_org", locale),
             )
 
         if device.status not in ["entregado", "devuelto"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"El dispositivo debe estar en estado 'entregado' o 'devuelto' (estado actual: {device.status})",
+                detail=t("units.device_invalid_status", locale, status=device.status),
             )
 
         existing_assignment = (
@@ -310,7 +318,7 @@ def create_unit(
         if existing_assignment:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El dispositivo ya está asignado a otra unidad activa",
+                detail=t("units.device_already_assigned_other", locale),
             )
 
     # Crear la unidad
@@ -381,6 +389,7 @@ def get_unit(
     unit_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Obtiene el detalle de una unidad.
@@ -389,7 +398,7 @@ def get_unit(
     Requiere: Acceso a la unidad (maestro o en user_units).
     """
     # Verificar acceso
-    unit = check_unit_access(db, unit_id, current_user)
+    unit = check_unit_access(db, unit_id, current_user, locale=locale)
 
     # Contar dispositivos
     active_devices = (
@@ -432,6 +441,7 @@ def update_unit(
     unit_update: UnitUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Actualiza los datos de una unidad.
@@ -441,7 +451,9 @@ def update_unit(
     - Usuario con rol 'editor' o 'admin' en user_units
     """
     # Verificar acceso con rol editor o superior
-    unit = check_unit_access(db, unit_id, current_user, required_role="editor")
+    unit = check_unit_access(
+        db, unit_id, current_user, required_role="editor", locale=locale
+    )
 
     # Actualizar campos
     update_data = unit_update.model_dump(exclude_unset=True)
@@ -461,6 +473,7 @@ def delete_unit(
     unit_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Marca una unidad como eliminada (soft delete).
@@ -473,7 +486,7 @@ def delete_unit(
     if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los usuarios maestros pueden eliminar unidades",
+            detail=t("units.only_master_can_delete", locale),
         )
 
     # Verificar que la unidad existe y pertenece al cliente
@@ -489,7 +502,8 @@ def delete_unit(
 
     if not unit:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Unidad no encontrada"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("units.not_found", locale),
         )
 
     # Verificar si tiene dispositivos activos
@@ -502,7 +516,11 @@ def delete_unit(
     if active_devices > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No se puede eliminar la unidad porque tiene {active_devices} dispositivo(s) activo(s) asignado(s)",
+            detail=t(
+                "units.cannot_delete_with_active_devices",
+                locale,
+                count=active_devices,
+            ),
         )
 
     # Marcar como eliminada
@@ -511,7 +529,7 @@ def delete_unit(
     db.commit()
 
     return {
-        "message": "Unidad eliminada exitosamente",
+        "message": t("units.deleted_success", locale),
         "unit_id": str(unit_id),
         "deleted_at": unit.deleted_at.isoformat(),
     }
@@ -549,6 +567,7 @@ def get_unit_device(
     unit_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Devuelve el dispositivo actualmente asignado a una unidad.
@@ -558,7 +577,7 @@ def get_unit_device(
     Retorna None si no hay dispositivo asignado actualmente.
     """
     # Verificar acceso a la unidad
-    check_unit_access(db, unit_id, current_user)
+    check_unit_access(db, unit_id, current_user, locale=locale)
 
     # Buscar asignación activa
     active_assignment = (
@@ -589,6 +608,7 @@ def assign_device_to_unit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     user_id: UUID = Depends(get_current_user_id),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Asigna o reemplaza el dispositivo de una unidad.
@@ -607,7 +627,9 @@ def assign_device_to_unit(
     }
     """
     # Verificar acceso con rol editor o superior
-    unit = check_unit_access(db, unit_id, current_user, required_role="editor")
+    unit = check_unit_access(
+        db, unit_id, current_user, required_role="editor", locale=locale
+    )
 
     # Verificar que el dispositivo existe y pertenece a la organización
     device = (
@@ -622,14 +644,14 @@ def assign_device_to_unit(
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dispositivo no encontrado o no pertenece a tu organización",
+            detail=t("units.device_not_found_or_not_in_org", locale),
         )
 
     # Validar estado del dispositivo
     if device.status not in ["entregado", "devuelto"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El dispositivo debe estar en estado 'entregado' o 'devuelto' (estado actual: {device.status})",
+            detail=t("units.device_invalid_status", locale, status=device.status),
         )
 
     # Si la unidad ya tiene un dispositivo activo, desasignarlo primero
@@ -678,7 +700,7 @@ def assign_device_to_unit(
     if existing_assignment:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El dispositivo ya está asignado a otra unidad activa",
+            detail=t("units.device_already_assigned_other", locale),
         )
 
     now = utcnow()
@@ -697,7 +719,7 @@ def assign_device_to_unit(
         if new_assignment.unassigned_at is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El dispositivo ya está asignado a esta unidad",
+                detail=t("units.device_already_assigned_this", locale),
             )
 
         new_assignment.assigned_at = now
@@ -734,7 +756,7 @@ def assign_device_to_unit(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Conflicto al asignar dispositivo. Intenta nuevamente.",
+            detail=t("units.assign_device_conflict", locale),
         )
 
     db.refresh(new_assignment)
@@ -752,6 +774,7 @@ def get_unit_profile(
     unit_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Obtiene el perfil completo de una unidad (unit_profile + vehicle_profile).
@@ -763,7 +786,7 @@ def get_unit_profile(
     Si unit_type ≠ "vehicle", el campo "vehicle" viene como null.
     """
     # Verificar acceso a la unidad
-    check_unit_access(db, unit_id, current_user)
+    check_unit_access(db, unit_id, current_user, locale=locale)
 
     # Buscar o crear unit_profile (por seguridad, aunque debe existir siempre)
     unit_profile = db.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
@@ -807,6 +830,7 @@ def update_unit_profile(
     profile_update: UnitProfileUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Actualiza el perfil de una unidad (unit_profile + vehicle_profile de forma unificada).
@@ -837,7 +861,7 @@ def update_unit_profile(
     }
     """
     # Verificar acceso con rol editor o superior
-    check_unit_access(db, unit_id, current_user, required_role="editor")
+    check_unit_access(db, unit_id, current_user, required_role="editor", locale=locale)
 
     # Buscar o crear unit_profile
     unit_profile = db.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
@@ -948,6 +972,7 @@ def create_vehicle_profile(
     vehicle_data: VehicleProfileCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Crea un perfil de vehículo (vehicle_profile) para una unidad.
@@ -965,7 +990,7 @@ def create_vehicle_profile(
     - No debe existir ya un vehicle_profile para esta unidad
     """
     # Verificar acceso con rol editor o superior
-    check_unit_access(db, unit_id, current_user, required_role="editor")
+    check_unit_access(db, unit_id, current_user, required_role="editor", locale=locale)
 
     # Verificar que existe unit_profile
     unit_profile = db.query(UnitProfile).filter(UnitProfile.unit_id == unit_id).first()
@@ -973,14 +998,18 @@ def create_vehicle_profile(
     if not unit_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="El perfil de unidad no existe. Usa GET /units/{unit_id}/profile primero para crearlo.",
+            detail=t("units.unit_profile_not_found", locale, unit_id=unit_id),
         )
 
     # Validar que sea un vehículo
     if unit_profile.unit_type != "vehicle":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El perfil de vehículo solo se puede crear para unidades de tipo 'vehicle' (tipo actual: {unit_profile.unit_type})",
+            detail=t(
+                "units.vehicle_profile_only_for_vehicles",
+                locale,
+                unit_type=unit_profile.unit_type,
+            ),
         )
 
     # Verificar que no exista ya un vehicle_profile
@@ -991,7 +1020,7 @@ def create_vehicle_profile(
     if existing_vehicle:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un perfil de vehículo para esta unidad. Usa PATCH para actualizarlo.",
+            detail=t("units.vehicle_profile_already_exists", locale),
         )
 
     # Crear vehicle_profile
@@ -1016,6 +1045,7 @@ def update_vehicle_profile(
     vehicle_update: VehicleProfileUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Actualiza el perfil de vehículo (vehicle_profile) de una unidad.
@@ -1032,7 +1062,7 @@ def update_vehicle_profile(
     - El vehicle_profile debe existir (retorna 404 si no existe)
     """
     # Verificar acceso con rol editor o superior
-    check_unit_access(db, unit_id, current_user, required_role="editor")
+    check_unit_access(db, unit_id, current_user, required_role="editor", locale=locale)
 
     # Buscar vehicle_profile
     vehicle_profile = (
@@ -1042,7 +1072,7 @@ def update_vehicle_profile(
     if not vehicle_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="El perfil de vehículo no existe. Usa POST /units/{unit_id}/profile/vehicle para crearlo.",
+            detail=t("units.vehicle_profile_not_found", locale, unit_id=unit_id),
         )
 
     # Actualizar campos
@@ -1064,6 +1094,7 @@ def list_unit_users(
     unit_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Lista los usuarios con acceso a una unidad específica.
@@ -1073,7 +1104,7 @@ def list_unit_users(
     Retorna información detallada de cada usuario con acceso.
     """
     # Verificar acceso a la unidad
-    unit = check_unit_access(db, unit_id, current_user)
+    unit = check_unit_access(db, unit_id, current_user, locale=locale)
 
     # Obtener asignaciones
     assignments = (
@@ -1116,6 +1147,7 @@ def assign_user_to_unit(
     assignment: UserUnitAssign,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Asigna un usuario a una unidad con un rol específico.
@@ -1134,7 +1166,7 @@ def assign_user_to_unit(
     if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los usuarios maestros pueden asignar usuarios a unidades",
+            detail=t("units.only_master_can_assign_users", locale),
         )
 
     # Verificar que la unidad existe y pertenece al cliente
@@ -1150,7 +1182,8 @@ def assign_user_to_unit(
 
     if not unit:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Unidad no encontrada"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("units.not_found", locale),
         )
 
     # Verificar que el usuario existe y pertenece a la organización
@@ -1166,14 +1199,14 @@ def assign_user_to_unit(
     if not target_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado o no pertenece a tu organización",
+            detail=t("units.user_not_found_or_not_in_org", locale),
         )
 
     # No permitir asignar a usuarios maestros
     if target_user.is_owner_of(current_user.organization_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No es necesario asignar usuarios maestros (ya tienen acceso a todas las unidades)",
+            detail=t("units.cannot_assign_master_user", locale),
         )
 
     # Verificar que no existe una asignación previa
@@ -1186,7 +1219,7 @@ def assign_user_to_unit(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El usuario ya tiene acceso a esta unidad con rol '{existing.role}'",
+            detail=t("units.user_already_has_access", locale, role=existing.role),
         )
 
     # Crear la asignación
@@ -1201,7 +1234,7 @@ def assign_user_to_unit(
     db.refresh(user_unit)
 
     return {
-        "message": "Usuario asignado exitosamente",
+        "message": t("units.user_assigned_success", locale),
         "assignment_id": str(user_unit.id),
         "user_email": target_user.email,
         "unit_name": unit.name,
@@ -1216,6 +1249,7 @@ def remove_user_from_unit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     store=Depends(get_scope_store),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Revoca el acceso de un usuario a una unidad.
@@ -1228,7 +1262,7 @@ def remove_user_from_unit(
     if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los usuarios maestros pueden revocar accesos a unidades",
+            detail=t("units.only_master_can_revoke_users", locale),
         )
 
     # Verificar que la unidad pertenece al cliente
@@ -1242,7 +1276,8 @@ def remove_user_from_unit(
 
     if not unit:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Unidad no encontrada"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("units.not_found", locale),
         )
 
     # Buscar la asignación
@@ -1255,7 +1290,7 @@ def remove_user_from_unit(
     if not assignment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="El usuario no tiene acceso a esta unidad",
+            detail=t("units.user_does_not_have_access", locale),
         )
 
     # Obtener información para el mensaje
@@ -1269,7 +1304,7 @@ def remove_user_from_unit(
     revoke_sessions_for_user(store, user_id)
 
     return {
-        "message": "Acceso revocado exitosamente",
+        "message": t("units.user_access_revoked_success", locale),
         "user_email": user.email if user else None,
         "unit_name": unit.name,
     }
@@ -1293,6 +1328,7 @@ def get_unit_trips(
         False, description="Incluir puntos GPS en la respuesta"
     ),
     include_events: bool = Query(False, description="Incluir eventos en la respuesta"),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Obtiene los trips de una unidad específica en un rango de fechas.
@@ -1325,7 +1361,7 @@ def get_unit_trips(
     from app.schemas.trip import TripListResponse
 
     # Verificar acceso a la unidad
-    check_unit_access(db, unit_id, current_user)
+    check_unit_access(db, unit_id, current_user, locale=locale)
 
     # Obtener todos los dispositivos que han estado asignados a esta unidad
     unit_device_ids = (
@@ -1408,6 +1444,7 @@ def share_unit_location(
     current_user: User = Depends(get_current_user_full),
     issuer=Depends(get_data_token_issuer),
     store=Depends(get_scope_store),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Genera un token PASETO para compartir la ubicación de una unidad.
@@ -1431,7 +1468,7 @@ def share_unit_location(
     - `share_url`: URL para compartir (si FRONTEND_URL está configurado)
     """
     # Verificar acceso a la unidad
-    unit = check_unit_access(db, unit_id, current_user)
+    unit = check_unit_access(db, unit_id, current_user, locale=locale)
 
     # Obtener el dispositivo activo asignado a la unidad, con su ref opaco
     active_assignment = (
@@ -1444,7 +1481,7 @@ def share_unit_location(
     if not active_assignment:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La unidad no tiene un dispositivo asignado actualmente",
+            detail=t("units.no_active_device_for_share", locale),
         )
 
     if settings.SHARE_LOCATION_USE_DATA_TOKEN:
@@ -1467,7 +1504,7 @@ def share_unit_location(
             logger.error("Compartir ubicación no disponible: %s", exc)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Compartir ubicación no está disponible temporalmente",
+                detail=t("units.share_location_unavailable", locale),
             ) from exc
         token, expires_at = issued.token, issued.expires_at
     else:
@@ -1485,7 +1522,7 @@ def share_unit_location(
         except ShareLocationKeyNotConfigured as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Compartir ubicación no está disponible temporalmente",
+                detail=t("units.share_location_unavailable", locale),
             ) from exc
 
     # Construir URL de compartir si está configurado FRONTEND_URL
@@ -1510,6 +1547,7 @@ def stop_sharing_unit_location(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     store=Depends(get_scope_store),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Apaga los enlaces de ubicación compartidos de una unidad.
@@ -1520,7 +1558,7 @@ def stop_sharing_unit_location(
 
     Requiere: Acceso a la unidad (maestro o en user_units).
     """
-    check_unit_access(db, unit_id, current_user)
+    check_unit_access(db, unit_id, current_user, locale=locale)
 
     try:
         revoked = revoke_shares_for_unit(store, unit_id)
@@ -1528,7 +1566,7 @@ def stop_sharing_unit_location(
         logger.error("No se pudo dejar de compartir: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="El servicio de datos no está disponible temporalmente",
+            detail=t("auth.data_service_unavailable", locale),
         ) from exc
 
     return {"revoked": revoked}

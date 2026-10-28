@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full, get_geofences_kafka_producer
+from app.api.deps import (
+    get_current_user_full,
+    get_geofences_kafka_producer,
+    get_request_locale,
+)
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.geofence import Geofence, GeofenceCell
 from app.models.user import User
@@ -130,7 +135,7 @@ def _publish_geofence_event(
 
 
 def _get_active_geofence_or_404(
-    db: Session, geofence_id: UUID, organization_id: UUID
+    db: Session, geofence_id: UUID, organization_id: UUID, locale: str = "es"
 ) -> Geofence:
     geofence = (
         db.query(Geofence)
@@ -145,7 +150,7 @@ def _get_active_geofence_or_404(
     if not geofence:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Geocerca no encontrada",
+            detail=t("geofences.not_found", locale),
         )
 
     return geofence
@@ -159,6 +164,7 @@ def create_geofence(
     geofences_kafka_producer: GeofencesKafkaProducer = Depends(
         get_geofences_kafka_producer
     ),
+    locale: str = Depends(get_request_locale),
 ):
     geofence = Geofence(
         organization_id=current_user.organization_id,
@@ -182,7 +188,7 @@ def create_geofence(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="No se pudo crear la geocerca por conflicto de integridad",
+            detail=t("geofences.create_conflict", locale),
         )
 
     kafka_payload = _build_upsert_event_payload(db, geofence)
@@ -220,9 +226,10 @@ def get_geofence(
     geofence_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     geofence = _get_active_geofence_or_404(
-        db, geofence_id, current_user.organization_id
+        db, geofence_id, current_user.organization_id, locale
     )
     return _build_geofence_out(db, geofence)
 
@@ -236,9 +243,10 @@ def update_geofence(
     geofences_kafka_producer: GeofencesKafkaProducer = Depends(
         get_geofences_kafka_producer
     ),
+    locale: str = Depends(get_request_locale),
 ):
     geofence = _get_active_geofence_or_404(
-        db, geofence_id, current_user.organization_id
+        db, geofence_id, current_user.organization_id, locale
     )
 
     update_data = payload.model_dump(exclude_unset=True)
@@ -263,7 +271,7 @@ def update_geofence(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="No se pudo actualizar la geocerca por conflicto de integridad",
+            detail=t("geofences.update_conflict", locale),
         )
 
     kafka_payload = _build_upsert_event_payload(db, geofence)
@@ -286,9 +294,10 @@ def delete_geofence(
     geofences_kafka_producer: GeofencesKafkaProducer = Depends(
         get_geofences_kafka_producer
     ),
+    locale: str = Depends(get_request_locale),
 ):
     geofence = _get_active_geofence_or_404(
-        db, geofence_id, current_user.organization_id
+        db, geofence_id, current_user.organization_id, locale
     )
 
     geofence.is_active = False
@@ -310,7 +319,7 @@ def delete_geofence(
     )
 
     return GeofenceDeleteOut(
-        message="Geocerca desactivada exitosamente",
+        message=t("geofences.deactivated_success", locale),
         geofence_id=geofence.id,
         is_active=False,
     )

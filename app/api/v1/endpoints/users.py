@@ -10,7 +10,9 @@ from app.api.deps import (
     get_current_organization_id,
     get_current_user_full,
     get_identity_provider,
+    get_request_locale,
 )
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.account import Account
 from app.models.organization_user import (
@@ -72,6 +74,7 @@ def invite_user(
     data: UserInvite,
     current_user: User = Depends(get_current_user_full),
     db: Session = Depends(get_db),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Permite a un usuario maestro invitar a un nuevo usuario.
@@ -88,7 +91,7 @@ def invite_user(
     if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los usuarios maestros pueden enviar invitaciones.",
+            detail=t("users.invite_only_master", locale),
         )
 
     # 2️⃣ Verificar que el email no esté ya registrado **y activo**
@@ -115,7 +118,7 @@ def invite_user(
     if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ya existe un usuario registrado con el email {data.email}.",
+            detail=t("users.email_already_registered", locale, email=data.email),
         )
 
     # 3️⃣ Verificar que no haya una invitación pendiente para este email
@@ -133,7 +136,7 @@ def invite_user(
     if existing_invitation:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ya existe una invitación pendiente para {data.email}.",
+            detail=t("users.invitation_already_pending", locale, email=data.email),
         )
 
     # 4️⃣ Generar token de invitación
@@ -157,13 +160,19 @@ def invite_user(
 
     # 5️⃣ Enviar correo con la URL de invitación
     email_sent = send_invitation_email(
-        data.email, invitation_token, data.full_name, db, marca_id
+        data.email,
+        invitation_token,
+        data.full_name,
+        db,
+        marca_id,
+        locale=locale,
     )
     if not email_sent:
         logger.warning("user.invite.email_failed")
 
     return UserInviteResponse(
-        detail=f"Invitación enviada a {data.email}", expires_at=expires_at
+        detail=t("users.invitation_sent", locale, email=data.email),
+        expires_at=expires_at,
     )
 
 
@@ -176,6 +185,7 @@ def accept_invitation(
     data: UserAcceptInvitation,
     db: Session = Depends(get_db),
     idp: IdentityProvider = Depends(get_identity_provider),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Permite a un usuario invitado aceptar la invitación y crear su cuenta.
@@ -202,21 +212,21 @@ def accept_invitation(
     if not token_record:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token de invitación inválido.",
+            detail=t("users.invalid_invitation_token", locale),
         )
 
     # 2️⃣ Validar que el token no haya sido usado
     if token_record.used:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este token ya ha sido utilizado.",
+            detail=t("users.invitation_token_used", locale),
         )
 
     # 3️⃣ Validar que el token no esté expirado
     if token_record.expires_at < utcnow():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token de invitación expirado.",
+            detail=t("users.invitation_token_expired", locale),
         )
 
     # 4️⃣ Extraer email, full_name y organization_id del token
@@ -227,7 +237,7 @@ def accept_invitation(
     if not email or not organization_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Datos de invitación incompletos.",
+            detail=t("users.incomplete_invitation_data", locale),
         )
 
     # 5️⃣ ¿Hay ya una fila con ese correo?
@@ -248,7 +258,7 @@ def accept_invitation(
     if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ya existe un usuario con el email {email}.",
+            detail=t("users.user_with_email_exists", locale, email=email),
         )
 
     reactivando = existing_user is not None
@@ -277,7 +287,7 @@ def accept_invitation(
     except ErrorDeIdentidad as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al verificar usuario en Cognito: {e.mensaje}",
+            detail=t("auth.cognito_verify_user_error", locale, message=e.mensaje),
         )
 
     user_exists = cognito_sub is not None
@@ -312,13 +322,18 @@ def accept_invitation(
         if not cognito_sub:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="No se pudo obtener el identificador de Cognito.",
+                detail=t("users.cognito_id_missing", locale),
             )
 
     except ErrorDeIdentidad as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al configurar usuario en Cognito [{e.codigo}]: {e.mensaje}",
+            detail=t(
+                "auth.cognito_configure_user_error",
+                locale,
+                code=e.codigo,
+                message=e.mensaje,
+            ),
         )
 
     # 9️⃣ Reactivar la fila existente, o crear una nueva
@@ -387,7 +402,7 @@ def accept_invitation(
     db.refresh(new_user)
 
     return UserAcceptInvitationResponse(
-        detail="Usuario creado exitosamente.", user=new_user
+        detail=t("users.user_created_success", locale), user=new_user
     )
 
 
@@ -400,6 +415,7 @@ def resend_invitation(
     data: ResendInvitationRequest,
     current_user: User = Depends(get_current_user_full),
     db: Session = Depends(get_db),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Reenvía una invitación a un usuario que no ha aceptado su invitación original.
@@ -424,7 +440,7 @@ def resend_invitation(
     if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo los usuarios maestros pueden reenviar invitaciones.",
+            detail=t("users.resend_invite_only_master", locale),
         )
 
     # 2️⃣ Verificar que el email NO esté ya registrado **y activo**
@@ -442,7 +458,7 @@ def resend_invitation(
     if existing_user and existing_user.status == UserStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El usuario {data.email} ya está registrado en el sistema.",
+            detail=t("users.user_already_in_system", locale, email=data.email),
         )
 
     # 3️⃣ Buscar invitaciones existentes para este email (incluyendo expiradas)
@@ -461,7 +477,7 @@ def resend_invitation(
     if not existing_invitations:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No existe una invitación pendiente para {data.email} en este cliente.",
+            detail=t("users.no_pending_invitation", locale, email=data.email),
         )
 
     # 4️⃣ Obtener datos de la invitación original (full_name)
@@ -492,12 +508,20 @@ def resend_invitation(
     db.refresh(new_invitation)
 
     # 7️⃣ Enviar email con la nueva URL de invitación
-    email_sent = send_invitation_email(data.email, new_token, full_name, db, marca_id)
+    email_sent = send_invitation_email(
+        data.email,
+        new_token,
+        full_name,
+        db,
+        marca_id,
+        locale=locale,
+    )
     if email_sent:
         logger.info("user.resend_invitation.email_sent")
     else:
         logger.warning("user.resend_invitation.email_failed")
 
     return ResendInvitationResponse(
-        message=f"Invitación reenviada a {data.email}", expires_at=expires_at
+        message=t("users.invitation_resent", locale, email=data.email),
+        expires_at=expires_at,
     )

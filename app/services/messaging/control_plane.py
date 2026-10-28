@@ -82,6 +82,7 @@ ENTIDADES: dict[str, Entidad] = {
             "platform",
             "endpoint_arn",
             "is_active",
+            "locale",
             "updated_at",
         ),
         ("id",),
@@ -97,6 +98,7 @@ _USER_DEVICE_RELEVANTES = (
     "platform",
     "endpoint_arn",
     "is_active",
+    "locale",
 )
 
 

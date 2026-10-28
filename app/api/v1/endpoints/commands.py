@@ -6,7 +6,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import AuthResult, get_auth_cognito_or_paseto
+from app.api.deps import (
+    AuthResult,
+    get_auth_cognito_or_paseto,
+    get_request_locale,
+)
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.command import Command
 from app.models.device import Device
@@ -36,6 +41,7 @@ async def create_command(
     command_in: CommandCreate,
     db: Session = Depends(get_db),
     auth: AuthResult = Depends(get_auth_for_commands),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Crea un nuevo comando para enviar a un dispositivo.
@@ -64,7 +70,7 @@ async def create_command(
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dispositivo no encontrado",
+            detail=t("commands.device_not_found", locale),
         )
 
     # Obtener email según el tipo de autenticación
@@ -80,7 +86,7 @@ async def create_command(
         if not request_user_email:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Token Cognito inválido: falta el campo 'email'",
+                detail=t("commands.cognito_token_missing_email", locale),
             )
     else:  # paseto
         request_user_email = auth.payload.get("email")
@@ -189,6 +195,7 @@ def get_commands_by_device(
     ),
     limit: int = Query(50, ge=1, le=500, description="Límite de resultados"),
     offset: int = Query(0, ge=0, description="Offset para paginación"),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Obtiene todos los comandos enviados a un dispositivo específico.
@@ -212,7 +219,7 @@ def get_commands_by_device(
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dispositivo no encontrado",
+            detail=t("commands.device_not_found", locale),
         )
 
     # Construir query base
@@ -223,7 +230,7 @@ def get_commands_by_device(
         if status_filter not in ["pending", "sent", "delivered", "failed"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Estado inválido. Valores válidos: pending, sent, delivered, failed",
+                detail=t("user_commands.invalid_status_filter", locale),
             )
         query = query.filter(Command.status == status_filter)
 
@@ -261,6 +268,7 @@ def get_command(
     command_id: UUID,
     db: Session = Depends(get_db),
     auth: AuthResult = Depends(get_auth_for_commands),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Obtiene el detalle de un comando específico por su ID.
@@ -280,7 +288,7 @@ def get_command(
     if not command:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Comando no encontrado",
+            detail=t("commands.command_not_found", locale),
         )
 
     return CommandOut(
@@ -303,6 +311,7 @@ async def sync_command(
     command_id: UUID,
     db: Session = Depends(get_db),
     auth: AuthResult = Depends(get_auth_for_commands),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Sincroniza el estado de un comando con KORE.
@@ -328,15 +337,14 @@ async def sync_command(
     if not command:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Comando no encontrado",
+            detail=t("commands.command_not_found", locale),
         )
 
     # 3. Verificar que el media sea "KORE_SMS_API"
     if command.media != "KORE_SMS_API":
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Sincronización no implementada para media '{command.media}'. "
-            f"Solo se soporta 'KORE_SMS_API'",
+            detail=t("commands.sync_not_implemented", locale, media=command.media),
         )
 
     # 2.1 Obtener el metadata
@@ -344,7 +352,7 @@ async def sync_command(
     if not metadata:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El comando no tiene metadata",
+            detail=t("commands.missing_metadata", locale),
         )
 
     # 2.2 y 2.3 Extraer sid y url de kore_response
@@ -352,7 +360,7 @@ async def sync_command(
     if not kore_response:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El comando no tiene kore_response en metadata",
+            detail=t("commands.missing_kore_response", locale),
         )
 
     sid = kore_response.get("sid")
@@ -361,7 +369,7 @@ async def sync_command(
     if not sid or not url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El kore_response no contiene 'sid' o 'url'",
+            detail=t("commands.missing_sid_or_url", locale),
         )
 
     logger.info(

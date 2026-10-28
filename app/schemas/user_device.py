@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 class DeviceRegisterIn(BaseModel):
     device_token: str = Field(..., min_length=1)
     platform: Literal["ios", "android"]
+    locale: Literal["es", "en"] = "es"
 
 
 class DeviceRegisterOut(BaseModel):
@@ -16,6 +17,7 @@ class DeviceRegisterOut(BaseModel):
     platform: str
     endpoint_arn: Optional[str] = None
     is_active: bool
+    locale: str = "es"
     last_seen_at: Optional[datetime] = None
 
 

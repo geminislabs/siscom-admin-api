@@ -290,6 +290,15 @@ def test_volver_a_registrar_sin_cambios_no_emite(db_session, test_user_data, eve
     db_session.commit()
     ((_, evento),) = eventos.de("user_device")
     assert evento["data"]["device_token"] == "token-2"
+    assert evento["data"]["locale"] == "es"
+
+    # Y cambiar `locale` también emite: `alert-distributor` lo usa para el idioma del push.
+    eventos.clear()
+    dispositivo.locale = "en"
+    dispositivo.updated_at = datetime.now(timezone.utc)
+    db_session.commit()
+    ((_, evento_locale),) = eventos.de("user_device")
+    assert evento_locale["data"]["locale"] == "en"
 
 
 # ---------------------------------------------------------------------------
