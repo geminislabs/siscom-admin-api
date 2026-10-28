@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-**Migración `045_user_devices_locale`.** Añade `locale TEXT NOT NULL DEFAULT 'es'` a
-`public.user_devices` y recrea `control_plane.user_devices` con esa columna. Es aditiva: la
-imagen anterior funciona sobre el esquema nuevo. `ALTER TABLE` exige que `siscom_migrator` sea
-dueño de `user_devices`; comprobarlo antes del despliegue.
+## [1.65.0] - 2026-10-28
+
+**Migración `045_user_devices_locale`.** Cabeza: `044_vistas_del_plano_de_control` →
+`045_user_devices_locale`. Añade `locale TEXT NOT NULL DEFAULT 'es'` a `public.user_devices` y
+recrea `control_plane.user_devices` con esa columna. `user_devices` es de `pgadmin` en
+producción (comprobado el 28/10), así que `siscom_migrator` puede alterarla.
+
+**Rollback.** Basta revertir la imagen (`v1.64.1`): la migración es aditiva y la imagen anterior
+ignora la columna. Solo si hace falta revertir el esquema, antes de desplegar el tag viejo:
+`alembic downgrade 044_vistas_del_plano_de_control`, que borra `user_devices.locale`.
 
 ### Added
 
