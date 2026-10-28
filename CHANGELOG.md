@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.64.1] - 2026-10-27
+
+**Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.64.0`.
+
+**Rollback.** Basta revertir la imagen (`v1.64.0`): no hay cambio de esquema. El usuario de
+sistema de GAC, si ya se creó, se queda en `users` y no estorba a la versión anterior.
+
+### Fixed
+
+- `scripts/seed_gac_system_user.py` vuelve a funcionar: escribía `organization_id`, que desde la migración `036` es una propiedad sin setter, y el INSERT reventaba con `NotNullViolation`. Ahora exige `--organization-id` (la organización interna de Geminis, en vez de la más antigua), crea al usuario `INACTIVE` y busca el existente en la marca por defecto (#180)
+
+### Security
+
+- Pillow 13.0.0, filelock 4.2.4, certifi 2026.10.23 y setuptools 84.2.1: 47 avisos de `pip-audit` que tenían en rojo el job `security` desde el 26/10. Pillow solo la usa `fpdf2` para los recibos (#181)
+
 ## [1.64.0] - 2026-10-20
 
 **Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.63.0`.
