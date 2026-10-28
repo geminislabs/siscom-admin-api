@@ -29,6 +29,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.i18n import t
 from app.core.security import verify_cognito_token
 from app.db.session import get_db
 from app.services.messaging.kafka_producer import (
@@ -271,6 +272,27 @@ def get_current_user(
     return payload
 
 
+def get_request_locale(
+    accept_language: Optional[str] = Header(default="es", alias="Accept-Language"),
+) -> Literal["es", "en"]:
+    """
+    Extrae el idioma preferido de la cabecera `Accept-Language`.
+    Soporta tanto tags cortos (`"en"`, `"es"`) como cabeceras RFC 9110
+    completas (`"en-US,en;q=0.9"`), manteniendo `"es"` por defecto.
+    """
+    if not accept_language or not isinstance(accept_language, str):
+        return "es"
+    primary = (
+        accept_language.split(",")[0]
+        .strip()
+        .split(";")[0]
+        .split("-")[0]
+        .split("_")[0]
+        .lower()
+    )
+    return "en" if primary == "en" else "es"
+
+
 def organizacion_solicitada(
     x_organization_id: Optional[UUID] = Header(default=None, alias="X-Organization-Id"),
 ) -> Optional[UUID]:
@@ -285,7 +307,11 @@ def organizacion_solicitada(
     return x_organization_id
 
 
-def _load_user_by_sub(db: Session, cognito_sub: Optional[str]):
+def _load_user_by_sub(
+    db: Session,
+    cognito_sub: Optional[str],
+    locale: str = "es",
+):
     """La identidad sola: el usuario del token, sin decir nada de en qué
     organización actúa. `_load_current_user` la usa y luego valida la
     membresía; `get_current_user_identity` se queda aquí."""
@@ -294,14 +320,14 @@ def _load_user_by_sub(db: Session, cognito_sub: Optional[str]):
     if not cognito_sub:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido: falta 'sub'",
+            detail=t("deps.token_missing_sub", locale),
         )
 
     user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado en el sistema",
+            detail=t("deps.user_not_found_in_system", locale),
         )
     return user
 
@@ -310,6 +336,7 @@ def _load_current_user(
     db: Session,
     cognito_sub: Optional[str],
     organization_id: Optional[UUID] = None,
+    locale: str = "es",
 ):
     """
     Busca al usuario por `cognito_sub` y valida que la organización en la que
@@ -343,7 +370,7 @@ def _load_current_user(
     """
     from app.models.organization_user import MembershipStatus, OrganizationUser
 
-    user = _load_user_by_sub(db, cognito_sub)
+    user = _load_user_by_sub(db, cognito_sub, locale=locale)
 
     organizacion_objetivo = (
         organization_id if organization_id is not None else user.default_organization_id
@@ -362,7 +389,7 @@ def _load_current_user(
     if not has_active_membership:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Sin membresía activa en la organización solicitada",
+            detail=t("deps.no_active_membership", locale),
         )
 
     if organization_id is not None:
@@ -372,7 +399,10 @@ def _load_current_user(
 
 
 def resolve_current_organization(
-    db: Session, cognito_payload: dict, organization_id: Optional[UUID] = None
+    db: Session,
+    cognito_payload: dict,
+    organization_id: Optional[UUID] = None,
+    locale: str = "es",
 ) -> UUID:
     """
     Busca el usuario por cognito_sub y retorna la organización en la que
@@ -381,7 +411,7 @@ def resolve_current_organization(
     `_load_current_user`.
     """
     return _load_current_user(
-        db, cognito_payload.get("sub"), organization_id
+        db, cognito_payload.get("sub"), organization_id, locale=locale
     ).organization_id
 
 
@@ -395,11 +425,16 @@ def get_current_organization_id(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     organization_id: Optional[UUID] = Depends(organizacion_solicitada),
+    locale: str = Depends(get_request_locale),
 ) -> UUID:
     """
     Dependency que combina autenticación y resolución de organization_id.
     Retorna la organización en la que actúa esta sesión.
     """
+    if isinstance(locale, str) and locale == "en":
+        return resolve_current_organization(
+            db, current_user, organization_id, locale=locale
+        )
     return resolve_current_organization(db, current_user, organization_id)
 
 
@@ -416,17 +451,21 @@ def get_current_user_full(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     organization_id: Optional[UUID] = Depends(organizacion_solicitada),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Retorna el objeto User completo del usuario autenticado, con la
     organización en la que actúa ya validada. Ver `_load_current_user`.
     """
-    return _load_current_user(db, current_user.get("sub"), organization_id)
+    return _load_current_user(
+        db, current_user.get("sub"), organization_id, locale=locale
+    )
 
 
 def get_current_user_identity(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    locale: str = Depends(get_request_locale),
 ):
     """
     El usuario autenticado **sin** validar membresía ni leer
@@ -439,24 +478,28 @@ def get_current_user_identity(
     nada más, así que no abre nada que `_load_current_user` cierre. No usarlo
     en endpoints que lean o escriban datos de una organización.
     """
-    return _load_user_by_sub(db, current_user.get("sub"))
+    return _load_user_by_sub(db, current_user.get("sub"), locale=locale)
 
 
 def get_current_user_id(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     organization_id: Optional[UUID] = Depends(organizacion_solicitada),
+    locale: str = Depends(get_request_locale),
 ) -> UUID:
     """
     Retorna el UUID del usuario autenticado. Ver `_load_current_user`.
     """
-    return _load_current_user(db, current_user.get("sub"), organization_id).id
+    return _load_current_user(
+        db, current_user.get("sub"), organization_id, locale=locale
+    ).id
 
 
 def get_current_user_with_role(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     organization_id: Optional[UUID] = Depends(organizacion_solicitada),
+    locale: str = Depends(get_request_locale),
 ) -> tuple:
     """
     Retorna el usuario y su rol organizacional.
@@ -469,7 +512,9 @@ def get_current_user_with_role(
     Returns:
         Tuple de (User, OrganizationRole o None)
     """
-    user = _load_current_user(db, current_user.get("sub"), organization_id)
+    user = _load_current_user(
+        db, current_user.get("sub"), organization_id, locale=locale
+    )
 
     # Obtener rol usando OrganizationService (única fuente de verdad)
     role = OrganizationService.get_user_role(db, user.id, user.organization_id)
@@ -509,6 +554,7 @@ def get_auth_solo_servicio(
 
     def _verificar(
         credentials: HTTPAuthorizationCredentials = Depends(security),
+        locale: str = Depends(get_request_locale),
     ) -> AuthResult:
         payload = decode_service_token(
             credentials.credentials,
@@ -524,7 +570,7 @@ def get_auth_solo_servicio(
             )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Esta ruta es de servicio a servicio: requiere un token PASETO válido.",
+            detail=t("deps.service_to_service_only", locale),
         )
 
     return _verificar
@@ -548,6 +594,7 @@ def get_auth_cognito_or_paseto(
     def _verify_auth(
         credentials: HTTPAuthorizationCredentials = Depends(security),
         db: Session = Depends(get_db),
+        locale: str = Depends(get_request_locale),
     ) -> AuthResult:
         """
         Verifica el token de autenticación.
@@ -569,14 +616,14 @@ def get_auth_cognito_or_paseto(
             if not cognito_sub:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token de Cognito inválido: falta 'sub'",
+                    detail=t("deps.cognito_token_missing_sub", locale),
                 )
 
             user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Usuario no encontrado en el sistema",
+                    detail=t("deps.user_not_found_in_system", locale),
                 )
 
             # Obtener rol usando OrganizationService (única fuente de verdad)
@@ -627,7 +674,7 @@ def get_auth_cognito_or_paseto(
         # Si ambos fallaron, retornar error
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido. Se requiere un token de Cognito válido o un token PASETO de servicio válido.",
+            detail=t("deps.invalid_token_cognito_or_paseto", locale),
         )
 
     return _verify_auth
@@ -661,6 +708,7 @@ def require_organization_permission(permission: str):
     def _require_organization_permission(
         credentials: HTTPAuthorizationCredentials = Depends(security),
         db: Session = Depends(get_db),
+        locale: str = Depends(get_request_locale),
     ) -> AuthResult:
         from app.models.permission import PermissionScope
         from app.models.user import User
@@ -672,14 +720,14 @@ def require_organization_permission(permission: str):
         if not cognito_sub:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token inválido: falta 'sub'",
+                detail=t("deps.token_missing_sub", locale),
             )
 
         user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado",
+                detail=t("deps.user_not_found", locale),
             )
 
         # Única fuente de verdad del rol; sin membresía activa devuelve None.
@@ -691,7 +739,7 @@ def require_organization_permission(permission: str):
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere el permiso {permission} en esta organización",
+                detail=t("deps.org_permission_required", locale, permission=permission),
             )
 
         return AuthResult(
@@ -726,6 +774,7 @@ def require_capability(capability_code: str):
     def _require_capability(
         credentials: HTTPAuthorizationCredentials = Depends(security),
         db: Session = Depends(get_db),
+        locale: str = Depends(get_request_locale),
     ) -> AuthResult:
         from app.models.user import User
         from app.services.capabilities import CapabilityService
@@ -737,14 +786,14 @@ def require_capability(capability_code: str):
         if not cognito_sub:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token inválido: falta 'sub'",
+                detail=t("deps.token_missing_sub", locale),
             )
 
         user = db.query(User).filter(User.cognito_sub == cognito_sub).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado",
+                detail=t("deps.user_not_found", locale),
             )
 
         # Verificar capability
@@ -753,7 +802,11 @@ def require_capability(capability_code: str):
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"La organización no tiene acceso a: {capability_code}",
+                detail=t(
+                    "deps.org_capability_required",
+                    locale,
+                    capability_code=capability_code,
+                ),
             )
 
         return AuthResult(
@@ -798,12 +851,13 @@ def require_account_permission(permission: str):
         account_id: UUID,
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_current_user),
+        locale: str = Depends(get_request_locale),
     ) -> AuthResult:
         from app.models.account_user import AccountUser
         from app.models.permission import PermissionScope
         from app.services import permisos
 
-        user = _load_user_by_sub(db, current_user.get("sub"))
+        user = _load_user_by_sub(db, current_user.get("sub"), locale=locale)
 
         membresia = (
             db.query(AccountUser)
@@ -820,7 +874,11 @@ def require_account_permission(permission: str):
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Se requiere el permiso {permission} en esta cuenta",
+                detail=t(
+                    "deps.account_permission_required",
+                    locale,
+                    permission=permission,
+                ),
             )
 
         return AuthResult(

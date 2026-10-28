@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Migración `045_user_devices_locale`.** Añade `locale TEXT NOT NULL DEFAULT 'es'` a
+`public.user_devices` y recrea `control_plane.user_devices` con esa columna. Es aditiva: la
+imagen anterior funciona sobre el esquema nuevo. `ALTER TABLE` exige que `siscom_migrator` sea
+dueño de `user_devices`; comprobarlo antes del despliegue.
+
+### Added
+
+- Respuestas bilingües (`es` / `en`) según `Accept-Language`: el primer idioma de la cabecera decide, y cualquier cosa que no sea inglés cae en español. Los mensajes viven en `app/core/i18n.py`
+- Correos de verificación, invitación y recuperación de contraseña en inglés (`app/templates/en/`). El idioma es el de quien hace la petición: en una invitación, el de quien invita
+- `locale` (`es` | `en`) en `POST /user-devices` y en su respuesta, guardado en `user_devices.locale` y publicado en `control-plane-events` para que `alert-distributor` pueda enviar los push en el idioma del dispositivo
+
+### Changed
+
+- Los navegadores configurados en inglés reciben los errores de la API en inglés, porque mandan `Accept-Language: en` sin que el cliente lo pida
+
 ## [1.64.1] - 2026-10-27
 
 **Sin migraciones.** Cabeza: `044_vistas_del_plano_de_control`, la misma de `v1.64.0`.

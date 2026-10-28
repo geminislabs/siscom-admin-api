@@ -7,7 +7,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full, get_rules_kafka_producer
+from app.api.deps import (
+    get_current_user_full,
+    get_request_locale,
+    get_rules_kafka_producer,
+)
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.alert import Alert
 from app.models.alert_rule import AlertRule, AlertRuleUnit
@@ -84,17 +89,12 @@ def _build_delete_event_payload(rule: AlertRule) -> dict:
     }
 
 
-def _duplicate_rule_response(existing: AlertRule | None) -> JSONResponse:
-    message = (
-        "Ya existe una regla con el mismo tipo y configuracion para esta organizacion"
-    )
-
+def _duplicate_rule_response(
+    existing: AlertRule | None, locale: str = "es"
+) -> JSONResponse:
     content = {
-        "message": message,
-        "detail": (
-            "El fingerprint se genera con organization_id, type y config normalizado. "
-            "Cambia el tipo o la configuracion de la regla para crear una nueva."
-        ),
+        "message": t("alert_rules.duplicate_message", locale),
+        "detail": t("alert_rules.duplicate_detail", locale),
     }
 
     if existing:
@@ -165,6 +165,7 @@ def _validate_unit_ids(
     db: Session,
     organization_id: UUID,
     unit_ids: list[UUID],
+    locale: str = "es",
 ) -> list[UUID]:
     unique_unit_ids = list(dict.fromkeys(unit_ids))
 
@@ -183,9 +184,10 @@ def _validate_unit_ids(
     if missing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "Todas las unidades deben pertenecer a la organización del usuario "
-                f"y estar activas. unit_ids inválidos: {', '.join(missing)}"
+            detail=t(
+                "alert_rules.invalid_unit_ids",
+                locale,
+                missing=", ".join(missing),
             ),
         )
 
@@ -215,7 +217,7 @@ def _build_rule_out(db: Session, rule: AlertRule) -> AlertRuleOut:
 
 
 def _get_active_rule_or_404(
-    db: Session, rule_id: UUID, organization_id: UUID
+    db: Session, rule_id: UUID, organization_id: UUID, locale: str = "es"
 ) -> AlertRule:
     rule = (
         db.query(AlertRule)
@@ -230,7 +232,7 @@ def _get_active_rule_or_404(
     if not rule:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Regla no encontrada",
+            detail=t("alert_rules.not_found", locale),
         )
 
     return rule
@@ -242,6 +244,7 @@ def create_alert_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     rules_kafka_producer: RulesKafkaProducer = Depends(get_rules_kafka_producer),
+    locale: str = Depends(get_request_locale),
 ):
     normalized_config = normalize_json(payload.config)
     fingerprint = generate_fingerprint(
@@ -265,11 +268,11 @@ def create_alert_rule(
         existing = (
             db.query(AlertRule).filter(AlertRule.fingerprint == fingerprint).first()
         )
-        return _duplicate_rule_response(existing)
+        return _duplicate_rule_response(existing, locale)
 
     if payload.unit_ids:
         valid_unit_ids = _validate_unit_ids(
-            db, current_user.organization_id, payload.unit_ids
+            db, current_user.organization_id, payload.unit_ids, locale
         )
         for unit_id in valid_unit_ids:
             db.add(AlertRuleUnit(rule_id=rule.id, unit_id=unit_id))
@@ -294,6 +297,7 @@ def list_alert_rules(
     current_user: User = Depends(get_current_user_full),
     type_filter: str | None = Query(None, alias="type"),
     unit_id: UUID | None = Query(None),
+    locale: str = Depends(get_request_locale),
 ):
     if not _organization_is_active(db, current_user.organization_id):
         return []
@@ -307,7 +311,7 @@ def list_alert_rules(
         query = query.filter(AlertRule.type == type_filter)
 
     if unit_id:
-        _validate_unit_ids(db, current_user.organization_id, [unit_id])
+        _validate_unit_ids(db, current_user.organization_id, [unit_id], locale)
         query = query.join(AlertRuleUnit, AlertRuleUnit.rule_id == AlertRule.id).filter(
             AlertRuleUnit.unit_id == unit_id
         )
@@ -321,14 +325,15 @@ def get_alert_rule(
     rule_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     if not _organization_is_active(db, current_user.organization_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Regla no encontrada",
+            detail=t("alert_rules.not_found", locale),
         )
 
-    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
+    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id, locale)
 
     return _build_rule_out(db, rule)
 
@@ -340,8 +345,9 @@ def update_alert_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     rules_kafka_producer: RulesKafkaProducer = Depends(get_rules_kafka_producer),
+    locale: str = Depends(get_request_locale),
 ):
-    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
+    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id, locale)
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -357,7 +363,9 @@ def update_alert_rule(
     )
 
     if unit_ids is not None:
-        valid_unit_ids = _validate_unit_ids(db, current_user.organization_id, unit_ids)
+        valid_unit_ids = _validate_unit_ids(
+            db, current_user.organization_id, unit_ids, locale
+        )
         db.query(AlertRuleUnit).filter(AlertRuleUnit.rule_id == rule.id).delete()
         for unit_id in valid_unit_ids:
             db.add(AlertRuleUnit(rule_id=rule.id, unit_id=unit_id))
@@ -378,7 +386,7 @@ def update_alert_rule(
             )
             .first()
         )
-        return _duplicate_rule_response(existing)
+        return _duplicate_rule_response(existing, locale)
 
     db.refresh(rule)
 
@@ -399,8 +407,9 @@ def delete_alert_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     rules_kafka_producer: RulesKafkaProducer = Depends(get_rules_kafka_producer),
+    locale: str = Depends(get_request_locale),
 ):
-    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
+    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id, locale)
 
     deleted_at = utcnow()
     rule.updated_at = deleted_at
@@ -424,7 +433,7 @@ def delete_alert_rule(
     )
 
     return AlertRuleDeleteOut(
-        message="Regla eliminada exitosamente",
+        message=t("alert_rules.deleted_success", locale),
         rule_id=rule_id,
         deleted=True,
     )
@@ -437,10 +446,11 @@ def assign_units_to_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     rules_kafka_producer: RulesKafkaProducer = Depends(get_rules_kafka_producer),
+    locale: str = Depends(get_request_locale),
 ):
-    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
+    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id, locale)
     valid_unit_ids = _validate_unit_ids(
-        db, current_user.organization_id, payload.unit_ids
+        db, current_user.organization_id, payload.unit_ids, locale
     )
 
     existing_rows = (
@@ -480,8 +490,9 @@ def unassign_units_from_rule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     rules_kafka_producer: RulesKafkaProducer = Depends(get_rules_kafka_producer),
+    locale: str = Depends(get_request_locale),
 ):
-    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id)
+    rule = _get_active_rule_or_404(db, rule_id, current_user.organization_id, locale)
     target_ids = list(dict.fromkeys(payload.unit_ids))
 
     db.query(AlertRuleUnit).filter(

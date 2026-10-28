@@ -216,7 +216,7 @@ def _sembrar_permisos_de_organizacion(engine) -> None:
 
 
 def _crear_vistas_del_plano_de_control(engine) -> None:
-    """Las vistas `control_plane.*` de la 044, como en producción.
+    """Las vistas `control_plane.*` de la 044 y 045, como en producción.
 
     `create_all()` no crea vistas, y los eventos de control se construyen
     leyendo de ellas: sin esto, ningún test que escriba una membresía, una
@@ -225,8 +225,12 @@ def _crear_vistas_del_plano_de_control(engine) -> None:
     real lo prueba `tests/test_vistas_del_plano_de_control_esquema.py`.
     """
     with engine.begin() as conn:
-        for sql in _migracion("044_vistas_del_plano_de_control").sentencias():
-            conn.execute(text(sql))
+        for nombre in (
+            "044_vistas_del_plano_de_control",
+            "045_user_devices_locale",
+        ):
+            for sql in _migracion(nombre).sentencias():
+                conn.execute(text(sql))
 
 
 @pytest.fixture(scope="session")

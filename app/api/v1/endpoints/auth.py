@@ -17,8 +17,10 @@ from app.api.deps import (
     get_data_token_issuer,
     get_identity_provider,
     get_identity_provider_para_login,
+    get_request_locale,
     get_scope_store,
 )
+from app.core.i18n import t
 from app.core.security import verificar_access_token_para_refresco
 from app.db.session import get_db
 from app.models.account import Account, AccountStatus
@@ -172,6 +174,7 @@ def register_user(
     db: Session = Depends(get_db),
     idp: IdentityProvider = Depends(get_identity_provider_para_login),
     marca: Optional[Account] = Depends(get_cuenta_de_marca),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Registro rápido - Crea Account + Organization + User.
@@ -211,7 +214,7 @@ def register_user(
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un usuario con este correo electrónico.",
+            detail=t("auth.user_already_exists", locale),
         )
 
     # 2️⃣ Crear Account (raíz comercial)
@@ -310,11 +313,11 @@ def register_user(
         if isinstance(e, HandleYaExiste):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"El usuario con email {data.email} ya existe. Si es tu cuenta y no puedes acceder, contacta soporte.",
+                detail=t("auth.handle_already_exists", locale, email=data.email),
             )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudo completar el registro. Por favor, intenta nuevamente o contacta soporte.",
+            detail=t("auth.register_failed", locale),
         )
 
     # 9️⃣ Generar token y enviar email de verificación
@@ -335,7 +338,7 @@ def register_user(
     # Enviar email de verificación (NO falla el endpoint si falla)
     try:
         email_sent = send_verification_email(
-            data.email, verification_token_str, db, marca_id
+            data.email, verification_token_str, db, marca_id, locale=locale
         )
         if email_sent:
             logger.info(
@@ -363,7 +366,7 @@ def register_user(
 # ------------------------------------------
 # Obtener mi cuenta (Account)
 # ------------------------------------------
-def _get_account_for_user(db: Session, user: User) -> Account:
+def _get_account_for_user(db: Session, user: User, locale: str = "es") -> Account:
     """
     Obtiene el Account asociado al usuario a través de su organización.
     """
@@ -373,14 +376,14 @@ def _get_account_for_user(db: Session, user: User) -> Account:
     if not organization:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Organización no encontrada",
+            detail=t("auth.organization_not_found", locale),
         )
 
     account = db.query(Account).filter(Account.id == organization.account_id).first()
     if not account:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account no encontrado",
+            detail=t("auth.account_not_found", locale),
         )
 
     return account
@@ -390,6 +393,7 @@ def _get_account_for_user(db: Session, user: User) -> Account:
 def get_my_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Obtiene el Account del usuario autenticado junto con su rol.
@@ -397,7 +401,7 @@ def get_my_account(
     Resuelve el Account a través de la organización del usuario.
     Incluye el rol del usuario en su organización actual.
     """
-    account = _get_account_for_user(db, current_user)
+    account = _get_account_for_user(db, current_user, locale=locale)
 
     # Obtener el rol del usuario en su organización
     membership = (
@@ -531,6 +535,7 @@ def login_user(
     store=Depends(get_scope_store),
     idp: IdentityProvider = Depends(get_identity_provider_para_login),
     marca: Optional[Account] = Depends(get_cuenta_de_marca),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Autentica un usuario con sus credenciales.
@@ -565,14 +570,16 @@ def login_user(
     if not user:
         record_auth_attempt("cognito", "failure")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("auth.user_not_found", locale),
         )
 
     # 2️⃣ Verificar que el email esté verificado
     if not user.email_verified:
         record_auth_attempt("cognito", "failure")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Email no verificado"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=t("auth.email_not_verified", locale),
         )
 
     # 3️⃣ Autenticar contra el proveedor de identidad
@@ -592,7 +599,7 @@ def login_user(
         record_auth_attempt("cognito", "failure")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Se requiere completar el challenge: {e.reto}",
+            detail=t("auth.challenge_required", locale, challenge=e.reto),
         )
     except ErrorDeIdentidad as e:
         logger.warning(
@@ -607,34 +614,34 @@ def login_user(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=(
-                    f"Credenciales inválidas. {e.mensaje}"
+                    t("auth.invalid_credentials_with_msg", locale, message=e.mensaje)
                     if e.mensaje
-                    else "Credenciales inválidas"
+                    else t("auth.invalid_credentials", locale)
                 ),
             )
         elif isinstance(e, CredencialNoEncontrada):
             record_auth_attempt("cognito", "failure")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado en Cognito",
+                detail=t("auth.user_not_found_cognito", locale),
             )
         elif isinstance(e, CredencialSinConfirmar):
             record_auth_attempt("cognito", "failure")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Usuario no confirmado en Cognito",
+                detail=t("auth.user_not_confirmed_cognito", locale),
             )
         elif isinstance(e, ParametroInvalido):
             record_auth_attempt("cognito", "error")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error de configuración: {e.mensaje}",
+                detail=t("auth.config_error", locale, message=e.mensaje),
             )
         else:
             record_auth_attempt("cognito", "error")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error de autenticación [{e.codigo}]: {e.mensaje}",
+                detail=t("auth.auth_error", locale, code=e.codigo, message=e.mensaje),
             )
 
     # 4️⃣ Actualizar el last_login_at del usuario
@@ -724,6 +731,7 @@ def forgot_password(
     request: ForgotPasswordRequest,
     db: Session = Depends(get_db),
     marca: Optional[Account] = Depends(get_cuenta_de_marca),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Solicita la recuperación de contraseña para un usuario.
@@ -770,7 +778,9 @@ def forgot_password(
         db.commit()
 
         # 4️⃣ Enviar correo electrónico con el código de 6 dígitos
-        email_sent = send_password_reset_email(user.email, reset_code, db, marca_id)
+        email_sent = send_password_reset_email(
+            user.email, reset_code, db, marca_id, locale=locale
+        )
         if email_sent:
             logger.info(
                 "auth.password_reset.email_sent",
@@ -787,7 +797,7 @@ def forgot_password(
 
     # 5️⃣ Siempre retornar el mismo mensaje de éxito (por seguridad)
     return ForgotPasswordResponse(
-        message="Se ha enviado un código de verificación al correo registrado."
+        message=t("auth.forgot_password_sent", locale),
     )
 
 
@@ -805,6 +815,7 @@ def reset_password(
     idp: IdentityProvider = Depends(get_identity_provider_para_login),
     store=Depends(get_scope_store),
     marca: Optional[Account] = Depends(get_cuenta_de_marca),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Restablece la contraseña de un usuario utilizando un código de verificación de 6 dígitos.
@@ -840,7 +851,8 @@ def reset_password(
 
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("auth.user_not_found", locale),
         )
 
     # 2️⃣ Buscar el código en la base de datos — amarrado al usuario ya
@@ -859,21 +871,21 @@ def reset_password(
     if not token_record:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Código de verificación inválido",
+            detail=t("auth.invalid_verification_code", locale),
         )
 
     # 3️⃣ Verificar que el código no haya expirado
     if token_record.expires_at < utcnow():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El código de verificación ha expirado. Por favor, solicita uno nuevo.",
+            detail=t("auth.verification_code_expired", locale),
         )
 
     # 4️⃣ Verificar que el código no haya sido usado
     if token_record.used:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este código de verificación ya ha sido utilizado",
+            detail=t("auth.verification_code_used", locale),
         )
 
     # 5️⃣ Actualizar la contraseña en el proveedor de identidad
@@ -894,22 +906,27 @@ def reset_password(
         if isinstance(e, CredencialNoEncontrada):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado en Cognito",
+                detail=t("auth.user_not_found_cognito", locale),
             )
         elif isinstance(e, PasswordRechazada):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Contraseña inválida: {e.mensaje}",
+                detail=t("auth.invalid_password", locale, message=e.mensaje),
             )
         elif isinstance(e, ParametroInvalido):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Parámetro inválido: {e.mensaje}",
+                detail=t("auth.invalid_parameter", locale, message=e.mensaje),
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al actualizar la contraseña [{e.codigo}]: {e.mensaje}",
+                detail=t(
+                    "auth.password_update_error",
+                    locale,
+                    code=e.codigo,
+                    message=e.mensaje,
+                ),
             )
 
     # 6️⃣ Cerrar las sesiones que siguieran vivas
@@ -928,10 +945,7 @@ def reset_password(
         # consiguió, así que se dice — y se dice qué hacer.
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "La contraseña se actualizó, pero no se pudieron cerrar las "
-                "sesiones anteriores. Cierra sesión en tus otros dispositivos."
-            ),
+            detail=t("auth.password_updated_revoke_failed", locale),
         )
 
     # 7️⃣ Marcar el código como usado
@@ -940,7 +954,7 @@ def reset_password(
 
     # 8️⃣ Retornar mensaje de éxito
     return ResetPasswordResponse(
-        message="Contraseña restablecida exitosamente. Ahora puede iniciar sesión con su nueva contraseña."
+        message=t("auth.password_reset_success", locale),
     )
 
 
@@ -956,6 +970,7 @@ def change_password(
     current_user: User = Depends(get_current_user_full),
     idp: IdentityProvider = Depends(get_identity_provider),
     store=Depends(get_scope_store),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Cambia la contraseña de un usuario autenticado.
@@ -987,7 +1002,7 @@ def change_password(
     if not current_user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email no verificado. Debe verificar su email antes de cambiar la contraseña.",
+            detail=t("auth.email_not_verified_change_password", locale),
         )
 
     if current_user.brand_account_id:
@@ -1020,12 +1035,12 @@ def change_password(
         if isinstance(e, CredencialesInvalidas):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La contraseña actual es incorrecta",
+                detail=t("auth.current_password_incorrect", locale),
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al verificar la contraseña actual: {e.codigo}",
+                detail=t("auth.verify_current_password_error", locale, code=e.codigo),
             )
 
     # 2️⃣ Cambiar la contraseña
@@ -1049,12 +1064,12 @@ def change_password(
         if isinstance(e, PasswordRechazada):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"La nueva contraseña no cumple con los requisitos: {e.mensaje}",
+                detail=t("auth.new_password_requirements", locale, message=e.mensaje),
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al actualizar la contraseña: {e.codigo}",
+                detail=t("auth.update_password_code_error", locale, code=e.codigo),
             )
 
     # 3️⃣ Cerrar todas las sesiones, incluida la de quien pide el cambio
@@ -1067,10 +1082,7 @@ def change_password(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "La contraseña se actualizó, pero no se pudieron cerrar las "
-                "sesiones anteriores. Cierra sesión en tus otros dispositivos."
-            ),
+            detail=t("auth.password_updated_revoke_failed", locale),
         )
 
     # 4️⃣ Y devolverle una sesión nueva a quien acaba de hacer lo correcto
@@ -1097,7 +1109,7 @@ def change_password(
 
     # 5️⃣ Retornar mensaje de éxito
     return ChangePasswordResponse(
-        message="Contraseña actualizada exitosamente.",
+        message=t("auth.password_changed_success", locale),
         access_token=sesion.access_token if sesion else None,
         id_token=sesion.id_token if sesion else None,
         refresh_token=sesion.refresh_token if sesion else None,
@@ -1117,6 +1129,7 @@ def resend_verification(
     request: ResendVerificationRequest,
     db: Session = Depends(get_db),
     marca: Optional[Account] = Depends(get_cuenta_de_marca),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Reenvía el correo de verificación de email a un usuario no verificado.
@@ -1152,7 +1165,7 @@ def resend_verification(
     if not user:
         logger.info("auth.resend_verification.unknown_user")
         return ResendVerificationResponse(
-            message="Si la cuenta existe, se ha reenviado el correo de verificación."
+            message=t("auth.resend_verification_sent", locale),
         )
 
     if user.email_verified:
@@ -1161,7 +1174,7 @@ def resend_verification(
             extra={"user_id": str(user.id)},
         )
         return ResendVerificationResponse(
-            message="Si la cuenta existe, se ha reenviado el correo de verificación."
+            message=t("auth.resend_verification_sent", locale),
         )
 
     # 3️⃣ Usuario existe y no está verificado, continuar con el reenvío
@@ -1225,7 +1238,9 @@ def resend_verification(
     db.commit()
 
     # f) Enviar correo electrónico con el token
-    email_sent = send_verification_email(user.email, verification_token, db, marca_id)
+    email_sent = send_verification_email(
+        user.email, verification_token, db, marca_id, locale=locale
+    )
     if email_sent:
         logger.info(
             "auth.resend_verification.email_sent",
@@ -1239,7 +1254,7 @@ def resend_verification(
 
     # 4️⃣ Retornar mensaje genérico
     return ResendVerificationResponse(
-        message="Si la cuenta existe, se ha reenviado el correo de verificación."
+        message=t("auth.resend_verification_sent", locale),
     )
 
 
@@ -1255,6 +1270,7 @@ def verify_email(
     token: str,
     db: Session = Depends(get_db),
     idp: IdentityProvider = Depends(get_identity_provider),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Verifica el email de un usuario utilizando un token de verificación.
@@ -1307,21 +1323,21 @@ def verify_email(
     if not token_record:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token de verificación inválido",
+            detail=t("auth.invalid_verification_token", locale),
         )
 
     # 2️⃣ Verificar que el token no haya expirado
     if token_record.expires_at < utcnow():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El token de verificación ha expirado. Por favor, solicita uno nuevo.",
+            detail=t("auth.verification_token_expired", locale),
         )
 
     # 3️⃣ Verificar que el token no haya sido usado
     if token_record.used:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este token de verificación ya ha sido utilizado",
+            detail=t("auth.verification_token_used", locale),
         )
 
     # 4️⃣ Buscar el usuario asociado al token
@@ -1329,7 +1345,8 @@ def verify_email(
 
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("auth.user_not_found", locale),
         )
 
     if user.brand_account_id:
@@ -1339,7 +1356,7 @@ def verify_email(
     if user.email_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este email ya ha sido verificado",
+            detail=t("auth.email_already_verified", locale),
         )
 
     # ========================================
@@ -1357,7 +1374,7 @@ def verify_email(
         )
 
         return ConfirmEmailResponse(
-            message="Email verificado exitosamente. Ahora puede iniciar sesión."
+            message=t("auth.email_verified_member_success", locale),
         )
 
     # ========================================
@@ -1372,7 +1389,7 @@ def verify_email(
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token inválido para usuarios master. Por favor, solicita un nuevo enlace de verificación.",
+            detail=t("auth.master_missing_temp_password", locale),
         )
 
     # ========================================
@@ -1386,7 +1403,8 @@ def verify_email(
 
     if not organization:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Organización no encontrada"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=t("auth.organization_not_found", locale),
         )
 
     # ¿Existe ya la credencial en el proveedor?
@@ -1395,7 +1413,7 @@ def verify_email(
     except ErrorDeIdentidad as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al verificar usuario en Cognito: {e.mensaje}",
+            detail=t("auth.cognito_verify_user_error", locale, message=e.mensaje),
         )
 
     user_exists = cognito_sub is not None
@@ -1431,7 +1449,7 @@ def verify_email(
         if not cognito_sub:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="No se pudo obtener el cognito_sub del usuario",
+                detail=t("auth.cognito_sub_missing", locale),
             )
 
         logger.info(
@@ -1448,12 +1466,17 @@ def verify_email(
         if isinstance(e, PasswordRechazada):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Contraseña inválida: {e.mensaje}",
+                detail=t("auth.invalid_password", locale, message=e.mensaje),
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al configurar usuario en Cognito [{e.codigo}]: {e.mensaje}",
+                detail=t(
+                    "auth.cognito_configure_user_error",
+                    locale,
+                    code=e.codigo,
+                    message=e.mensaje,
+                ),
             )
 
     # Actualizar usuario en la base de datos
@@ -1475,7 +1498,7 @@ def verify_email(
     )
 
     return ConfirmEmailResponse(
-        message="Email verificado exitosamente. Tu cuenta ha sido activada y ahora puedes iniciar sesión."
+        message=t("auth.email_verified_master_success", locale),
     )
 
 
@@ -1497,6 +1520,7 @@ def _usuario_para_renovar(
     *,
     authorization: Optional[str],
     db: Session,
+    locale: str = "es",
 ) -> User:
     """Resuelve la fila con la que se firma el SECRET_HASH de la renovación.
 
@@ -1525,7 +1549,7 @@ def _usuario_para_renovar(
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Falta la cabecera Authorization",
+            detail=t("auth.missing_authorization_header", locale),
         )
 
     payload = verificar_access_token_para_refresco(token)
@@ -1537,7 +1561,7 @@ def _usuario_para_renovar(
         logger.warning("auth.refresh.sub_sin_fila")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No se pudo renovar el token",
+            detail=t("auth.token_refresh_failed", locale),
         )
     return usuario
 
@@ -1550,6 +1574,7 @@ def refresh_token(
     db: Session = Depends(get_db),
     authorization: Optional[str] = Header(default=None),
     idp: IdentityProvider = Depends(get_identity_provider),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Renueva el access token y el id token usando un refresh token válido.
@@ -1586,6 +1611,7 @@ def refresh_token(
     usuario = _usuario_para_renovar(
         authorization=authorization,
         db=db,
+        locale=locale,
     )
     handle = usuario.external_id
     huellas = {
@@ -1620,14 +1646,14 @@ def refresh_token(
     except AutenticacionIncompleta:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No se pudo renovar el token",
+            detail=t("auth.token_refresh_failed", locale),
         )
     except CredencialesInvalidas as e:
         if not e.mensaje:
             # Sin mensaje del proveedor es la respuesta vacía, no un rechazo.
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No se pudo renovar el token",
+                detail=t("auth.token_refresh_failed", locale),
             )
         logger.warning(
             "auth.refresh.rejected",
@@ -1635,7 +1661,7 @@ def refresh_token(
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Refresh token inválido o expirado: {e.mensaje}",
+            detail=t("auth.refresh_token_invalid", locale, message=e.mensaje),
         )
     except ErrorDeIdentidad as e:
         logger.warning(
@@ -1646,20 +1672,25 @@ def refresh_token(
         if isinstance(e, ParametroInvalido):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Parámetros inválidos: {e.mensaje}",
+                detail=t("auth.invalid_parameters", locale, message=e.mensaje),
             )
         elif isinstance(e, ProveedorSaturado):
             # El refresh token sigue valiendo: es un «más tarde», no un rechazo,
             # y tampoco un fallo del servidor.
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Demasiadas renovaciones seguidas. Intenta de nuevo en unos segundos.",
+                detail=t("auth.too_many_refreshes", locale),
                 headers={"Retry-After": "30"},
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al renovar el token [{e.codigo}]: {e.mensaje}",
+                detail=t(
+                    "auth.refresh_token_error",
+                    locale,
+                    code=e.codigo,
+                    message=e.mensaje,
+                ),
             )
 
     # 2️⃣ Retornar los nuevos tokens
@@ -1682,6 +1713,7 @@ def logout_user(
     current_user: User = Depends(get_current_user_full),
     store=Depends(get_scope_store),
     idp: IdentityProvider = Depends(get_identity_provider),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Cierra la sesión del usuario actual en AWS Cognito.
@@ -1736,16 +1768,21 @@ def logout_user(
         if isinstance(e, CredencialesInvalidas):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token inválido o expirado",
+                detail=t("auth.token_invalid_or_expired", locale),
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al cerrar sesión [{e.codigo}]: {e.mensaje}",
+                detail=t(
+                    "auth.logout_error",
+                    locale,
+                    code=e.codigo,
+                    message=e.mensaje,
+                ),
             )
 
     # 3️⃣ Retornar mensaje de éxito
-    return LogoutResponse(message="Sesión cerrada exitosamente.")
+    return LogoutResponse(message=t("auth.logout_success", locale))
 
 
 # ------------------------------------------
@@ -1787,6 +1824,7 @@ def issue_data_token(
     current_user: User = Depends(get_current_user_full),
     issuer=Depends(get_data_token_issuer),
     store=Depends(get_scope_store),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Emite una credencial de lectura para el plano de datos (siscom-api).
@@ -1835,7 +1873,7 @@ def issue_data_token(
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="El servicio de datos no está disponible temporalmente",
+            detail=t("auth.data_service_unavailable", locale),
         ) from exc
 
     return DataTokenResponse(

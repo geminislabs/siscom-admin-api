@@ -215,3 +215,46 @@ def test_send_password_reset_email_sin_dominio_verificado_cae_a_frontend_url(
     kwargs = patch_ses_success.send_email.call_args[1]
     assert "Sin Dominio" in kwargs["Message"]["Subject"]["Data"]
     assert "ReplyToAddresses" not in kwargs
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Internacionalización (locale="en")
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_send_verification_email_in_english(patch_ses_success, db_session):
+    ok = send_verification_email("user@test.com", "tok-en", db_session, locale="en")
+    assert ok is True
+    kwargs = patch_ses_success.send_email.call_args[1]
+    assert kwargs["Message"]["Subject"]["Data"] == "Verify your account - Geminis Labs"
+    body = kwargs["Message"]["Body"]["Html"]["Data"]
+    assert "verify-email?token=tok-en" in body
+    assert "Verify email" in body
+    assert "Human and connected technology" in body
+    assert 'lang="en"' in body
+
+
+def test_send_invitation_email_in_english(patch_ses_success, db_session):
+    ok = send_invitation_email(
+        "inv@test.com", "invite-en", "Ana", db_session, locale="en"
+    )
+    assert ok is True
+    kwargs = patch_ses_success.send_email.call_args[1]
+    assert kwargs["Message"]["Subject"]["Data"] == "Invitation to join Geminis Labs"
+    body = kwargs["Message"]["Body"]["Html"]["Data"]
+    assert "accept-invitation?token=invite-en" in body
+    assert "Accept invitation" in body
+    assert "Hello Ana!" in body
+    assert 'lang="en"' in body
+
+
+def test_send_password_reset_email_in_english(patch_ses_success, db_session):
+    ok = send_password_reset_email("u@test.com", "654321", db_session, locale="en")
+    assert ok is True
+    kwargs = patch_ses_success.send_email.call_args[1]
+    assert kwargs["Message"]["Subject"]["Data"] == "Reset your password - Geminis Labs"
+    body = kwargs["Message"]["Body"]["Html"]["Data"]
+    assert "654321" in body
+    assert "Password reset" in body
+    assert "Your verification code is:" in body
+    assert 'lang="en"' in body

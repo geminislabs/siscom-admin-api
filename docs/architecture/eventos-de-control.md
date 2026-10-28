@@ -227,6 +227,7 @@ Un dispositivo móvil registrado para push.
   "platform": "ios",
   "endpoint_arn": "arn:aws:sns:us-east-1:…:endpoint/GCM/siscom-alerts/…",
   "is_active": true,
+  "locale": "es",
   "updated_at": "2026-10-19T01:00:16.118Z"
 }
 ```
@@ -239,6 +240,7 @@ Un dispositivo móvil registrado para push.
 | `platform` | `ios` \| `android` | |
 | `endpoint_arn` | texto o `null` | Endpoint de SNS |
 | `is_active` | booleano | |
+| `locale` | `es` \| `en` | Idioma del dispositivo para localizar notificaciones push (por defecto `"es"`) |
 | `updated_at` | ISO-8601 UTC | |
 
 Siempre `UPSERT`. Se escribe en:

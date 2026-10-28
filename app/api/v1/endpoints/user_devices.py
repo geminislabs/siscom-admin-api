@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full
+from app.api.deps import get_current_user_full, get_request_locale
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.user import User
 from app.models.user_device import UserDevice
@@ -27,6 +28,7 @@ def register_user_device(
     payload: DeviceRegisterIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     now = datetime.now(timezone.utc)
     created_new = False
@@ -88,6 +90,7 @@ def register_user_device(
                 platform=payload.platform,
                 endpoint_arn=endpoint_arn,
                 is_active=True,
+                locale=payload.locale,
                 last_seen_at=now,
                 updated_at=now,
             )
@@ -118,6 +121,7 @@ def register_user_device(
                     platform=device.platform,
                     endpoint_arn=device.endpoint_arn,
                     is_active=device.is_active,
+                    locale=device.locale,
                     last_seen_at=device.last_seen_at,
                 )
 
@@ -132,6 +136,7 @@ def register_user_device(
         device.device_token = payload.device_token
         device.platform = payload.platform
         device.is_active = True
+        device.locale = payload.locale
         device.last_seen_at = now
         device.updated_at = now
 
@@ -158,6 +163,7 @@ def register_user_device(
 
             device.platform = payload.platform
             device.is_active = True
+            device.locale = payload.locale
             device.last_seen_at = now
             device.updated_at = now
 
@@ -171,16 +177,14 @@ def register_user_device(
             platform=device.platform,
             endpoint_arn=device.endpoint_arn,
             is_active=device.is_active,
+            locale=device.locale,
             last_seen_at=device.last_seen_at,
         )
     except (ValueError, RuntimeError, ClientError, BotoCoreError) as exc:
         logger.exception("Error registrando dispositivo en SNS")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "No fue posible registrar el dispositivo en SNS. "
-                "Verifica AWS_REGION y los ARN de plataforma SNS."
-            ),
+            detail=t("user_devices.sns_registration_failed", locale),
         ) from exc
 
 
@@ -189,6 +193,7 @@ def deactivate_user_device(
     payload: DeviceDeactivateIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     # Este endpoint no pedía credencial ninguna, y la omisión no era visible:
     # no la declaraba ni la firma ni el montaje del router.
@@ -226,7 +231,7 @@ def deactivate_user_device(
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dispositivo no encontrado",
+            detail=t("user_devices.not_found", locale),
         )
 
     device.is_active = False
@@ -240,7 +245,7 @@ def deactivate_user_device(
     # sobra: es la misma.
 
     return DeviceDeactivateOut(
-        message="Dispositivo desactivado exitosamente",
+        message=t("user_devices.deactivated_success", locale),
         device_token=payload.device_token,
         is_active=False,
     )

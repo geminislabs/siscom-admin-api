@@ -5,7 +5,7 @@ Servicio de notificaciones por email usando AWS SES.
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 import boto3
@@ -161,6 +161,7 @@ def send_verification_email(
     token: str,
     db: Session,
     brand_account_id: Optional[UUID] = None,
+    locale: Literal["es", "en"] = "es",
 ) -> bool:
     """
     Envía un correo de verificación de email.
@@ -171,6 +172,7 @@ def send_verification_email(
         db: Sesión de base de datos, para resolver la marca (B4)
         brand_account_id: Cuenta de marca del usuario (`User.brand_account_id`),
             o `None` para la marca por defecto
+        locale: Idioma del correo (`"es"` o `"en"`)
 
     Returns:
         True si se envió correctamente
@@ -179,23 +181,40 @@ def send_verification_email(
 
     ctx = _resolver_contexto_de_marca(db, brand_account_id)
     action_url = f"{ctx.base_url}/verify-email?token={token}"
+    is_en = locale == "en"
 
-    template = jinja_env.get_template("verification_email.html")
+    tagline = (
+        "Human and connected technology"
+        if is_en and ctx.tagline == _DEFAULT_BRAND.tagline
+        else ctx.tagline
+    )
+    template_name = "en/verification_email.html" if is_en else "verification_email.html"
+    subject_base = "Verify your account" if is_en else "Verifica tu correo electrónico"
+    title = (
+        f"Welcome to {ctx.brand_name}!" if is_en else f"¡Bienvenido a {ctx.brand_name}!"
+    )
+    message = (
+        "Please verify your email address by clicking the button below to activate your account."
+        if is_en
+        else "Por favor verifica tu correo electrónico haciendo clic en el siguiente botón para activar tu cuenta."
+    )
+
+    template = jinja_env.get_template(template_name)
     html_body = template.render(
-        subject="Verifica tu correo electrónico",
-        title=f"¡Bienvenido a {ctx.brand_name}!",
-        message="Por favor verifica tu correo electrónico haciendo clic en el siguiente botón para activar tu cuenta.",
+        subject=subject_base,
+        title=title,
+        message=message,
         action_url=action_url,
         year=datetime.now().year,
         brand_name=ctx.brand_name,
         logo_url=ctx.logo_url,
-        tagline=ctx.tagline,
+        tagline=tagline,
         legal_url=ctx.legal_url,
     )
 
     return _send_email(
         to=to,
-        subject=f"Verifica tu correo electrónico - {ctx.brand_name}",
+        subject=f"{subject_base} - {ctx.brand_name}",
         html_body=html_body,
         sender_name=ctx.brand_name,
         reply_to=ctx.support_email,
@@ -208,6 +227,7 @@ def send_invitation_email(
     full_name: Optional[str],
     db: Session,
     brand_account_id: Optional[UUID] = None,
+    locale: Literal["es", "en"] = "es",
 ) -> bool:
     """
     Envía un correo de invitación a un nuevo usuario.
@@ -219,6 +239,7 @@ def send_invitation_email(
         db: Sesión de base de datos, para resolver la marca (B4)
         brand_account_id: Marca de quien invita (`current_user.brand_account_id`),
             no la del `Host` de la petición — quien invita ya está autenticado
+        locale: Idioma del correo (`"es"` o `"en"`)
 
     Returns:
         True si se envió correctamente
@@ -227,25 +248,46 @@ def send_invitation_email(
 
     ctx = _resolver_contexto_de_marca(db, brand_account_id)
     action_url = f"{ctx.base_url}/accept-invitation?token={token}"
+    is_en = locale == "en"
 
-    greeting = f"¡Hola {full_name}!" if full_name else "¡Hola!"
+    tagline = (
+        "Human and connected technology"
+        if is_en and ctx.tagline == _DEFAULT_BRAND.tagline
+        else ctx.tagline
+    )
+    if is_en:
+        greeting = f"Hello {full_name}!" if full_name else "Hello!"
+        subject_str = f"Invitation to join {ctx.brand_name}"
+        message_str = (
+            f"You have been invited to join {ctx.brand_name}. "
+            "Click the button below to accept the invitation and create your account."
+        )
+        template_name = "en/invitation.html"
+    else:
+        greeting = f"¡Hola {full_name}!" if full_name else "¡Hola!"
+        subject_str = f"Invitación a {ctx.brand_name}"
+        message_str = (
+            f"Has sido invitado a unirte a {ctx.brand_name}. "
+            "Haz clic en el siguiente botón para aceptar la invitación y crear tu cuenta."
+        )
+        template_name = "invitation.html"
 
-    template = jinja_env.get_template("invitation.html")
+    template = jinja_env.get_template(template_name)
     html_body = template.render(
-        subject=f"Invitación a {ctx.brand_name}",
+        subject=subject_str,
         title=greeting,
-        message=f"Has sido invitado a unirte a {ctx.brand_name}. Haz clic en el siguiente botón para aceptar la invitación y crear tu cuenta.",
+        message=message_str,
         action_url=action_url,
         year=datetime.now().year,
         brand_name=ctx.brand_name,
         logo_url=ctx.logo_url,
-        tagline=ctx.tagline,
+        tagline=tagline,
         legal_url=ctx.legal_url,
     )
 
     return _send_email(
         to=to,
-        subject=f"Invitación a {ctx.brand_name}",
+        subject=subject_str,
         html_body=html_body,
         sender_name=ctx.brand_name,
         reply_to=ctx.support_email,
@@ -257,6 +299,7 @@ def send_password_reset_email(
     code: str,
     db: Session,
     brand_account_id: Optional[UUID] = None,
+    locale: Literal["es", "en"] = "es",
 ) -> bool:
     """
     Envía un correo de restablecimiento de contraseña con código de 6 dígitos.
@@ -267,6 +310,7 @@ def send_password_reset_email(
         db: Sesión de base de datos, para resolver la marca (B4)
         brand_account_id: Cuenta de marca del usuario (`User.brand_account_id`),
             o `None` para la marca por defecto
+        locale: Idioma del correo (`"es"` o `"en"`)
 
     Returns:
         True si se envió correctamente
@@ -274,23 +318,38 @@ def send_password_reset_email(
     from datetime import datetime
 
     ctx = _resolver_contexto_de_marca(db, brand_account_id)
+    is_en = locale == "en"
 
-    template = jinja_env.get_template("password_reset.html")
+    tagline = (
+        "Human and connected technology"
+        if is_en and ctx.tagline == _DEFAULT_BRAND.tagline
+        else ctx.tagline
+    )
+    template_name = "en/password_reset.html" if is_en else "password_reset.html"
+    subject_base = "Reset your password" if is_en else "Restablece tu contraseña"
+    title = "Password reset" if is_en else "Restablecimiento de contraseña"
+    message = (
+        "You requested to reset your password. Use the following verification code in the application to create a new password."
+        if is_en
+        else "Has solicitado restablecer tu contraseña. Utiliza el siguiente código de verificación en la aplicación para crear una nueva contraseña."
+    )
+
+    template = jinja_env.get_template(template_name)
     html_body = template.render(
-        subject="Restablece tu contraseña",
-        title="Restablecimiento de contraseña",
-        message="Has solicitado restablecer tu contraseña. Utiliza el siguiente código de verificación en la aplicación para crear una nueva contraseña.",
+        subject=subject_base,
+        title=title,
+        message=message,
         verification_code=code,
         year=datetime.now().year,
         brand_name=ctx.brand_name,
         logo_url=ctx.logo_url,
-        tagline=ctx.tagline,
+        tagline=tagline,
         legal_url=ctx.legal_url,
     )
 
     return _send_email(
         to=to,
-        subject=f"Restablece tu contraseña - {ctx.brand_name}",
+        subject=f"{subject_base} - {ctx.brand_name}",
         html_body=html_body,
         sender_name=ctx.brand_name,
         reply_to=ctx.support_email,

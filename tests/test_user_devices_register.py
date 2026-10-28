@@ -130,3 +130,57 @@ def test_user_devices_register_mismo_usuario_reactiva_su_propia_fila(
     data = response.json()
     assert data["id"] == str(own_row.id)
     assert data["is_active"] is True
+    assert data["locale"] == "es"
+
+
+def test_user_devices_register_persists_and_updates_locale(
+    authenticated_client, monkeypatch, db_session, eventos_de_control
+):
+    from app.models.user_device import UserDevice
+
+    monkeypatch.setattr(
+        user_devices_endpoint,
+        "get_or_recreate_endpoint",
+        lambda device_token, platform, endpoint_arn=None: ("arn:aws:sns:test", False),
+    )
+
+    eventos_de_control.clear()
+
+    # 1. Alta inicial con locale="en"
+    payload_en = {
+        "device_token": "token-locale-1",
+        "platform": "ios",
+        "locale": "en",
+    }
+    res1 = authenticated_client.post("/api/v1/user-devices/register", json=payload_en)
+    assert res1.status_code == status.HTTP_200_OK
+    data1 = res1.json()
+    assert data1["locale"] == "en"
+
+    row = db_session.get(UserDevice, UUID(data1["id"]))
+    assert row is not None
+    assert row.locale == "en"
+
+    ((_, evento1),) = eventos_de_control.de("user_device")
+    assert evento1["data"]["locale"] == "en"
+
+    eventos_de_control.clear()
+
+    # 2. Cambio de idioma en el mismo dispositivo a locale="es" emite UPSERT
+    payload_es = {
+        "device_token": "token-locale-1",
+        "platform": "ios",
+        "locale": "es",
+    }
+    res2 = authenticated_client.post("/api/v1/user-devices/register", json=payload_es)
+    assert res2.status_code == status.HTTP_200_OK
+    data2 = res2.json()
+    assert data2["id"] == data1["id"]
+    assert data2["locale"] == "es"
+
+    db_session.refresh(row)
+    assert row.locale == "es"
+
+    ((_, evento2),) = eventos_de_control.de("user_device")
+    assert evento2["event_type"] == "UPSERT"
+    assert evento2["data"]["locale"] == "es"

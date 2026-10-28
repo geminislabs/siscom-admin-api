@@ -4,7 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full
+from app.api.deps import get_current_user_full, get_request_locale
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.alert import Alert
 from app.models.organization import Organization, OrganizationStatus
@@ -17,7 +18,9 @@ from app.services.access_control import get_accessible_unit_ids
 router = APIRouter()
 
 
-def _validate_unit_access(db: Session, user: User, unit_id: UUID) -> None:
+def _validate_unit_access(
+    db: Session, user: User, unit_id: UUID, locale: str = "es"
+) -> None:
     unit = (
         db.query(Unit)
         .filter(
@@ -31,7 +34,7 @@ def _validate_unit_access(db: Session, user: User, unit_id: UUID) -> None:
     if not unit:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Unidad no encontrada",
+            detail=t("alerts.unit_not_found", locale),
         )
 
     if user.is_active_organization_owner:
@@ -52,7 +55,7 @@ def _validate_unit_access(db: Session, user: User, unit_id: UUID) -> None:
     if not user_unit:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para acceder a esta unidad",
+            detail=t("alerts.unit_access_denied", locale),
         )
 
 
@@ -78,6 +81,7 @@ def list_alerts(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
     if not _organization_is_active(db, current_user.organization_id):
         return []
@@ -87,7 +91,7 @@ def list_alerts(
     )
 
     if unit_id is not None:
-        _validate_unit_access(db, current_user, unit_id)
+        _validate_unit_access(db, current_user, unit_id, locale)
         query = query.filter(Alert.unit_id == unit_id)
     else:
         accessible_unit_ids = get_accessible_unit_ids(db, current_user)

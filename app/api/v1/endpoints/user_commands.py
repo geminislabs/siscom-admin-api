@@ -7,7 +7,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full, get_identity_provider
+from app.api.deps import (
+    get_current_user_full,
+    get_identity_provider,
+    get_request_locale,
+)
+from app.core.i18n import t
 from app.db.session import get_db
 from app.models.command import Command
 from app.models.device import Device
@@ -36,7 +41,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _validate_user_password(idp: IdentityProvider, user: User, password: str) -> bool:
+def _validate_user_password(
+    idp: IdentityProvider, user: User, password: str, locale: str = "es"
+) -> bool:
     """Si esa contraseña es la del usuario.
 
     Es la confirmación de un `ENGINE_STOP`: apagar el motor de un vehículo en
@@ -60,11 +67,13 @@ def _validate_user_password(idp: IdentityProvider, user: User, password: str) ->
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="No se pudo validar la contraseña en este momento",
+            detail=t("user_commands.password_validation_unavailable", locale),
         )
 
 
-def _build_command_for_device(command_type: UserCommandType, device: Device) -> str:
+def _build_command_for_device(
+    command_type: UserCommandType, device: Device, locale: str = "es"
+) -> str:
     brand = (device.brand or "").strip().lower()
     model = (device.model or "").strip().upper()
     suntech_supported_pattern = r"^ST4\d{3}[A-Z]*$"
@@ -77,20 +86,20 @@ def _build_command_for_device(command_type: UserCommandType, device: Device) -> 
 
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        detail=(
-            "No se pudo formar el comando para el modelo del equipo. "
-            f"Modelo actual: brand='{device.brand}', model='{device.model}'. "
-            "Actualmente se soportan modelos Suntech con patrón ST4 + 3 dígitos "
-            "(ej: ST4330, ST4315, ST4315U)"
+        detail=t(
+            "user_commands.unsupported_device_model",
+            locale,
+            brand=device.brand,
+            model=device.model,
         ),
     )
 
 
-def _require_master(current_user: User) -> None:
+def _require_master(current_user: User, locale: str = "es") -> None:
     if not current_user.is_active_organization_owner:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo el usuario master puede ejecutar este endpoint",
+            detail=t("user_commands.only_master", locale),
         )
 
 
@@ -116,28 +125,30 @@ async def create_user_command(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     idp: IdentityProvider = Depends(get_identity_provider),
+    locale: str = Depends(get_request_locale),
 ):
-    _require_master(current_user)
+    _require_master(current_user, locale)
 
     if command_in.command_type == UserCommandType.ENGINE_STOP:
         if not command_in.confirmation:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ENGINE_STOP requiere confirmation",
+                detail=t("user_commands.engine_stop_requires_confirmation", locale),
             )
         if not command_in.confirmation.accepted_risk:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Debe confirmar accepted_risk=true para ENGINE_STOP",
+                detail=t("user_commands.engine_stop_requires_accepted_risk", locale),
             )
         if not _validate_user_password(
             idp,
             current_user,
             command_in.confirmation.password,
+            **({"locale": locale} if locale != "es" else {}),
         ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Contraseña inválida",
+                detail=t("user_commands.invalid_password", locale),
             )
 
     unit = (
@@ -152,7 +163,7 @@ async def create_user_command(
     if not unit:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Unidad no encontrada",
+            detail=t("user_commands.unit_not_found", locale),
         )
 
     assignment = (
@@ -167,17 +178,17 @@ async def create_user_command(
     if not assignment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="La unidad no tiene un dispositivo asignado",
+            detail=t("user_commands.unit_has_no_device", locale),
         )
 
     device = db.query(Device).filter(Device.device_id == assignment.device_id).first()
     if not device:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dispositivo no encontrado para la unidad",
+            detail=t("user_commands.device_not_found_for_unit", locale),
         )
 
-    raw_command = _build_command_for_device(command_in.command_type, device)
+    raw_command = _build_command_for_device(command_in.command_type, device, locale)
 
     command_metadata = {
         "source_id": "user_commands",
@@ -207,7 +218,7 @@ async def create_user_command(
     if not sim_profile or not sim_profile.kore_sim_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El dispositivo no tiene una SIM KORE configurada",
+            detail=t("user_commands.device_has_no_kore_sim", locale),
         )
 
     kore_error = None
@@ -265,8 +276,9 @@ def get_user_commands_by_unit(
     ),
     limit: int = Query(50, ge=1, le=500, description="Límite de resultados"),
     offset: int = Query(0, ge=0, description="Offset para paginación"),
+    locale: str = Depends(get_request_locale),
 ):
-    _require_master(current_user)
+    _require_master(current_user, locale)
 
     unit = (
         db.query(Unit)
@@ -280,7 +292,7 @@ def get_user_commands_by_unit(
     if not unit:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Unidad no encontrada",
+            detail=t("user_commands.unit_not_found", locale),
         )
 
     query = (
@@ -298,7 +310,7 @@ def get_user_commands_by_unit(
         if status_filter not in ["pending", "sent", "delivered", "failed"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Estado inválido. Valores válidos: pending, sent, delivered, failed",
+                detail=t("user_commands.invalid_status_filter", locale),
             )
         query = query.filter(Command.status == status_filter)
 
@@ -332,8 +344,9 @@ async def sync_user_command(
     command_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
+    locale: str = Depends(get_request_locale),
 ):
-    _require_master(current_user)
+    _require_master(current_user, locale)
 
     command = _find_user_command_for_org(db, command_id, current_user.organization_id)
     if not command:
@@ -370,28 +383,27 @@ async def sync_user_command(
 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Comando user-command no encontrado",
+            detail=t("user_commands.command_not_found", locale),
         )
 
     if command.media != "KORE_SMS_API":
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Sincronización no implementada para media '{command.media}'. "
-            f"Solo se soporta 'KORE_SMS_API'",
+            detail=t("commands.sync_not_implemented", locale, media=command.media),
         )
 
     metadata = command.command_metadata
     if not metadata:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El comando no tiene metadata",
+            detail=t("commands.missing_metadata", locale),
         )
 
     kore_response = metadata.get("kore_response")
     if not kore_response:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El comando no tiene kore_response en metadata",
+            detail=t("commands.missing_kore_response", locale),
         )
 
     sid = kore_response.get("sid")
@@ -400,7 +412,7 @@ async def sync_user_command(
     if not sid or not url:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El kore_response no contiene 'sid' o 'url'",
+            detail=t("commands.missing_sid_or_url", locale),
         )
 
     sync_response: Optional[dict[str, Any]] = None

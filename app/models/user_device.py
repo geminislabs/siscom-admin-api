@@ -39,6 +39,10 @@ class UserDevice(SQLModel, table=True):
         default=True,
         sa_column=Column(Boolean, server_default=text("true"), nullable=False),
     )
+    locale: str = Field(
+        default="es",
+        sa_column=Column(Text, server_default=text("'es'"), nullable=False),
+    )
     last_seen_at: Optional[datetime] = Field(
         default=None,
         sa_column=Column(
