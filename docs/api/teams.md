@@ -349,10 +349,12 @@ Reglas:
 
 Response incluye `token` (solo una vez) e `invite_url`.
 
-`invite_url` se construye como `{INVITE_BASE_URL}/invite/{token}`, donde `INVITE_BASE_URL`
-es un ajuste de `app/core/config.py` (default `https://nexus.geminislabs.com`). Debe apuntar
-al dominio que sirve el `apple-app-site-association` / `assetlinks.json` del entorno
-correspondiente, para que el link abra la app en dev y staging y no solo en producción.
+`invite_url` se construye en `_build_invite_url` (`app/services/team_invite_service.py`) como
+`{INVITE_BASE_URL.rstrip("/")}/invite/{token}`, donde `INVITE_BASE_URL` es un ajuste
+obligatorio de `app/core/config.py` (validado al arrancar como URL absoluta `http(s)` con
+host; en producción `https://nexus.geminislabs.com`). Debe apuntar al dominio que sirve el
+`apple-app-site-association` / `assetlinks.json` del entorno correspondiente, para que el link
+abra la app en dev y staging y no solo en producción.
 
 > **El token solo se devuelve en esta respuesta.** En BD se guarda únicamente su SHA-256,
 > así que el link es irrecuperable por diseño: `GET /invites` no puede reconstruirlo.

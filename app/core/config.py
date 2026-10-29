@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Annotated, Any, Optional
+from urllib.parse import urlparse
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -62,6 +63,8 @@ class Settings(BaseSettings):
 
     # Frontend URL - Para construir las URLs de acción en emails
     FRONTEND_URL: str
+    # Base de los enlaces de invitación a equipos; debe ser el dominio que sirve el apple-app-site-association
+    INVITE_BASE_URL: str
 
     # Contact Email - Email donde se reciben los mensajes de contacto
     CONTACT_EMAIL: Optional[str] = None
@@ -228,6 +231,19 @@ class Settings(BaseSettings):
             region = v.strip()
             return region or "us-east-1"
         return str(v)
+
+    @field_validator("INVITE_BASE_URL")
+    @classmethod
+    def validate_invite_base_url(cls, v: str) -> str:
+        raw = (v or "").strip()
+        if not raw:
+            raise ValueError("INVITE_BASE_URL cannot be empty.")
+        parsed = urlparse(raw)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError(
+                "INVITE_BASE_URL must be an absolute http(s) URL with host."
+            )
+        return raw.rstrip("/")
 
     @field_validator("COGNITO_REGION")
     @classmethod

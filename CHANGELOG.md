@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Los enlaces de invitación a equipos apuntan a `INVITE_BASE_URL` (obligatoria y validada al arrancar; en producción `https://nexus.geminislabs.com`); antes usaban `FRONTEND_URL` y daban 404
+
 ## [1.65.0] - 2026-10-28
 
 **Migración `045_user_devices_locale`.** Cabeza: `044_vistas_del_plano_de_control` →

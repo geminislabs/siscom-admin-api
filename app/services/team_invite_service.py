@@ -27,7 +27,7 @@ def _generate_invite_token() -> tuple[str, str]:
 
 
 def _build_invite_url(plain_token: str) -> str:
-    base = settings.FRONTEND_URL.rstrip("/")
+    base = settings.INVITE_BASE_URL.rstrip("/")
     return f"{base}/invite/{plain_token}"
 
 

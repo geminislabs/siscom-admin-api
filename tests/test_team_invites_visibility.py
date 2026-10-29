@@ -6,8 +6,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi import status
+from pydantic import ValidationError
 
 from app.api.deps import get_current_user_full, get_team_rules_kafka_producer
+from app.core.config import Settings, settings
 from app.main import app
 from app.models.team import TeamInvite, TeamMember, TeamVisibilityRule
 from app.utils.datetime import utcnow
@@ -154,16 +156,65 @@ def test_delete_visibility_rule(
 
 
 def test_create_invite_returns_token(
-    authenticated_client, test_organization_data, mock_kafka_producer
+    authenticated_client, test_organization_data, mock_kafka_producer, monkeypatch
 ):
+    monkeypatch.setattr(settings, "INVITE_BASE_URL", "https://nexus.geminislabs.com")
     team_id = _create_team(authenticated_client)
     data = _create_invite(authenticated_client, team_id)
 
     assert data["token"]
-    assert data["invite_url"]
-    assert data["invite_url"].endswith(data["token"])
+    assert data["invite_url"] == f"{settings.INVITE_BASE_URL}/invite/{data['token']}"
     assert data["used_count"] == 0
     assert data["is_active"] is True
+
+
+def test_create_invite_strips_trailing_slash_from_invite_base_url(
+    authenticated_client, test_organization_data, mock_kafka_producer, monkeypatch
+):
+    monkeypatch.setattr(
+        settings, "INVITE_BASE_URL", "https://staging.nexus.geminislabs.com/"
+    )
+    team_id = _create_team(authenticated_client)
+    data = _create_invite(authenticated_client, team_id)
+
+    assert "//invite" not in data["invite_url"].split("://", 1)[1]
+    assert (
+        data["invite_url"]
+        == f"https://staging.nexus.geminislabs.com/invite/{data['token']}"
+    )
+
+
+def test_create_invite_ignores_frontend_url(
+    authenticated_client, test_organization_data, mock_kafka_producer, monkeypatch
+):
+    monkeypatch.setattr(settings, "INVITE_BASE_URL", "https://nexus.geminislabs.com")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://geminislabs.com")
+    team_id = _create_team(authenticated_client)
+    data = _create_invite(authenticated_client, team_id)
+
+    assert data["invite_url"] == f"https://nexus.geminislabs.com/invite/{data['token']}"
+
+
+@pytest.mark.parametrize(
+    "invalid_url",
+    [
+        "",
+        "   ",
+        "nexus.geminislabs.com",
+        "ftp://nexus.geminislabs.com",
+        "https://",
+        "/invite",
+    ],
+)
+def test_settings_rejects_empty_or_invalid_invite_base_url(invalid_url):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, INVITE_BASE_URL=invalid_url)
+
+
+def test_settings_rejects_missing_invite_base_url(monkeypatch):
+    monkeypatch.delenv("INVITE_BASE_URL", raising=False)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
 
 
 def test_list_invites_excludes_token(
