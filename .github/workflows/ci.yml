@@ -80,6 +80,7 @@ jobs:
           COGNITO_CLIENT_SECRET: test-client-secret
           SES_FROM_EMAIL: test@example.com
           FRONTEND_URL: http://localhost:3000
+          INVITE_BASE_URL: http://localhost:3000
           PASETO_SECRET_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         # `--durations=25` viaja de polizón, y está medido: de los 874 s del job
         # `quality` en la corrida 35646430146, **786 s son este paso** — el resto

@@ -21,6 +21,7 @@ _TEST_ENV_DEFAULTS = {
     "COGNITO_CLIENT_SECRET": "test-client-secret",
     "SES_FROM_EMAIL": "test@example.com",
     "FRONTEND_URL": "http://localhost:3000",
+    "INVITE_BASE_URL": "https://nexus.geminislabs.com",
     "PASETO_SECRET_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     # Distinta de PASETO_SECRET_KEY a propósito: los tests deben correr
     # con las dos claves separadas, igual que producción.

@@ -631,6 +631,7 @@ SES_REGION=us-east-1
 
 # Frontend
 FRONTEND_URL=https://app.tudominio.com
+INVITE_BASE_URL=https://nexus.geminislabs.com
 ```
 
 ---

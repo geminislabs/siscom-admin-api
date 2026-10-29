@@ -88,6 +88,8 @@ SES_REGION=us-east-1
 
 # Frontend URL - Para links en emails
 FRONTEND_URL=https://app.tudominio.com
+# Base de los enlaces de invitación a equipos
+INVITE_BASE_URL=https://nexus.geminislabs.com
 ```
 
 **Importante**:

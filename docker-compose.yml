@@ -26,6 +26,7 @@ services:
       SES_REGION: ${SES_REGION:-us-east-1}
       # Frontend URL
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      INVITE_BASE_URL: ${INVITE_BASE_URL:-https://nexus.geminislabs.com}
       # Contact Email - Email donde se reciben los mensajes de contacto
       CONTACT_EMAIL: ${CONTACT_EMAIL:-contacto@geminislabs.com}
       # Google reCAPTCHA v3

@@ -41,6 +41,7 @@ services:
 
       # Frontend URL
       FRONTEND_URL: ${FRONTEND_URL}
+      INVITE_BASE_URL: ${INVITE_BASE_URL}
 
       # CORS origins permitidos (lista separada por comas o JSON)
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
