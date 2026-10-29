@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.65.1] - 2026-10-28
+
+**Sin migraciones.** Requiere la variable `INVITE_BASE_URL` en el environment `test` (creada el 28/10
+con `https://nexus.geminislabs.com`); sin ella el contenedor no arranca.
+
+**Rollback.** Redesplegar `v1.65.0`.
+
 ### Fixed
 
 - Los enlaces de invitación a equipos apuntan a `INVITE_BASE_URL` (obligatoria y validada al arrancar; en producción `https://nexus.geminislabs.com`); antes usaban `FRONTEND_URL` y daban 404
