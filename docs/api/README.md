@@ -40,7 +40,6 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 - [user-devices.md](./user-devices.md) - Registro y desactivación de dispositivos push de usuario
 - [mobility-devices.md](./mobility-devices.md) - Registro de dispositivos de movilidad de usuario
 - [mobility-locations.md](./mobility-locations.md) - Ingesta de ubicaciones de movilidad y publicación a Kafka
-- [device-events.md](./device-events.md) - Historial de eventos
 - [commands.md](./commands.md) - Comandos a dispositivos
 - [user-commands.md](./user-commands.md) - Comandos críticos iniciados por usuario master
 
@@ -108,7 +107,6 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 1. [devices.md](./devices.md) - Alta de dispositivos
 2. [units.md](./units.md) - Creación de unidades
 3. [unit-devices.md](./unit-devices.md) - Asignación
-4. [device-events.md](./device-events.md) - Auditoría
 
 **👥 Gestión de Equipo:**
 1. [organization-users.md](./organization-users.md) - Agregar usuarios

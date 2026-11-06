@@ -206,6 +206,7 @@ def create_device(
 @router.get("", response_model=List[DeviceOut])
 def list_devices(
     db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_gac_admin),
     status_filter: Optional[str] = None,
     client_id: Optional[UUID] = None,
     brand: Optional[str] = None,
@@ -482,6 +483,7 @@ def get_device_statuses():
 def get_device(
     device_id: str,
     db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_gac_admin),
 ):
     """
     Obtiene el detalle de un dispositivo específico.

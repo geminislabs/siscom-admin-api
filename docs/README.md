@@ -238,12 +238,6 @@ Comienza aquí si eres nuevo en el proyecto:
 |--------|----------|-------------|------|
 | `POST` | `/sync/kore` | Sincronizar SIMs de KORE hacia `sim_cards` y `sim_kore_profiles` | 🔐 Cognito / 🔑 PASETO |
 
-### Eventos de Dispositivos (`/api/v1/device-events`)
-
-| Método | Endpoint | Descripción | Auth |
-|--------|----------|-------------|------|
-| `GET` | `/{device_id}` | Historial de eventos del dispositivo | 🔐 Cognito |
-
 ### Unidades (`/api/v1/units`)
 
 | Método | Endpoint | Descripción | Auth |

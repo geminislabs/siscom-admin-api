@@ -224,7 +224,6 @@ POST /api/v1/contact/send-message
 | `PATCH` | `/api/v1/devices/{id}/status` | Cualquier usuario | Cambiar estado |
 | `POST` | `/api/v1/devices/{id}/notes` | Cualquier usuario | Agregar nota |
 | `GET` | `/api/v1/devices/{id}/trips` | Cualquier usuario | Viajes del dispositivo |
-| `GET` | `/api/v1/device-events/{device_id}` | Cualquier usuario | Eventos del dispositivo |
 | `GET` | `/api/v1/units` | Cualquier usuario | Unidades visibles |
 | `POST` | `/api/v1/units` | Cualquier usuario | Crear unidad |
 | `GET` | `/api/v1/units/{id}` | Cualquier usuario | Detalle unidad |

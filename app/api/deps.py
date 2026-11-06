@@ -893,7 +893,14 @@ def require_account_permission(permission: str):
 
 
 # Dependencias pre-configuradas
-get_auth_for_gac_admin = get_auth_cognito_or_paseto(
+
+# Inventario de dispositivos y SIMs: sólo GAC. Era `get_auth_cognito_or_paseto`,
+# que deja pasar a cualquier usuario de Cognito sin mirar el rol —el mismo
+# agujero que tuvo `/internal/*` (ver `get_auth_solo_servicio`)— y que daba a
+# cualquier cliente de Nexus el inventario completo de todas las
+# organizaciones. Nadie llama a estas rutas con Cognito: GAC y el worker de
+# demo mandan PASETO (verificado en los repos el 06/11/2026).
+get_auth_for_gac_admin = get_auth_solo_servicio(
     required_service="gac",
     required_role="GAC_ADMIN",
 )

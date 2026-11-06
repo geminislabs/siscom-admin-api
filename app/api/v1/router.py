@@ -42,7 +42,6 @@ from app.api.v1.endpoints import (
     capabilities,
     commands,
     contact,
-    device_events,
     devices,
     emergency_events,
     geofences,
@@ -155,9 +154,6 @@ api_router.include_router(
     tags=["mobility-locations"],
 )
 api_router.include_router(user_units.router, prefix="/user-units", tags=["user-units"])
-api_router.include_router(
-    device_events.router, prefix="/device-events", tags=["device-events"]
-)
 
 # Teams
 api_router.include_router(teams.router, prefix="/teams", tags=["teams"])

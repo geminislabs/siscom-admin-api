@@ -271,34 +271,6 @@ class DeviceEventCreate(DeviceEventBase):
     performed_by: Optional[UUID] = None
 
 
-class DeviceEventOut(BaseModel):
-    """Schema de salida para eventos de dispositivos"""
-
-    id: UUID
-    device_id: str
-    event_type: str
-    old_status: Optional[str] = None
-    new_status: Optional[str] = None
-    performed_by: Optional[UUID] = None
-    event_details: Optional[str] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
-            "example": {
-                "id": "423e4567-e89b-12d3-a456-426614174000",
-                "device_id": "123456789012345",
-                "event_type": "asignado",
-                "old_status": "entregado",
-                "new_status": "asignado",
-                "performed_by": "523e4567-e89b-12d3-a456-426614174000",
-                "event_details": "Dispositivo asignado a unidad ABC-123",
-                "created_at": "2024-01-12T14:20:00Z",
-            }
-        }
-
-
 class UnitBase(BaseModel):
     name: str
     plate: Optional[str] = None
