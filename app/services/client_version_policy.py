@@ -16,7 +16,6 @@ Dos reglas que no son incidentales:
 from __future__ import annotations
 
 import logging
-import re
 from enum import Enum
 from typing import Optional, Sequence, Tuple
 
@@ -24,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 PLATAFORMAS = ("ios", "android")
 
-# `1.2.0`, `1.2`, `1.2.0-beta.1`, `1.2.0+45`: sólo cuenta la parte numérica.
-_VERSION = re.compile(r"^\s*v?(\d+(?:\.\d+)*)(?:[-+].*)?\s*$")
+# Una versión real cabe de sobra; más larga es basura y no se procesa.
+_LARGO_MAXIMO = 64
 
 
 class Actualizacion(str, Enum):
@@ -35,13 +34,23 @@ class Actualizacion(str, Enum):
 
 
 def parse_version(valor: Optional[str]) -> Optional[Tuple[int, ...]]:
-    """`"1.10.0"` → `(1, 10, 0)`, o None si no se puede leer."""
-    if not valor:
+    """`"1.10.0"` → `(1, 10, 0)`, o None si no se puede leer.
+
+    Acepta `1.2`, `v1.2.0`, `1.2.0-beta.1` y `1.2.0+45`: sólo cuenta la parte
+    numérica. Sin expresión regular a propósito: el valor llega del cliente, y
+    la que había era polinómica (CodeQL `py/polynomial-redos`).
+    """
+    if not valor or len(valor) > _LARGO_MAXIMO:
         return None
-    m = _VERSION.match(valor)
-    if m is None:
+    texto = valor.strip()
+    if texto[:1] in ("v", "V"):
+        texto = texto[1:]
+    for separador in ("-", "+"):
+        texto = texto.split(separador, 1)[0]
+    partes = texto.split(".")
+    if not all(p.isascii() and p.isdigit() for p in partes):
         return None
-    return tuple(int(p) for p in m.group(1).split("."))
+    return tuple(int(p) for p in partes)
 
 
 def _comparar(a: Tuple[int, ...], b: Tuple[int, ...]) -> int:

@@ -24,6 +24,8 @@ from app.services.client_version_policy import Actualizacion, evaluar, parse_ver
         ("abc", None),
         ("1..2", None),
         ("1.2.x", None),
+        ("１.２", None),  # dígitos no ASCII
+        ("1." + "1" * 200, None),  # demasiado larga
     ],
 )
 def test_parse_version(valor, esperado):
