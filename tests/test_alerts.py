@@ -46,11 +46,15 @@ def _create_user(db_session, organization_id, email, is_master=False):
 
 
 def _assign_user_unit(db_session, user_id, unit_id, role="viewer"):
+    # Con histórico: estos tests miran qué unidades ve el usuario, no desde
+    # cuándo, y sus alertas son anteriores a la concesión. El recorte por
+    # ventana lo prueba `tests/test_historial_de_concesiones.py`.
     assignment = UserUnit(
         id=uuid4(),
         user_id=user_id,
         unit_id=unit_id,
         role=role,
+        include_history=True,
     )
     db_session.add(assignment)
     db_session.commit()
