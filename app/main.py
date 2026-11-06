@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.api.client_version_gate import client_version_gate
 from app.api.deps import (
     close_geofences_kafka_producer,
     close_mobility_kafka_producer,
@@ -132,6 +133,13 @@ async def unhandled_exception_to_json(request: Request, call_next):
         )
 
 
+# Justo por dentro del request_id, y por fuera del manejador de 500: así los
+# logs de un 500 también llevan la plataforma y la versión de la app.
+@app.middleware("http")
+async def attach_client_version_gate(request: Request, call_next):
+    return await client_version_gate(request, call_next)
+
+
 @app.middleware("http")
 async def attach_request_id(request: Request, call_next):
     return await request_id_middleware(request, call_next)
@@ -151,7 +159,8 @@ app.add_middleware(
 # Lo ultimo que se registra es lo mas externo, asi que la traza envuelve todo
 # lo demas y el span sigue abierto cuando `unhandled_exception_to_json` loguea.
 # Orden resultante, de fuera hacia dentro:
-#     traza OTel -> CORS -> request_id -> manejador de 500 -> tamaño de body
+#     traza OTel -> CORS -> request_id -> versión de la app (426) ->
+#     manejador de 500 -> tamaño de body
 instrument_app(app)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
