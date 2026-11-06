@@ -33,7 +33,7 @@ from app.models.organization_user import (
 )
 from app.models.permission import PermissionScope
 from app.models.token_confirmacion import TokenConfirmacion, TokenType
-from app.models.user import User
+from app.models.user import User, UserStatus
 from app.observability.metrics import record_auth_attempt, record_session_delta
 from app.schemas.account import (
     AccountOut,
@@ -1563,6 +1563,14 @@ def _usuario_para_renovar(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("auth.token_refresh_failed", locale),
         )
+    # Mismo 401: un usuario desactivado no renueva aunque el proveedor no se
+    # haya enterado todavía (ver `deps._exigir_usuario_activo`).
+    if usuario.status != UserStatus.ACTIVE.value:
+        logger.warning("auth.refresh.usuario_inactivo")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=t("auth.token_refresh_failed", locale),
+        )
     return usuario
 
 
@@ -1839,9 +1847,10 @@ def issue_data_token(
     identidad: siscom-api no puede aprender de él a qué cliente pertenece quien
     lo presenta.
 
-    **Efecto secundario deliberado:** emitir revoca los data tokens anteriores
-    del mismo usuario. Estrechar permisos tiene que surtir efecto ya, no cuando
-    caduque el token anterior.
+    **Sin efecto secundario:** emitir no revoca los data tokens anteriores del
+    mismo usuario, así que dos clientes suyos pueden renovar a la vez. Lo que
+    hace que estrechar permisos surta efecto ya es la revocación desde el ORM
+    (`app/services/session_revocation.py`).
 
     Responde 503 si falta la clave de firma, Valkey o el secreto del índice de
     revocación: no se emiten credenciales que no se puedan revocar.

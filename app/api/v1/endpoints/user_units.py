@@ -4,17 +4,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import (
-    get_current_user_full,
-    get_scope_store,
-)
+from app.api.deps import get_current_user_full
 from app.db.session import get_db
 from app.models.unit import Unit
 from app.models.user import User
 from app.models.user_unit import UserUnit
 from app.schemas.user_unit import UserUnitCreate, UserUnitDetail, UserUnitOut
 from app.services.access_control import es_miembro
-from app.services.data_token_issuance import revoke_sessions_for_user
 
 router = APIRouter()
 
@@ -211,7 +207,6 @@ def delete_user_unit(
     assignment_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    store=Depends(get_scope_store),
 ):
     """
     Revoca el acceso de un usuario a una unidad.
@@ -241,16 +236,11 @@ def delete_user_unit(
     # Obtener información para el mensaje
     user = db.query(User).filter(User.id == assignment.user_id).first()
     unit = db.query(Unit).filter(Unit.id == assignment.unit_id).first()
-    revoked_user_id = assignment.user_id
 
-    # Eliminar la asignación
+    # Eliminar la asignación. Sus data tokens los revoca el ORM al confirmar
+    # (`app/services/session_revocation.py`).
     db.delete(assignment)
     db.commit()
-
-    # El permiso ya está retirado en Postgres; esto adelanta el momento en que el
-    # plano de datos se entera. Best effort: si Valkey no responde, el alcance
-    # viejo caduca solo y no tiene sentido fallar una operación ya completada.
-    revoke_sessions_for_user(store, revoked_user_id)
 
     return {
         "message": "Acceso revocado exitosamente",

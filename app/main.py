@@ -16,6 +16,7 @@ from app.observability.init import instrument_app, setup_telemetry
 from app.observability.logging import configure_json_logging
 from app.observability.metrics import record_api_error
 from app.observability.request_id import request_id_middleware
+from app.services import session_revocation
 from app.services.health import (
     check_database,
     check_kafka_accessibility,
@@ -30,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 # Toda sesión del ORM emite los eventos de control al confirmar (ADR-008).
 control_plane.registrar()
+# Y revoca los data tokens de quien pierde alcance (D1).
+session_revocation.registrar()
 
 
 @asynccontextmanager

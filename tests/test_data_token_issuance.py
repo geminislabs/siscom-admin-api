@@ -176,12 +176,13 @@ def test_token_only_carries_the_scope_ref(db_session, fleet, issuer, store, keyp
     assert UUID(payload["scope_ref"]) == issued.scope_ref
 
 
-def test_issuing_again_revokes_the_previous_scope(
+def test_issuing_again_keeps_the_previous_scope(
     db_session, fleet, issuer, store, fake_valkey
 ):
     """
-    Sin esto, estrechar los permisos de alguien no surtiría efecto hasta que
-    caducara el token ancho.
+    D1: emitir no revoca. Dos clientes del mismo usuario renuevan a la vez sin
+    matarse entre sí; estrechar permisos lo cubre
+    `app/services/session_revocation.py` (ver `tests/test_session_revocation.py`).
     """
     subject_id = uuid4()
     first = issue_for_subject(
@@ -202,7 +203,7 @@ def test_issuing_again_revokes_the_previous_scope(
     )
 
     assert second.scope_ref != first.scope_ref
-    assert scope_keys(first.scope_ref)[0] not in fake_valkey.hashes
+    assert scope_keys(first.scope_ref)[0] in fake_valkey.hashes
     assert scope_keys(second.scope_ref)[0] in fake_valkey.hashes
 
 

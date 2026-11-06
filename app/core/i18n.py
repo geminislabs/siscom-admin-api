@@ -26,6 +26,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "es": "Usuario no encontrado",
         "en": "User not found",
     },
+    "deps.user_inactive": {
+        "es": "Usuario inactivo",
+        "en": "Inactive user",
+    },
     "deps.no_active_membership": {
         "es": "Sin membresía activa en la organización solicitada",
         "en": "No active membership in the requested organization",

@@ -237,10 +237,9 @@ class ScopeStore:
         """
         Revoca todos los alcances vivos de un sujeto y devuelve cuáles eran.
 
-        Es lo que hay que llamar cuando cambian los permisos —desasignar una
-        unidad, salir de un team, cerrar sesión— y también en cada emisión: un
-        token nuevo tiene que matar al anterior, o estrechar el alcance de alguien
-        no surtiría efecto hasta que caducara el token ancho.
+        Es lo que hay que llamar cuando se estrechan los permisos —desasignar
+        una unidad, perder una membresía, cerrar sesión—. Para la sesión lo hace
+        `app/services/session_revocation.py` desde el ORM; emitir ya no revoca.
 
         Solo revoca el propósito indicado. Renovar la sesión no apaga los enlaces
         que esa persona haya compartido: son credenciales distintas con vidas

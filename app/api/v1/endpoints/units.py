@@ -45,7 +45,6 @@ from app.schemas.vehicle_profile import (
 from app.services.access_control import es_miembro
 from app.services.data_token_issuance import (
     issue_share_token,
-    revoke_sessions_for_user,
     revoke_shares_for_unit,
 )
 from app.services.scope_store import (
@@ -1248,7 +1247,6 @@ def remove_user_from_unit(
     user_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
-    store=Depends(get_scope_store),
     locale: str = Depends(get_request_locale),
 ):
     """
@@ -1297,11 +1295,10 @@ def remove_user_from_unit(
     user = db.query(User).filter(User.id == user_id).first()
 
     # Eliminar la asignación
+    # Sus data tokens los revoca el ORM al confirmar
+    # (`app/services/session_revocation.py`).
     db.delete(assignment)
     db.commit()
-
-    # Adelanta la caducidad del alcance del plano de datos. Best effort.
-    revoke_sessions_for_user(store, user_id)
 
     return {
         "message": t("units.user_access_revoked_success", locale),

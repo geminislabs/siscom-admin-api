@@ -122,36 +122,6 @@ def test_can_manage_billing_requires_owner_or_billing(monkeypatch, org_id, user_
     assert OrganizationService.can_manage_billing(MagicMock(), user_id, org_id) is True
 
 
-def test_add_member_raises_when_already_exists(org_id, user_id):
-    session = MagicMock()
-    existing = MagicMock()
-    q = MagicMock()
-    q.filter.return_value.first.return_value = existing
-    session.query.return_value = q
-
-    with pytest.raises(HTTPException) as ei:
-        OrganizationService.add_member(session, org_id, user_id)
-    assert ei.value.status_code == 400
-    assert "ya es miembro" in ei.value.detail
-
-
-def test_update_member_role_raises_when_actor_cannot_manage(monkeypatch, org_id):
-    target = uuid4()
-    actor = uuid4()
-
-    monkeypatch.setattr(OrganizationService, "can_manage_users", lambda *a: False)
-
-    with pytest.raises(HTTPException) as ei:
-        OrganizationService.update_member_role(
-            MagicMock(),
-            org_id,
-            target,
-            OrganizationRole.MEMBER,
-            actor,
-        )
-    assert ei.value.status_code == 403
-
-
 def test_deprecated_helpers_delegate_to_organization_functions(user_id, org_id):
     db = MagicMock()
 

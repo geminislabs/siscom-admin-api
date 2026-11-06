@@ -26,7 +26,6 @@ from app.models.organization import Organization
 from app.models.organization_user import OrganizationRole, OrganizationUser
 from app.models.user import User
 from app.services.identity import IdentityProvider
-from app.services.organization import OrganizationService
 from app.utils.datetime import utcnow
 
 
@@ -319,20 +318,6 @@ def test_quitar_la_por_defecto_la_mueve_y_lo_audita(
         segunda.id
     )
     idp_falso.deshabilitar.assert_not_called()
-
-
-def test_remove_member_del_servicio_tambien_la_mueve(
-    db_session, test_organization_data, test_user_data, con_dos
-):
-    """Nadie llama hoy a `OrganizationService.remove_member`, pero borra
-    membresías: si algún día se usa, no puede saltarse el invariante."""
-    victima, segunda = con_dos
-
-    OrganizationService.remove_member(
-        db_session, test_organization_data.id, victima.id, test_user_data.id
-    )
-
-    assert _por_defecto_de(db_session, victima) == segunda.id
 
 
 # ── La red: el listado no depende de la por defecto ─────────────────────

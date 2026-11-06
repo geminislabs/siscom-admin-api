@@ -73,6 +73,7 @@ def test_resolve_current_organization_sin_membresia_activa_falla_cerrado():
     user = MagicMock()
     user.id = uuid4()
     user.organization_id = oid
+    user.status = "ACTIVE"
     db = _db_con_usuario_y_membresia(user, hay_membresia_activa=False)
 
     with pytest.raises(HTTPException) as ei:
@@ -85,6 +86,7 @@ def test_resolve_current_organization_returns_org_id():
     user = MagicMock()
     user.id = uuid4()
     user.organization_id = oid
+    user.status = "ACTIVE"
     db = _db_con_usuario_y_membresia(user, hay_membresia_activa=True)
 
     assert resolve_current_organization(db, {"sub": "x"}) == oid
@@ -148,6 +150,7 @@ def test_auth_cognito_or_paseto_cognito_success(monkeypatch):
     user = MagicMock()
     user.id = uid
     user.organization_id = oid
+    user.status = "ACTIVE"
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
@@ -174,6 +177,28 @@ def test_auth_cognito_or_paseto_cognito_success(monkeypatch):
     assert result.user_id == uid
     assert result.organization_id == oid
     assert result.organization_role == "admin"
+
+
+def test_auth_cognito_or_paseto_rechaza_usuario_inactivo(monkeypatch):
+    """Un usuario desactivado no entra aunque su JWT siga validando. El 403 cae
+    al intento PASETO, que tampoco vale: 401, cerrado igual."""
+    user = MagicMock()
+    user.id = uuid4()
+    user.organization_id = uuid4()
+    user.status = "INACTIVE"
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = user
+
+    creds = MagicMock()
+    creds.credentials = "jwt-token"
+    monkeypatch.setattr(deps_mod, "verify_cognito_token", lambda t: {"sub": "sub-1"})
+    monkeypatch.setattr(deps_mod, "decode_service_token", lambda *a, **k: None)
+
+    verify_fn = deps_mod.get_auth_cognito_or_paseto()
+    with pytest.raises(HTTPException) as ei:
+        verify_fn(credentials=creds, db=db)
+    assert ei.value.status_code == 401
 
 
 def test_auth_cognito_or_paseto_falls_back_to_paseto(monkeypatch):
@@ -230,6 +255,7 @@ def test_require_organization_permission_allows_role_with_permission(monkeypatch
     user = MagicMock()
     user.id = uid
     user.organization_id = oid
+    user.status = "ACTIVE"
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
@@ -289,6 +315,7 @@ def test_require_capability_raises_when_disabled(monkeypatch):
     user = MagicMock()
     user.id = uid
     user.organization_id = oid
+    user.status = "ACTIVE"
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user

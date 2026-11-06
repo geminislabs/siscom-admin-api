@@ -307,6 +307,27 @@ def organizacion_solicitada(
     return x_organization_id
 
 
+def _exigir_usuario_activo(user, locale: str = "es") -> None:
+    """403 si `users.status` no es `ACTIVE`.
+
+    Es la fuente de verdad de si alguien puede autenticarse (§9, regla 1): el
+    proveedor se deshabilita después del commit y puede fallar —ocurrió el
+    22/09/2026—, y aunque no falle, los access tokens ya emitidos siguen
+    validando aquí hasta su `exp`. Sin esto, alguien desactivado desde GAC con
+    membresías activas seguía pidiendo data tokens hasta entonces, y revocar
+    los suyos no servía porque podía sacar otro al momento.
+
+    Todo camino que carga al usuario desde un token de persona pasa por aquí.
+    """
+    from app.models.user import UserStatus
+
+    if user.status != UserStatus.ACTIVE.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=t("deps.user_inactive", locale),
+        )
+
+
 def _load_user_by_sub(
     db: Session,
     cognito_sub: Optional[str],
@@ -329,6 +350,7 @@ def _load_user_by_sub(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=t("deps.user_not_found_in_system", locale),
         )
+    _exigir_usuario_activo(user, locale)
     return user
 
 
@@ -625,6 +647,7 @@ def get_auth_cognito_or_paseto(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=t("deps.user_not_found_in_system", locale),
                 )
+            _exigir_usuario_activo(user, locale)
 
             # Obtener rol usando OrganizationService (única fuente de verdad)
             org_role = OrganizationService.get_user_role(
@@ -729,6 +752,7 @@ def require_organization_permission(permission: str):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=t("deps.user_not_found", locale),
             )
+        _exigir_usuario_activo(user, locale)
 
         # Única fuente de verdad del rol; sin membresía activa devuelve None.
         org_role = OrganizationService.get_user_role(db, user.id, user.organization_id)
@@ -795,6 +819,7 @@ def require_capability(capability_code: str):
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=t("deps.user_not_found", locale),
             )
+        _exigir_usuario_activo(user, locale)
 
         # Verificar capability
         if not CapabilityService.has_capability(
