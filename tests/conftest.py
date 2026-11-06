@@ -231,6 +231,8 @@ def _crear_vistas_del_plano_de_control(engine) -> None:
             "045_user_devices_locale",
             # El trigger que archiva las concesiones retiradas.
             "046_historial_de_concesiones",
+            # La semilla de la política de versiones (la tabla ya existe).
+            "047_politica_de_versiones",
         ):
             for sql in _migracion(nombre).sentencias():
                 conn.execute(text(sql))

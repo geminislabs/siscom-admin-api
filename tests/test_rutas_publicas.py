@@ -34,6 +34,10 @@ PUBLICAS = {
     ("GET", "/api/v1/plans/{plan_identifier}"): "catálogo de precios público",
     ("GET", "/api/v1/tenant-config"): "marca del login, antes de autenticarse",
     ("GET", "/api/v1/devices/status"): "catálogo estático de estados",
+    (
+        "GET",
+        "/api/v1/client-config",
+    ): "la app lo pregunta al arrancar, antes de la sesión",
 }
 
 
