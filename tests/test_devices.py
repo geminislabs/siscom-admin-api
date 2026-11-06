@@ -4,6 +4,8 @@ Tests de endpoints de dispositivos con nueva estructura de estados y eventos.
 
 from fastapi import status
 
+from app.models.device import DeviceEvent
+
 
 def _set_status(client, device_id, new_status, **extra):
     """Aplica una transición de estado vía PATCH /devices/{id}/status."""
@@ -520,7 +522,7 @@ def test_status_acepta_un_token_de_servicio_firmado(
 def test_status_rechaza_un_token_de_servicio_con_otro_rol(
     authenticated_client, test_device_data, test_organization_data, monkeypatch
 ):
-    """Firmado con la clave buena, pero con un rol que no es GAC_ADMIN: 401.
+    """Firmado con la clave buena, pero con un rol que no es GAC_ADMIN: 403.
 
     Es la otra mitad del test anterior. Sin este, un `required_role` puesto a
     `None` por descuido abriria el endpoint a cualquier token de servicio
@@ -541,7 +543,36 @@ def test_status_rechaza_un_token_de_servicio_con_otro_rol(
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    # 403 desde que `get_auth_for_gac_admin` es sólo servicio (06/11/2026).
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_el_inventario_rechaza_a_un_usuario_de_cognito(
+    authenticated_client, test_device_data, test_user_data, monkeypatch
+):
+    """Hasta el 06/11/2026 `GET /devices` respondía sin token, y la dependencia
+    de GAC dejaba pasar a cualquier usuario de Cognito: el inventario de todas
+    las organizaciones era de quien lo pidiera. Ver
+    `docs/security/inventario-sin-autenticacion.md`."""
+    import app.api.deps as deps_mod
+    from app.api.deps import get_auth_for_gac_admin
+    from app.main import app
+
+    app.dependency_overrides.pop(get_auth_for_gac_admin, None)
+    monkeypatch.setattr(
+        deps_mod, "verify_cognito_token", lambda _t: {"sub": test_user_data.cognito_sub}
+    )
+    cabecera = {"Authorization": "Bearer jwt-de-cognito"}
+
+    for ruta in ("/api/v1/devices", f"/api/v1/devices/{test_device_data.device_id}"):
+        assert (
+            authenticated_client.get(ruta, headers=cabecera).status_code
+            == status.HTTP_403_FORBIDDEN
+        ), ruta
+        assert authenticated_client.get(ruta).status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        ), ruta
 
 
 # ============================================
@@ -549,7 +580,7 @@ def test_status_rechaza_un_token_de_servicio_con_otro_rol(
 # ============================================
 
 
-def test_get_device_events(authenticated_client):
+def test_crear_dispositivo_registra_el_evento_creado(authenticated_client, db_session):
     """
     Test que obtiene el historial de eventos de un dispositivo.
     """
@@ -562,19 +593,18 @@ def test_get_device_events(authenticated_client):
     created = authenticated_client.post("/api/v1/devices", json=device_data)
     assert created.status_code == status.HTTP_201_CREATED
 
-    response = authenticated_client.get(
-        f"/api/v1/device-events/{device_data['device_id']}"
-    )
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert isinstance(data, list)
-    # Debe tener al menos el evento 'creado'
-    assert len(data) >= 1
-    # Eventos ordenados del más reciente al más antiguo: el más antiguo es 'creado'
-    assert data[-1]["event_type"] == "creado"
+    # La bitácora se lee en la base: `GET /device-events` se retiró el
+    # 06/11/2026 (respondía sin autenticación).
+    eventos = [
+        e.event_type
+        for e in db_session.query(DeviceEvent)
+        .filter(DeviceEvent.device_id == device_data["device_id"])
+        .all()
+    ]
+    assert "creado" in eventos
 
 
-def test_add_device_note(authenticated_client, test_device_data):
+def test_add_device_note(authenticated_client, test_device_data, db_session):
     """
     Test que agrega una nota al dispositivo y registra el evento 'nota'.
     """
@@ -586,12 +616,10 @@ def test_add_device_note(authenticated_client, test_device_data):
     assert "Test nota administrativa" in data["notes"]
 
     # Verificar que se creó el evento en la bitácora
-    response = authenticated_client.get(
-        f"/api/v1/device-events/{test_device_data.device_id}"
+    eventos = db_session.query(DeviceEvent).filter(
+        DeviceEvent.device_id == test_device_data.device_id
     )
-    assert response.status_code == status.HTTP_200_OK
-    events = response.json()
-    assert any(e["event_type"] == "nota" for e in events)
+    assert any(e.event_type == "nota" for e in eventos)
 
 
 # ============================================

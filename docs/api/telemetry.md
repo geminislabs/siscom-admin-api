@@ -802,7 +802,6 @@ curl -X POST "https://api.ejemplo.com/api/v1/telemetry/query" \
 
 ## Referencias
 
-- [API de Eventos de Dispositivos](./device-events.md) — historial administrativo de dispositivos
 - [API de Viajes](./trips.md) — viajes detectados con puntos GPS
 - [API de Alertas](./alerts.md) — alertas generadas por reglas
 - [Modelo Organizacional](../guides/organizational-model.md) — permisos y roles

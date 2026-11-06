@@ -231,12 +231,6 @@ Gestión de teams, miembros, invitaciones, reglas de visibilidad, emergencias y 
 - `GET /api/v1/internal/teams/snapshot` - Snapshot incremental/global
 - `GET /api/v1/internal/teams/{team_id}/snapshot` - Snapshot por team
 
-### [device-events.md](./device-events.md)
-Historial de eventos y auditoría de dispositivos.
-
-**Endpoints:**
-- `GET /api/v1/device-events/{device_id}` - Historial de eventos
-
 ### [commands.md](./commands.md)
 Envío de comandos a dispositivos GPS.
 
@@ -529,7 +523,6 @@ GET    /api/v1/devices/{device_id}
 PATCH  /api/v1/devices/{device_id}
 PATCH  /api/v1/devices/{device_id}/status
 POST   /api/v1/devices/{device_id}/notes
-GET    /api/v1/device-events/{device_id}
 
 # Units
 GET    /api/v1/units

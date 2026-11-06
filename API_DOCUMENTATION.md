@@ -1474,60 +1474,7 @@ Requiere `start_date` y `end_date` como query params.
 
 ## 7. Eventos de Dispositivos (`/device-events`)
 
-Historial de auditoría de todos los cambios en dispositivos.
-
-### 🔒 Todos requieren autenticación
-
-#### `GET /api/v1/device-events/`
-
-**Listar eventos de dispositivos**
-
-**Headers:** `Authorization: Bearer {access_token}`
-
-**Query Parameters (opcionales):**
-
-- `device_id` (string): Filtrar por dispositivo específico
-- `event_type` (string): Filtrar por tipo de evento
-- `limit` (int, default=100): Límite de resultados
-
-**Response:** `200 OK`
-
-```json
-[
-  {
-    "id": "uuid",
-    "device_id": "IMEI123456789",
-    "event_type": "creado",
-    "old_status": null,
-    "new_status": "nuevo",
-    "performed_by": "uuid-user",
-    "event_details": "Dispositivo Teltonika FMB120 registrado en inventario",
-    "timestamp": "2024-11-08T10:00:00Z"
-  },
-  {
-    "id": "uuid",
-    "device_id": "IMEI123456789",
-    "event_type": "asignado",
-    "old_status": "nuevo",
-    "new_status": "asignado",
-    "performed_by": "uuid-user",
-    "event_details": "Dispositivo asignado al cliente Mi Empresa S.A.",
-    "timestamp": "2024-11-08T10:30:00Z"
-  }
-]
-```
-
-**Tipos de eventos:**
-
-- `creado`: Dispositivo registrado en inventario
-- `preparado`: Dispositivo preparado para cliente
-- `enviado`: Dispositivo enviado al cliente
-- `entregado`: Dispositivo entregado
-- `asignado`: Dispositivo vinculado a unidad
-- `devuelto`: Dispositivo devuelto a inventario
-- `firmware_actualizado`: Cambio de firmware
-- `nota`: Nota administrativa agregada
-- `estado_cambiado`: Cambio de estado registrado
+Retirado el 06/11/2026: respondía sin autenticación y no lo llamaba ningún cliente. Ver `docs/security/inventario-sin-autenticacion.md`.
 
 ---
 
