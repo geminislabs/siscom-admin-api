@@ -104,9 +104,15 @@ Authorization: Bearer <access_token>
 {
   "user_id": "user123-e89b-12d3-a456-426614174000",
   "unit_id": "abc12345-e89b-12d3-a456-426614174000",
-  "role": "editor"
+  "role": "editor",
+  "include_history": false
 }
 ```
+
+**Qué histórico ve el usuario:** por defecto, sólo lo ocurrido en la unidad
+desde que se le concede (recorridos, alertas, posiciones). Con
+`include_history: true` ve también lo anterior. Es una decisión explícita de
+quien concede, porque el pasado de una unidad puede ser de otra persona.
 
 **Campos:**
 
@@ -158,6 +164,11 @@ Authorization: Bearer <access_token>
 
 Revoca el acceso de un usuario a una unidad eliminando la asignación.
 
+La concesión retirada se archiva en `user_unit_grants_history` con su ventana
+`[granted_at, revoked_at)`. Si se vuelve a conceder la unidad, el usuario ve
+de nuevo lo ocurrido en esa ventana además de lo nuevo, y no lo del hueco entre
+las dos. Sus data tokens vivos se revocan al confirmar.
+
 #### Permisos Requeridos
 
 - Usuario maestro del cliente
@@ -203,7 +214,8 @@ Authorization: Bearer <access_token>
   "unit_id": UUID,               // ID de la unidad
   "granted_by": UUID,            // ID del usuario maestro que otorgó el permiso
   "granted_at": DateTime,        // Fecha de asignación
-  "role": String                 // Rol: viewer, editor, admin
+  "role": String,                // Rol: viewer, editor, admin
+  "include_history": Boolean     // Ver también lo anterior a granted_at
 }
 ```
 

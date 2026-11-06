@@ -167,6 +167,9 @@ def test_a_departed_device_keeps_its_history_but_loses_live_access(db_session, f
         .filter(UnitDevice.device_id == se_fue.device_id)
         .first()
     )
+    # Llegó antes de irse: con `assigned_at` en su default (now()) la ventana
+    # quedaba invertida, y una ventana invertida no contiene ningún instante.
+    fila.assigned_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     fila.unassigned_at = datetime(2026, 3, 1, tzinfo=timezone.utc)
     db_session.commit()
 

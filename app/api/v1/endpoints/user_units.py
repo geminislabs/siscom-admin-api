@@ -93,6 +93,7 @@ def list_user_units(
             granted_by=assignment.granted_by,
             granted_at=assignment.granted_at,
             role=assignment.role,
+            include_history=assignment.include_history,
             user_email=user.email if user else None,
             user_full_name=user.full_name if user else None,
             unit_name=unit.name if unit else None,
@@ -194,6 +195,7 @@ def create_user_unit(
         unit_id=assignment.unit_id,
         role=assignment.role,
         granted_by=current_user.id,
+        include_history=assignment.include_history,
     )
     db.add(user_unit)
     db.commit()

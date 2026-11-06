@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_full, get_request_locale
@@ -13,7 +14,11 @@ from app.models.unit import Unit
 from app.models.user import User
 from app.models.user_unit import UserUnit
 from app.schemas.alert import AlertOut
-from app.services.access_control import get_accessible_unit_ids
+from app.services.access_control import (
+    TimeWindow,
+    grant_windows,
+    subject_for_user,
+)
 
 router = APIRouter()
 
@@ -59,6 +64,35 @@ def _validate_unit_access(
         )
 
 
+def _alertas_visibles(db: Session, user: User, unit_id: UUID | None = None):
+    """
+    Filtro SQL: sólo alertas ocurridas mientras el usuario tenía la unidad.
+
+    Para un owner las ventanas están abiertas y el filtro se reduce a las
+    unidades de la organización. Para un usuario con concesiones, recorta por
+    cuándo valió cada una (migración 046). None si no ve nada.
+    """
+    clausulas = []
+    completas = []
+    for unidad, ventanas in grant_windows(db, subject_for_user(user)).items():
+        if unit_id is not None and unidad != unit_id:
+            continue
+        if ventanas == (TimeWindow(),):
+            # Desde siempre: basta con la unidad, y van todas en un solo IN.
+            completas.append(unidad)
+            continue
+        for ventana in ventanas:
+            condiciones = [Alert.unit_id == unidad]
+            if ventana.start is not None:
+                condiciones.append(Alert.occurred_at >= ventana.start)
+            if ventana.end is not None:
+                condiciones.append(Alert.occurred_at < ventana.end)
+            clausulas.append(and_(*condiciones))
+    if completas:
+        clausulas.append(Alert.unit_id.in_(completas))
+    return or_(*clausulas) if clausulas else None
+
+
 def _organization_is_active(db: Session, organization_id: UUID) -> bool:
     org = (
         db.query(Organization)
@@ -92,14 +126,13 @@ def list_alerts(
 
     if unit_id is not None:
         _validate_unit_access(db, current_user, unit_id, locale)
-        query = query.filter(Alert.unit_id == unit_id)
-    else:
-        accessible_unit_ids = get_accessible_unit_ids(db, current_user)
-        if not accessible_unit_ids:
-            return []
 
-        query = query.filter(Alert.unit_id.in_(accessible_unit_ids))
+    visibles = _alertas_visibles(db, current_user, unit_id)
+    if visibles is None:
+        return []
+    query = query.filter(visibles)
 
+    if unit_id is None:
         # Si no se envía unit_id, el endpoint devuelve las últimas 20 alertas
         # visibles para el usuario autenticado, ignorando paginación de entrada.
         limit = 20

@@ -216,7 +216,8 @@ def _sembrar_permisos_de_organizacion(engine) -> None:
 
 
 def _crear_vistas_del_plano_de_control(engine) -> None:
-    """Las vistas `control_plane.*` de la 044 y 045, como en producción.
+    """Las vistas `control_plane.*` de la 044 y 045, y el trigger de la 046,
+    como en producción.
 
     `create_all()` no crea vistas, y los eventos de control se construyen
     leyendo de ellas: sin esto, ningún test que escriba una membresía, una
@@ -228,6 +229,8 @@ def _crear_vistas_del_plano_de_control(engine) -> None:
         for nombre in (
             "044_vistas_del_plano_de_control",
             "045_user_devices_locale",
+            # El trigger que archiva las concesiones retiradas.
+            "046_historial_de_concesiones",
         ):
             for sql in _migracion(nombre).sentencias():
                 conn.execute(text(sql))
