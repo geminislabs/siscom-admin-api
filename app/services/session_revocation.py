@@ -141,7 +141,14 @@ def _anotar(session: Session, _flush_context: Any) -> None:
             ):
                 usuarios.add(_clave_anterior(obj, "user_id"))
         elif isinstance(obj, UserUnit):
-            if _anterior(obj, "user_id")[0] or _anterior(obj, "unit_id")[0]:
+            # Quitarle a una concesión el histórico también estrecha.
+            cambio_hist, hist = _anterior(obj, "include_history")
+            pierde_historia = cambio_hist and hist in (True, _DESCONOCIDO)
+            if (
+                _anterior(obj, "user_id")[0]
+                or _anterior(obj, "unit_id")[0]
+                or pierde_historia
+            ):
                 usuarios.add(_clave_anterior(obj, "user_id"))
         elif isinstance(obj, UnitDevice):
             cambio_fin, fin = _anterior(obj, "unassigned_at")

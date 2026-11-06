@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, time
+from datetime import timezone as dt_timezone
 from typing import List, Optional, Tuple
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -119,6 +120,32 @@ def check_device_access(db: Session, device_id: str, user: User) -> bool:
     de su historia. El recorte por ventana lo aplica la consulta.
     """
     return device_id in get_accessible_device_ids(db, user)
+
+
+def trip_visible(db: Session, trip: Trip, user: User) -> bool:
+    """
+    ¿El viaje empezó dentro de una ventana en la que el usuario veía su equipo?
+
+    Es la versión de una fila de `trips_visibility_filter`. `check_device_access`
+    no basta para un viaje concreto: dice si el equipo se vio alguna vez, y el
+    viaje puede ser de antes de la concesión o de después de que el equipo
+    saliera de la flota.
+    """
+    refs = accessible_refs(db, subject_for_user(user))
+    inicio = trip.start_time
+    if inicio is not None and inicio.tzinfo is None:
+        inicio = inicio.replace(tzinfo=dt_timezone.utc)
+    for grant in refs.devices.values():
+        if grant.internal_id != trip.device_id:
+            continue
+        for window in grant.windows:
+            if inicio is None:
+                return True
+            if (window.start is None or inicio >= window.start) and (
+                window.end is None or inicio < window.end
+            ):
+                return True
+    return False
 
 
 def check_unit_access(db: Session, unit_id: UUID, user: User) -> bool:
@@ -544,8 +571,8 @@ def get_trip(
             detail="Trip no encontrado",
         )
 
-    # Verificar acceso al dispositivo solo si es Cognito
-    if current_user and not check_device_access(db, trip.device_id, current_user):
+    # Verificar acceso solo si es Cognito: al equipo y al momento del viaje.
+    if current_user and not trip_visible(db, trip, current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes acceso a este trip",

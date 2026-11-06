@@ -108,7 +108,7 @@ from app.models.unit_device import UnitDevice
 from app.models.unit_profile import UnitProfile
 from app.models.user import User
 from app.models.user_device import UserDevice
-from app.models.user_unit import UserUnit
+from app.models.user_unit import UserUnit, UserUnitGrantHistory
 from app.models.vehicle_profile import VehicleProfile
 
 __all__ = [
@@ -167,6 +167,7 @@ __all__ = [
     "MobilityDevice",
     "UserDevice",
     "UserUnit",
+    "UserUnitGrantHistory",
     # Teams
     "Team",
     "TeamInvite",

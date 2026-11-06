@@ -134,6 +134,11 @@ class TimeWindow:
     def is_open(self) -> bool:
         return self.end is None
 
+    def intersect(self, other: "TimeWindow") -> Optional["TimeWindow"]:
+        """La parte común de dos ventanas, o None si no se tocan."""
+        r = self.overlaps(other.start, other.end)
+        return None if r is None else TimeWindow(start=r[0], end=r[1])
+
     def overlaps(self, frm: Optional[datetime], to: Optional[datetime]):
         """Intersección con `[frm, to)`, o None si no se solapan."""
         lo = max((x for x in (self.start, frm) if x is not None), default=None)
@@ -241,6 +246,53 @@ class AccessibleRefs:
     devices: Dict[UUID, Grant]
 
 
+def grant_windows(
+    db: Session, subject: ScopeSubject
+) -> Dict[UUID, Tuple[TimeWindow, ...]]:
+    """
+    Unidades visibles para el sujeto → cuándo puede ver lo ocurrido en ellas.
+
+    Sujeto de organización: cada unidad, desde siempre. Sujeto de usuario: sólo
+    las unidades con concesión **vigente**, y de cada una las ventanas de sus
+    concesiones —la vigente y las retiradas de `user_unit_grants_history`—. Una
+    concesión vale `[granted_at, revoked_at)`; con `include_history`, desde
+    siempre hasta `revoked_at`. Sin concesión vigente no se ve la unidad, aunque
+    se haya tenido antes: las ventanas pasadas sólo cuentan si hoy hay acceso.
+    """
+    unit_ids = accessible_unit_ids(db, subject)
+    if not unit_ids:
+        return {}
+    if subject.is_organization_wide:
+        return {u: (TimeWindow(),) for u in unit_ids}
+
+    from app.models.user_unit import UserUnitGrantHistory
+
+    ventanas: Dict[UUID, List[TimeWindow]] = defaultdict(list)
+    vigentes = db.query(
+        UserUnit.unit_id, UserUnit.granted_at, UserUnit.include_history
+    ).filter(UserUnit.user_id == subject.user_id, UserUnit.unit_id.in_(unit_ids))
+    for row in vigentes:
+        inicio = None if row.include_history else _aware(row.granted_at)
+        ventanas[row.unit_id].append(TimeWindow(start=inicio))
+
+    retiradas = db.query(
+        UserUnitGrantHistory.unit_id,
+        UserUnitGrantHistory.granted_at,
+        UserUnitGrantHistory.revoked_at,
+        UserUnitGrantHistory.include_history,
+    ).filter(
+        UserUnitGrantHistory.user_id == subject.user_id,
+        UserUnitGrantHistory.unit_id.in_(unit_ids),
+    )
+    for row in retiradas:
+        inicio = None if row.include_history else _aware(row.granted_at)
+        ventana = TimeWindow(start=inicio, end=_aware(row.revoked_at))
+        if ventana.start is None or ventana.start < ventana.end:
+            ventanas[row.unit_id].append(ventana)
+
+    return {u: tuple(_merge(ventanas[u])) for u in unit_ids}
+
+
 def accessible_refs(db: Session, subject: ScopeSubject) -> AccessibleRefs:
     """
     Alcance del sujeto, indexado por identificador **opaco** y con ventana.
@@ -260,27 +312,23 @@ def accessible_refs(db: Session, subject: ScopeSubject) -> AccessibleRefs:
     distinta de la organización; volver a la misma no es representable sin
     levantar esa restricción.
 
-    LÍMITE CONOCIDO: la ventana sale de la relación unidad↔dispositivo, que es de
-    la organización. La relación usuario↔unidad no tiene historial —`user_units`
-    guarda `granted_at` pero el revocado es un borrado físico—, así que un usuario
-    al que se le concede una unidad hoy ve el histórico del dispositivo en esa
-    unidad desde antes de tener acceso. Acotar eso exigiría historial de
-    concesiones, que no existe hoy.
+    Para un sujeto de usuario la ventana del dispositivo se **recorta** además
+    con la de su concesión sobre la unidad (`grant_windows`): una concesión da
+    lo ocurrido mientras estuvo vigente, salvo `include_history` (migración
+    046). Un sujeto de organización ve la unidad desde siempre.
 
     Que el `device_id` (el IMEI) figure como valor no contradice la migración de
     referencias: siscom-api ya tiene todos los IMEIs, sus tablas están indexadas
     por ellos. La referencia existe para que el IMEI no llegue al navegador ni a
     las URLs.
     """
-    unit_ids = accessible_unit_ids(db, subject)
-    if not unit_ids:
+    concesiones = grant_windows(db, subject)
+    if not concesiones:
         return AccessibleRefs(units={}, devices={})
+    unit_ids = list(concesiones)
 
-    # Las unidades son de la organización de forma permanente: su ventana está
-    # abierta mientras la unidad no esté borrada, y las borradas ya se han
-    # excluido en `accessible_unit_ids`.
     units = {
-        row.unit_ref: Grant(internal_id=str(row.id), windows=(TimeWindow(),))
+        row.unit_ref: Grant(internal_id=str(row.id), windows=concesiones[row.id])
         for row in db.query(Unit.unit_ref, Unit.id).filter(Unit.id.in_(unit_ids)).all()
     }
 
@@ -288,6 +336,7 @@ def accessible_refs(db: Session, subject: ScopeSubject) -> AccessibleRefs:
         db.query(
             Device.device_ref,
             Device.device_id,
+            UnitDevice.unit_id,
             UnitDevice.assigned_at,
             UnitDevice.unassigned_at,
         )
@@ -299,9 +348,13 @@ def accessible_refs(db: Session, subject: ScopeSubject) -> AccessibleRefs:
     por_ref: Dict[UUID, List[TimeWindow]] = defaultdict(list)
     id_por_ref: Dict[UUID, str] = {}
     for row in rows:
-        por_ref[row.device_ref].append(
-            TimeWindow(start=_aware(row.assigned_at), end=_aware(row.unassigned_at))
+        en_la_unidad = TimeWindow(
+            start=_aware(row.assigned_at), end=_aware(row.unassigned_at)
         )
+        for concesion in concesiones[row.unit_id]:
+            recorte = en_la_unidad.intersect(concesion)
+            if recorte is not None:
+                por_ref[row.device_ref].append(recorte)
         id_por_ref[row.device_ref] = row.device_id
 
     devices = {

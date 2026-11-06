@@ -16,6 +16,13 @@ class UserUnitCreate(BaseModel):
     role: UserRole = Field(
         default="viewer", description="Rol del usuario: viewer, editor, admin"
     )
+    include_history: bool = Field(
+        default=False,
+        description=(
+            "Si es true, el usuario ve también lo ocurrido en la unidad antes "
+            "de la concesión. Por defecto sólo ve desde que se le concede."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -33,6 +40,13 @@ class UserUnitAssign(BaseModel):
     user_id: UUID = Field(..., description="ID del usuario a quien se otorga acceso")
     role: UserRole = Field(
         default="viewer", description="Rol del usuario: viewer, editor, admin"
+    )
+    include_history: bool = Field(
+        default=False,
+        description=(
+            "Si es true, el usuario ve también lo ocurrido en la unidad antes "
+            "de la concesión. Por defecto sólo ve desde que se le concede."
+        ),
     )
 
     class Config:
@@ -54,6 +68,7 @@ class UserUnitOut(BaseModel):
     granted_by: Optional[UUID] = None
     granted_at: datetime
     role: str
+    include_history: bool = False
 
     class Config:
         from_attributes = True
@@ -79,6 +94,7 @@ class UserUnitDetail(BaseModel):
     granted_by: Optional[UUID] = None
     granted_at: datetime
     role: str
+    include_history: bool = False
 
     # Información adicional
     user_email: Optional[str] = None

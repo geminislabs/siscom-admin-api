@@ -1130,6 +1130,7 @@ def list_unit_users(
             granted_by=assignment.granted_by,
             granted_at=assignment.granted_at,
             role=assignment.role,
+            include_history=assignment.include_history,
             user_email=user.email if user else None,
             user_full_name=user.full_name if user else None,
             unit_name=unit.name,
@@ -1227,6 +1228,7 @@ def assign_user_to_unit(
         unit_id=unit_id,
         role=assignment.role,
         granted_by=current_user.id,
+        include_history=assignment.include_history,
     )
     db.add(user_unit)
     db.commit()
@@ -1353,7 +1355,11 @@ def get_unit_trips(
     **Nota:** Este endpoint devuelve trips de todos los dispositivos que han estado
     asignados a la unidad (tanto asignaciones activas como históricas).
     """
-    from app.api.v1.endpoints.trips import build_trip_detail, build_trip_out
+    from app.api.v1.endpoints.trips import (
+        build_trip_detail,
+        build_trip_out,
+        trips_visibility_filter,
+    )
     from app.models.trip import Trip
     from app.schemas.trip import TripListResponse
 
@@ -1374,9 +1380,19 @@ def get_unit_trips(
             trips=[], total=0, limit=limit, cursor=None, has_more=False
         )
 
+    # Sólo los viajes ocurridos mientras el usuario veía cada equipo: sin esto
+    # salían los de un equipo que dejó la unidad, también los que hizo después
+    # con otro cliente, y los de antes de la concesión.
+    visibles = trips_visibility_filter(db, current_user)
+    if visibles is None:
+        return TripListResponse(
+            trips=[], total=0, limit=limit, cursor=None, has_more=False
+        )
+
     # Construir query con filtros obligatorios de fecha
     query = db.query(Trip).filter(
         Trip.device_id.in_(unit_device_ids),
+        visibles,
         Trip.start_time >= start_date,
         Trip.start_time <= end_date,
     )
