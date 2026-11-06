@@ -375,6 +375,37 @@ def eventos_de_control():
     control_plane.usar_productor(_SilentKafkaProducer)
 
 
+class _GrabadorDeRevocaciones(list):
+    """Store que anota a quién se le revocó la sesión en vez de hablar con Valkey."""
+
+    def revoke_all_for_subject(self, subject_id, purpose=None):
+        self.append(subject_id)
+        return []
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _la_revocacion_no_marca_a_valkey():
+    """Como los eventos de control, la revocación de sesiones la dispara el ORM
+    al confirmar (`app/services/session_revocation.py`), no una dependencia.
+    El que quiera ver a quién se revocó pide el fixture `revocaciones`.
+    """
+    from app.services import session_revocation
+
+    session_revocation.usar_store(_GrabadorDeRevocaciones)
+    yield
+    session_revocation.usar_store(None)
+
+
+@pytest.fixture
+def revocaciones():
+    from app.services import session_revocation
+
+    grabador = _GrabadorDeRevocaciones()
+    session_revocation.usar_store(lambda: grabador)
+    yield grabador
+    session_revocation.usar_store(_GrabadorDeRevocaciones)
+
+
 @pytest.fixture(autouse=True)
 def _clear_dependency_overrides():
     yield

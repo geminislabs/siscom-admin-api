@@ -151,6 +151,17 @@ configuración, y por eso no es opcional.
 alguien se le estrecha el alcance, el token ancho tiene que morir en esa misma
 operación y no diez minutos después.
 
+> **Enmienda (06/11/2026, D1 del plan de data token y versiones):** emitir ya
+> **no** revoca. Dos clientes del mismo usuario —la web y el móvil, o dos
+> refresh que se cruzan— se mataban entre sí. El objetivo de arriba se mantiene
+> por otro camino: `app/services/session_revocation.py` revoca desde el ORM, al
+> confirmar, a todo sujeto cuyo alcance se estrecha (usuario desactivado,
+> membresía perdida o degradada de `owner`, unidad retirada, dispositivo
+> desasignado, unidad borrada o movida), venga del endpoint que venga. La
+> auditoría que lo motivó encontró que sólo cuatro de catorce caminos lo
+> hacían a mano. Y `deps._exigir_usuario_activo` impide que un usuario
+> desactivado saque un token nuevo con su access token todavía vigente.
+
 `dt:jti:<jti>` → clave de dueño (la HMAC, no el usuario) deja un rastro con el
 mismo TTL que el alcance. siscom-api registra el `jti` en sus logs sin saber de
 quién es; el cruce reconstruye a quién pertenecía un acceso, y ninguno de los dos

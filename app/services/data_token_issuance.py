@@ -4,12 +4,17 @@ Emisión de data tokens: junta resolución de alcance, Valkey y firma.
 El orden de los pasos no es incidental:
 
 1. Se resuelve el alcance del sujeto en identificadores opacos.
-2. Se **revocan los alcances anteriores** del sujeto. Si no, estrechar los
-   permisos de alguien no surtiría efecto hasta que caducara su token ancho.
-3. Se materializa el alcance nuevo bajo un `scope_ref` recién generado. Nunca se
+2. Se materializa el alcance bajo un `scope_ref` recién generado. Nunca se
    reescribe un ref existente: mutar un SET en uso deja que un lector lo observe
    a medias, y con ref nuevo por emisión el alcance de cada token es inmutable.
-4. Se firma el token, que solo lleva ese ref y una ventana temporal.
+3. Se firma el token, que solo lleva ese ref y una ventana temporal.
+
+Emitir **no revoca** los tokens anteriores del sujeto (D1, 06/11/2026). Antes
+lo hacía, y dos emisiones seguidas del mismo usuario —la web y el móvil, o dos
+refresh que se cruzan— se mataban entre sí. Lo que garantiza que estrechar
+permisos surta efecto ya es `app/services/session_revocation.py`, que revoca
+desde el ORM al confirmar cualquier cambio que estreche el alcance; y lo que lo
+acota en el peor caso es el TTL de ≤10 minutos.
 
 La firma va **después** de escribir en Valkey: un alcance sin token es basura que
 caduca sola, mientras que un token sin alcance es una credencial que falla en la
@@ -79,11 +84,6 @@ def issue_for_subject(
     expires_at = compute_expiry(
         moment, next_scope_boundary=next_scope_boundary(db, subject)
     )
-
-    # Un token nuevo mata a los anteriores del mismo dueño.
-    revoked = store.revoke_all_for_subject(subject_id)
-    if revoked:
-        logger.info("Revocados %d alcances previos al emitir uno nuevo", len(revoked))
 
     # El `jti` se genera aquí, antes de escribir y de firmar, para que el rastro
     # forense y el token lleven exactamente el mismo identificador.
