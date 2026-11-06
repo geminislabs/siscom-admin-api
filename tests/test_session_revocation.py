@@ -133,9 +133,9 @@ def test_degradar_owner_revoca(db_session, test_organization_data, revocadas):
     user = _miembro(db_session, test_organization_data, OrganizationRole.OWNER)
     revocadas.clear()
 
-    _membresia(
-        db_session, test_organization_data, user
-    ).role = OrganizationRole.MEMBER.value
+    _membresia(db_session, test_organization_data, user).role = (
+        OrganizationRole.MEMBER.value
+    )
     db_session.commit()
 
     assert revocadas == [user.id]
