@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from opentelemetry import trace
 
+from app.observability.client_info import current_client_info
 from app.observability.request_id import current_request_id
 
 SCRUB_KEY_FRAGMENTS = (
@@ -108,6 +109,12 @@ class JSONFormatter(logging.Formatter):
             "span_id": span_id,
             "request_id": current_request_id(),
         }
+        # Sólo si la petición las trajo: la web no las manda.
+        cliente = current_client_info()
+        if cliente.platform:
+            log_data["client_platform"] = cliente.platform
+        if cliente.version:
+            log_data["client_version"] = cliente.version
 
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)

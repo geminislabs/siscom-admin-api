@@ -401,6 +401,19 @@ def _la_revocacion_no_marca_a_valkey():
     session_revocation.usar_store(None)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _la_politica_de_versiones_no_abre_otra_sesion():
+    """El middleware 426 lee la política con su propia sesión, que no ve la
+    transacción del test. Sin política, ningún test se topa con un 426; el que
+    lo quiera ver fija la suya con `client_version_gate.usar_cargador`.
+    """
+    from app.api import client_version_gate
+
+    client_version_gate.usar_cargador(lambda: {})
+    yield
+    client_version_gate.usar_cargador(None)
+
+
 @pytest.fixture
 def revocaciones():
     from app.services import session_revocation

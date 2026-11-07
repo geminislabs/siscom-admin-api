@@ -26,6 +26,10 @@ MESSAGES: dict[str, dict[str, str]] = {
         "es": "Usuario no encontrado",
         "en": "User not found",
     },
+    "client.upgrade_required": {
+        "es": "Esta versión de NEXUS ya no es compatible. Actualiza la app para seguir usándola.",
+        "en": "This version of NEXUS is no longer supported. Update the app to keep using it.",
+    },
     "deps.user_inactive": {
         "es": "Usuario inactivo",
         "en": "Inactive user",
