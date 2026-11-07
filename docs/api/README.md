@@ -39,6 +39,7 @@ Bienvenido a la documentación de endpoints de la **SISCOM Admin API**.
 - [sims.md](./sims.md) - Sincronización de SIMs con KORE
 - [user-devices.md](./user-devices.md) - Registro y desactivación de dispositivos push de usuario
 - [mobility-devices.md](./mobility-devices.md) - Registro de dispositivos de movilidad de usuario
+- [client-version-policy.md](./client-version-policy.md) - Política de versiones de las apps móviles (GAC)
 - [mobility-locations.md](./mobility-locations.md) - Ingesta de ubicaciones de movilidad y publicación a Kafka
 - [commands.md](./commands.md) - Comandos a dispositivos
 - [user-commands.md](./user-commands.md) - Comandos críticos iniciados por usuario master

@@ -80,6 +80,17 @@ def usar_cargador(cargador: Optional[Callable[[], Politicas]]) -> None:
     _cache = None
 
 
+def invalidar_cache() -> None:
+    """Relee la política en la siguiente petición.
+
+    Sólo alcanza a este proceso: los demás workers tardan hasta
+    `CACHE_SEGUNDOS`, que es lo que GAC anuncia.
+    """
+    global _cache
+    with _lock:
+        _cache = None
+
+
 def _politicas() -> Optional[Politicas]:
     global _cache, _cargado_en
     ahora = time.monotonic()
