@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.67.0] - 2026-11-07
+
+**Sin migraciones.** La cabeza sigue en `047_politica_de_versiones`.
+
+**Rollback.** Redesplegar `v1.66.0`; no toca el esquema. Lo que se haya guardado desde GAC se queda
+en la tabla y lo sigue aplicando `client-config`.
+
+### Added
+
+- `/api/v1/client-version-policy`: GAC administra la política de versiones de las apps móviles (§3.3), solo con su PASETO. `GET` devuelve las dos filas. `PUT /{platform}` reemplaza la fila entera, la firma como `updated_by = gac:<internal_id>` y deja `client_version_policy.actualizada` con antes y después. `GET /{platform}/installs?days=30` da las instalaciones activas por versión desde `mobility.devices` (solo conteos). `POST /{platform}/preview` calcula el impacto sin guardar, con la misma regla que `client-config`. Los 422 llevan siempre `{detail, field}`, también los de validación. No se puede obligar a actualizar (mínimo o versiones bloqueadas) sin `store_url`. Guardar vacía la caché del middleware 426 de ese worker; los demás tardan hasta 60 s. El runbook `politica-de-versiones.md` pasa a ser solo el respaldo por SQL (#191)
+
 ## [1.66.0] - 2026-11-06
 
 **Migraciones `046_historial_de_concesiones` y `047_politica_de_versiones`.** Cabeza:
