@@ -202,8 +202,10 @@ def test_put_vacia_la_cache_del_middleware(gac, db_session):
 def test_put_422_trae_detail_y_field(gac):
     respuesta = gac.put(f"{BASE}/ios", json=_cuerpo(store_url=ANDROID_URL))
     assert respuesta.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-    assert respuesta.json()["field"] == "store_url"
-    assert "apps.apple.com" in respuesta.json()["detail"]
+    assert respuesta.json() == {
+        "detail": "store_url debe ser https://apps.apple.com/…",
+        "field": "store_url",
+    }
 
 
 @pytest.mark.parametrize(
