@@ -163,6 +163,15 @@ Sincronizacion de SIMs con KORE para poblar y actualizar `sim_cards` y `sim_kore
 **Endpoint:**
 - `POST /api/v1/sims/sync/kore` - Sincronizar SIMs desde KORE
 
+### [client-version-policy.md](./client-version-policy.md)
+Política de versiones de las apps móviles, administrada desde GAC.
+
+**Endpoints:**
+- `GET /api/v1/client-version-policy` - Las dos filas (ios, android)
+- `PUT /api/v1/client-version-policy/{platform}` - Reemplazar la política de una plataforma
+- `GET /api/v1/client-version-policy/{platform}/installs` - Instalaciones activas por versión
+- `POST /api/v1/client-version-policy/{platform}/preview` - Impacto de una política sin guardarla
+
 ### [user-devices.md](./user-devices.md)
 Gestión de dispositivos móviles de usuario para notificaciones push (SNS).
 

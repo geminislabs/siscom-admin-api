@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from enum import Enum
 from typing import Optional, Sequence, Tuple
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,103 @@ def parse_version(valor: Optional[str]) -> Optional[Tuple[int, ...]]:
     if not all(p.isascii() and p.isdigit() for p in partes):
         return None
     return tuple(int(p) for p in partes)
+
+
+TIENDAS = {"ios": "apps.apple.com", "android": "play.google.com"}
+MAX_BLOQUEADAS = 50
+
+
+class PoliticaInvalida(ValueError):
+    """Una política que no se puede guardar. `campo` dice cuál, para GAC."""
+
+    def __init__(self, detalle: str, campo: Optional[str] = None):
+        super().__init__(detalle)
+        self.detalle = detalle
+        self.campo = campo
+
+
+def _limpiar(valor: Optional[str]) -> Optional[str]:
+    if valor is None:
+        return None
+    valor = valor.strip()
+    return valor or None
+
+
+def validar_politica(
+    plataforma: str,
+    *,
+    min_supported_version: Optional[str],
+    latest_version: Optional[str],
+    blocked_versions: Sequence[str],
+    store_url: Optional[str],
+) -> dict:
+    """La fila lista para guardar, o `PoliticaInvalida`.
+
+    Aquí sí se rechaza una versión ilegible: en `evaluar` se ignora para no
+    bloquear a nadie, pero guardarla dejaría una regla que no hace nada sin
+    que nadie se entere.
+    """
+    minima = _limpiar(min_supported_version)
+    ultima = _limpiar(latest_version)
+    tienda = _limpiar(store_url)
+
+    for campo, valor in (
+        ("min_supported_version", minima),
+        ("latest_version", ultima),
+    ):
+        if valor is not None and parse_version(valor) is None:
+            raise PoliticaInvalida(
+                f"{campo} no es una versión legible: {valor!r}", campo
+            )
+
+    if minima and ultima:
+        if _comparar(parse_version(minima), parse_version(ultima)) > 0:
+            raise PoliticaInvalida(
+                "min_supported_version no puede ser mayor que latest_version",
+                "min_supported_version",
+            )
+
+    bloqueadas = []
+    vistas = []
+    for valor in blocked_versions or ():
+        limpia = _limpiar(valor)
+        version = parse_version(limpia)
+        if version is None:
+            raise PoliticaInvalida(
+                f"blocked_versions tiene una versión ilegible: {valor!r}",
+                "blocked_versions",
+            )
+        if any(_comparar(version, otra) == 0 for otra in vistas):
+            raise PoliticaInvalida(
+                f"blocked_versions tiene {limpia!r} repetida", "blocked_versions"
+            )
+        vistas.append(version)
+        bloqueadas.append(limpia)
+    if len(bloqueadas) > MAX_BLOQUEADAS:
+        raise PoliticaInvalida(
+            f"blocked_versions admite como máximo {MAX_BLOQUEADAS}",
+            "blocked_versions",
+        )
+
+    if tienda is not None:
+        partes = urlsplit(tienda)
+        if partes.scheme != "https" or partes.hostname != TIENDAS[plataforma]:
+            raise PoliticaInvalida(
+                f"store_url debe ser https://{TIENDAS[plataforma]}/…", "store_url"
+            )
+    elif minima or bloqueadas:
+        # Obligar a actualizar sin decir adónde ir deja al usuario en una
+        # pantalla sin salida.
+        raise PoliticaInvalida(
+            "No se puede obligar a actualizar sin store_url", "store_url"
+        )
+
+    return {
+        "min_supported_version": minima,
+        "latest_version": ultima,
+        "blocked_versions": bloqueadas,
+        "store_url": tienda,
+    }
 
 
 def _comparar(a: Tuple[int, ...], b: Tuple[int, ...]) -> int:

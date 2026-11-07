@@ -41,6 +41,7 @@ from app.api.v1.endpoints import (
     branding,
     capabilities,
     client_config,
+    client_version_policy,
     commands,
     contact,
     devices,
@@ -213,6 +214,13 @@ api_router.include_router(tenant_config.router, tags=["tenant-config"])
 # Política de versiones de las apps móviles. Sin autenticación a propósito: la
 # app la consulta al arrancar, antes de tener sesión. Ver el módulo.
 api_router.include_router(client_config.router, tags=["client-config"])
+
+# La misma política, administrada desde GAC (sólo PASETO de GAC). Ver el módulo.
+api_router.include_router(
+    client_version_policy.router,
+    prefix="/client-version-policy",
+    tags=["client-version-policy"],
+)
 
 # API Platform (API keys, usage, logs, alerts)
 api_router.include_router(

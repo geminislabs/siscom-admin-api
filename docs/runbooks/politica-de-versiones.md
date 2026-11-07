@@ -2,11 +2,20 @@
 
 Qué versión de NEXUS para iOS y Android se acepta la decide el servidor, en
 `public.client_version_policy` (migración 047). La consulta la app al arrancar
-con `GET /api/v1/client-config` y, cuando exista el middleware 426, también la
-hace cumplir admin-api en cada petición.
+con `GET /api/v1/client-config`, y el middleware 426 la hace cumplir en cada
+petición que trae `X-Client-Platform` y `X-Client-Version`.
 
-Hasta que GAC administre la tabla (§3.3 del plan de data token y versiones), se
-cambia por SQL. **Siempre con `updated_by`**: es la única auditoría que tiene.
+**La vía normal es GAC**: Productos → Nexus → Versiones de app
+(`/products/nexus/app-versions`). Antes de guardar muestra cuántas instalaciones
+activas quedarían bloqueadas o avisadas (`preview`), pide confirmación explícita
+si se bloquea a alguien, valida lo mismo que el servidor y firma el cambio con
+el usuario de GAC (`updated_by = gac:<uuid>`). Contrato en
+[`docs/api/client-version-policy.md`](../api/client-version-policy.md).
+
+El SQL de abajo queda **sólo de respaldo** (GAC caído, emergencia). Por SQL no
+hay validación: una versión mal escrita se ignora en silencio y un mínimo sin
+`store_url` deja al usuario en una pantalla sin salida. **Siempre con
+`updated_by`**: es la única auditoría que tiene.
 
 ## Las columnas
 
