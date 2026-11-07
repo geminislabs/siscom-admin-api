@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.66.0] - 2026-11-06
+
+**Migraciones `046_historial_de_concesiones` y `047_politica_de_versiones`.** Cabeza:
+`045_user_devices_locale` → `047_politica_de_versiones`. La `046` altera `public.user_units`
+(de `pgadmin` en producción, comprobado el 06/11): añade `include_history` —las concesiones
+existentes quedan en `true` y siguen viendo lo que veían—, crea `user_unit_grants_history` y un
+trigger `AFTER DELETE` que la llena. La `047` crea `client_version_policy` con `ios` y `android`
+sin mínimo ni aviso: al desplegar no se bloquea a nadie. Las dos tablas nuevas conceden
+`SELECT`/`INSERT` (y `UPDATE` la política) al usuario de runtime de forma explícita.
+
+**Rollback.** Basta revertir la imagen (`v1.65.1`): las migraciones son aditivas y la imagen
+anterior ignora la columna y las tablas; el trigger sigue archivando, lo que no estorba. Solo si
+hace falta revertir el esquema, antes de desplegar el tag viejo:
+`alembic downgrade 045_user_devices_locale`, que borra `user_units.include_history`, el historial
+de concesiones retiradas acumulado y la política de versiones.
+
+### Added
+
+- `GET /api/v1/client-config?platform=&version=&build=`: público; dice a la app móvil si su versión necesita actualización (`none` | `optional` | `required`) y adónde mandar (`store_url`). La política vive en `client_version_policy` y, hasta que GAC la administre, se cambia por SQL (`docs/runbooks/politica-de-versiones.md`) (#189)
+- Las peticiones con `X-Client-Platform` y `X-Client-Version` de una versión por debajo del mínimo reciben `426` con `error_code: upgrade_required` y `store_url`; sin esas cabeceras (la web, las apps publicadas) no cambia nada. Si la política no se puede leer, deja pasar. Los logs de esas peticiones llevan `client_platform` y `client_version` (#190)
+- `include_history` en las concesiones de unidades (`POST /user-units`, asignación y respuestas) (#188)
+
+### Changed
+
+- Una concesión de unidad nueva da acceso a lo ocurrido mientras estuvo vigente —alertas, viajes y data token—, salvo que se marque `include_history`. Retirarla la archiva en `user_unit_grants_history` y volver a concederla suma la ventana anterior. Los owners siguen viéndolo todo (#188)
+- Los data tokens de sesión se revocan desde el ORM cuando una escritura estrecha el alcance (usuario desactivado, membresía pausada o retirada, owner degradado, unidad o dispositivo retirados), venga del endpoint que venga; emitir uno nuevo ya no revoca los anteriores, así que la web y el móvil pueden renovar a la vez (#186)
+- Un usuario no `ACTIVE` recibe 403 aunque su token siga validando, y no puede renovar la sesión (#186)
+
+### Removed
+
+- `GET /api/v1/device-events` y los métodos sin uso `OrganizationService.add_member`, `update_member_role` y `remove_member` (#186, #187)
+
+### Security
+
+- `GET /api/v1/devices` y `GET /api/v1/devices/{id}` respondían sin autenticación, con IMEI, ICCID y notas; ahora exigen el token de servicio de GAC con rol `GAC_ADMIN`. Un test falla si aparece una ruta sin seguridad que no esté en la lista de públicas (#187)
+
 ## [1.65.1] - 2026-10-28
 
 **Sin migraciones.** Requiere la variable `INVITE_BASE_URL` en el environment `test` (creada el 28/10
