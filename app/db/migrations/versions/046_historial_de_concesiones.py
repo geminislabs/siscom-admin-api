@@ -46,6 +46,9 @@ Requiere ser dueño de `public.user_units` (ver la memoria de `ALTER TABLE`).
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import text
+
+from app.core.config import settings
 
 # revision identifiers, used by Alembic.
 revision: str = "046_historial_de_concesiones"
@@ -103,6 +106,34 @@ def sentencias() -> list[str]:
     ]
 
 
+def _conceder_al_runtime() -> None:
+    """DML para el usuario de runtime sobre la tabla nueva.
+
+    En producción migra `siscom_migrator` y la tabla nace suya. Si sus
+    privilegios por defecto no alcanzan al runtime (ver
+    `docs/runbooks/reconciliar-historial-alembic.md`), el trigger —que inserta
+    con los permisos de quien borra— haría fallar con `permission denied`
+    cada retiro de una concesión. Explícito e idempotente para no depender de
+    ello.
+    """
+    runtime = settings.DB_USER
+    existe = (
+        op.get_bind()
+        .execute(
+            text(
+                "SELECT 1 FROM pg_roles WHERE rolname = :r AND rolname <> current_user"
+            ),
+            {"r": runtime},
+        )
+        .scalar()
+    )
+    if existe:
+        op.execute(
+            "GRANT SELECT, INSERT ON public.user_unit_grants_history "
+            f'TO "{runtime}"'
+        )
+
+
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
     op.execute(
@@ -117,6 +148,7 @@ def upgrade() -> None:
     op.execute("UPDATE public.user_units SET include_history = true")
     for sql in sentencias():
         op.execute(sql)
+    _conceder_al_runtime()
 
 
 def downgrade() -> None:

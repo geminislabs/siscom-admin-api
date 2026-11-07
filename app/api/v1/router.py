@@ -40,6 +40,7 @@ from app.api.v1.endpoints import (
     billing,
     branding,
     capabilities,
+    client_config,
     commands,
     contact,
     devices,
@@ -208,6 +209,10 @@ api_router.include_router(contact.router, prefix="/contact", tags=["contact"])
 # sesion. Devuelve solo datos de marca. El Host resuelve apariencia y nunca
 # autoriza -- ver el modulo.
 api_router.include_router(tenant_config.router, tags=["tenant-config"])
+
+# Política de versiones de las apps móviles. Sin autenticación a propósito: la
+# app la consulta al arrancar, antes de tener sesión. Ver el módulo.
+api_router.include_router(client_config.router, tags=["client-config"])
 
 # API Platform (API keys, usage, logs, alerts)
 api_router.include_router(

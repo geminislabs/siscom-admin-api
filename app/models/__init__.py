@@ -43,6 +43,7 @@ from app.models.capability import (
     OrganizationCapability,
     PlanCapability,
 )
+from app.models.client_version_policy import ClientVersionPolicy
 
 # Commands
 from app.models.command import Command
@@ -168,6 +169,7 @@ __all__ = [
     "UserDevice",
     "UserUnit",
     "UserUnitGrantHistory",
+    "ClientVersionPolicy",
     # Teams
     "Team",
     "TeamInvite",
