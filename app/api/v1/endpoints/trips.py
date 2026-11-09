@@ -6,7 +6,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthResult, get_auth_cognito_or_paseto
@@ -253,6 +253,9 @@ def build_trip_detail(
     # Obtener información de la unidad asignada
     unit_id = None
     unit_name = None
+    # Un viaje en curso no tiene fin todavía: cuenta hasta ahora. Comparar contra
+    # `None` con `<=` no es SQL válido y SQLAlchemy lo rechaza (500).
+    fin = trip.end_time if trip.end_time is not None else func.now()
     unit_assignment = (
         db.query(UnitDevice, Unit)
         .join(Unit, Unit.id == UnitDevice.unit_id)
@@ -263,7 +266,7 @@ def build_trip_detail(
                 UnitDevice.unassigned_at.is_(None),
                 # O asignación que estaba activa durante el trip
                 and_(
-                    UnitDevice.assigned_at <= trip.end_time,
+                    UnitDevice.assigned_at <= fin,
                     or_(
                         UnitDevice.unassigned_at.is_(None),
                         UnitDevice.unassigned_at >= trip.start_time,
