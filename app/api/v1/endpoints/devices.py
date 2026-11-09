@@ -11,6 +11,7 @@ from app.api.deps import (
     get_current_organization_id,
     get_current_user_full,
     get_current_user_id,
+    get_scope_store,
 )
 from app.db.session import get_db
 from app.models.device import Device, DeviceEvent
@@ -28,6 +29,7 @@ from app.schemas.device import (
     DeviceWithProfileOut,
     SimKoreProfileOut,
 )
+from app.services.data_token_issuance import revoke_shares_for_unit_best_effort
 from app.utils.datetime import utcnow
 
 router = APIRouter()
@@ -642,6 +644,7 @@ def update_device_status(
     status_update: DeviceStatusUpdate,
     db: Session = Depends(get_db),
     auth: AuthResult = Depends(get_auth_for_gac_admin),
+    store=Depends(get_scope_store),
 ):
     """
     Actualiza el estado del dispositivo siguiendo las reglas de negocio.
@@ -667,6 +670,7 @@ def update_device_status(
         )
 
     old_status = device.status
+    unidad_que_lo_pierde = None
     new_status = status_update.new_status
 
     # ============================================
@@ -750,18 +754,42 @@ def update_device_status(
             .first()
         )
 
-        if existing_assignment:
+        ya_en_esa_unidad = (
+            existing_assignment is not None
+            and existing_assignment.unit_id == status_update.unit_id
+        )
+
+        if existing_assignment and not ya_en_esa_unidad:
             # Desasignar de la unidad anterior
             existing_assignment.unassigned_at = utcnow()
             db.add(existing_assignment)
+            unidad_que_lo_pierde = existing_assignment.unit_id
 
-        # Crear nueva asignación en unit_devices
-        unit_device = UnitDevice(
-            unit_id=status_update.unit_id,
-            device_id=device.device_id,
-            assigned_at=utcnow(),
-        )
-        db.add(unit_device)
+        if not ya_en_esa_unidad:
+            # `unit_devices` tiene una fila por (unidad, dispositivo): si el
+            # equipo ya estuvo en esta unidad, se reactiva esa fila —como en
+            # `units.assign_device_to_unit`— en vez de crear otra, que viola
+            # `uq_unit_devices_unit_device` (500).
+            previa = (
+                db.query(UnitDevice)
+                .filter(
+                    UnitDevice.unit_id == status_update.unit_id,
+                    UnitDevice.device_id == device.device_id,
+                )
+                .first()
+            )
+            if previa:
+                previa.assigned_at = utcnow()
+                previa.unassigned_at = None
+                db.add(previa)
+            else:
+                db.add(
+                    UnitDevice(
+                        unit_id=status_update.unit_id,
+                        device_id=device.device_id,
+                        assigned_at=utcnow(),
+                    )
+                )
 
         device.status = "asignado"
         device.last_assignment_at = utcnow()
@@ -783,6 +811,7 @@ def update_device_status(
         if active_assignment:
             active_assignment.unassigned_at = utcnow()
             db.add(active_assignment)
+            unidad_que_lo_pierde = active_assignment.unit_id
 
         # Quitar organización
         device.organization_id = None
@@ -837,6 +866,12 @@ def update_device_status(
 
     db.commit()
     db.refresh(device)
+
+    # El dispositivo dejó una unidad: sus enlaces compartidos apuntan a un
+    # equipo que ya no le corresponde (y que, devuelto, puede acabar en otra
+    # organización). Igual que al desasignar (`unit_devices.delete_unit_device`).
+    if unidad_que_lo_pierde is not None:
+        revoke_shares_for_unit_best_effort(store, unidad_que_lo_pierde)
 
     return device
 
