@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     AuthResult,
-    get_current_organization_id,
+    SuspensionFacturacion,
+    get_current_organization_id_facturacion,
     require_organization_permission,
 )
 from app.db.session import get_db
@@ -42,7 +43,7 @@ router = APIRouter()
 
 @router.get("", response_model=SubscriptionsListOut)
 def list_subscriptions(
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
     db: Session = Depends(get_db),
     include_history: bool = Query(
         True, description="Incluir suscripciones históricas (canceladas/expiradas)"
@@ -123,7 +124,7 @@ def list_subscriptions(
 
 @router.get("/active", response_model=List[SubscriptionWithPlanOut])
 def list_active_subscriptions(
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -187,7 +188,7 @@ def list_active_subscriptions(
 @router.get("/{subscription_id}", response_model=SubscriptionWithPlanOut)
 def get_subscription(
     subscription_id: UUID,
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -249,7 +250,11 @@ def get_subscription(
 def cancel_subscription(
     subscription_id: UUID,
     request: SubscriptionCancelRequest,
-    auth: AuthResult = Depends(require_organization_permission("subscriptions.manage")),
+    auth: AuthResult = Depends(
+        require_organization_permission(
+            "subscriptions.manage", suspension=SuspensionFacturacion
+        )
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -303,7 +308,11 @@ def cancel_subscription(
 def toggle_auto_renew(
     subscription_id: UUID,
     auto_renew: bool = Query(..., description="Nuevo valor de auto-renovación"),
-    auth: AuthResult = Depends(require_organization_permission("subscriptions.manage")),
+    auth: AuthResult = Depends(
+        require_organization_permission(
+            "subscriptions.manage", suspension=SuspensionFacturacion
+        )
+    ),
     db: Session = Depends(get_db),
 ):
     """

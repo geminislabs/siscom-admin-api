@@ -176,6 +176,9 @@ Authorization: Bearer <access_token>
 | `account` | object | Información del Account |
 | `role` | string | Rol del usuario: `owner`, `admin`, `billing`, `member` |
 | `organization_id` | UUID | ID de la organización actual del usuario |
+| `access_blocked` | object \| null | `null` si la organización da acceso; si está suspendida o borrada, el motivo (`error_code`, `suspended_by`, `can_manage_billing`). Ver [suspension.md](./suspension.md) |
+
+Contesta 200 aunque la organización esté suspendida: es por donde el cliente se entera.
 
 #### Errores Posibles
 

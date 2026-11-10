@@ -13,7 +13,10 @@ from fastapi.responses import Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_organization_id, get_current_user_full
+from app.api.deps import (
+    get_current_organization_id_facturacion,
+    get_current_user_full_facturacion,
+)
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.invoice import Invoice, InvoiceStatus
@@ -282,7 +285,7 @@ def _renewal_state(db: Session, sub: Subscription | None) -> RenewalStateOut | N
 
 @router.get("/summary", response_model=BillingSummaryOut)
 def get_billing_summary(
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -330,7 +333,7 @@ def get_billing_summary(
 
 @router.get("/payments", response_model=PaymentsListOut)
 def list_payments(
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
     db: Session = Depends(get_db),
     limit: int = Query(default=20, le=100, description="Máximo de resultados"),
     offset: int = Query(default=0, ge=0, description="Offset para paginación"),
@@ -366,7 +369,7 @@ def list_payments(
 
 @router.get("/invoices", response_model=InvoicesListOut)
 def list_invoices(
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
     db: Session = Depends(get_db),
     limit: int = Query(default=20, le=100),
     offset: int = Query(default=0, ge=0),
@@ -397,8 +400,8 @@ def list_invoices(
 @router.get("/invoices/{invoice_id}/receipt.pdf")
 def download_invoice_receipt(
     invoice_id: UUID,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """PDF del comprobante de pago. No es un CFDI."""
@@ -436,8 +439,8 @@ def download_invoice_receipt(
 
 @router.get("/tax-profile", response_model=TaxProfileOut)
 def get_account_tax_profile(
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """Datos fiscales SAT de la cuenta. Vacío (is_complete=false) si aún no hay perfil."""
@@ -449,8 +452,8 @@ def get_account_tax_profile(
 @router.put("/tax-profile", response_model=TaxProfileOut)
 def put_account_tax_profile(
     payload: TaxProfileIn,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """Guarda RFC/régimen y sincroniza el customer en Facturapi."""
@@ -471,8 +474,8 @@ def put_account_tax_profile(
 @router.post("/invoices/{invoice_id}/cfdi", response_model=InvoiceOut)
 def stamp_invoice_cfdi(
     invoice_id: UUID,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
     payload: StampCfdiIn = Body(default=StampCfdiIn()),
 ):
@@ -508,8 +511,8 @@ def _cfdi_file_response(
 @router.get("/invoices/{invoice_id}/cfdi.pdf")
 def download_invoice_cfdi_pdf(
     invoice_id: UUID,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """PDF fiscal timbrado (proxy autenticado a Facturapi)."""
@@ -519,8 +522,8 @@ def download_invoice_cfdi_pdf(
 @router.get("/invoices/{invoice_id}/cfdi.xml")
 def download_invoice_cfdi_xml(
     invoice_id: UUID,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """XML del SAT (proxy autenticado a Facturapi)."""
@@ -530,8 +533,8 @@ def download_invoice_cfdi_xml(
 @router.get("/invoices/{invoice_id}", response_model=InvoiceDetailOut)
 def get_invoice_detail(
     invoice_id: UUID,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """

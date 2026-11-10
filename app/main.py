@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.client_version_gate import client_version_gate
 from app.api.deps import (
+    OrganizacionNoDisponible,
     close_geofences_kafka_producer,
     close_mobility_kafka_producer,
     close_rules_kafka_producer,
@@ -164,6 +165,15 @@ app.add_middleware(
 instrument_app(app)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.exception_handler(OrganizacionNoDisponible)
+async def organizacion_no_disponible(
+    request: Request, exc: OrganizacionNoDisponible
+) -> JSONResponse:
+    # El cuerpo plano, como el 426: `detail` en texto para los clientes ya
+    # publicados y `error_code` para los que pintan la pantalla de suspensión.
+    return JSONResponse(status_code=exc.status_code, content=exc.cuerpo())
 
 
 @app.get("/")

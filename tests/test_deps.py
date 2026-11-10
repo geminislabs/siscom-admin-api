@@ -49,11 +49,22 @@ def test_resolve_current_organization_user_not_found():
     assert ei.value.status_code == 404
 
 
+def _organizacion_activa(db: MagicMock) -> None:
+    """El estado de la organización y su cuenta que lee
+    `suspension.bloqueo_de` (`query().join().filter().first()`): activas."""
+    db.query.return_value.join.return_value.filter.return_value.first.return_value = (
+        "ACTIVE",
+        "ACTIVE",
+    )
+
+
 def _db_con_usuario_y_membresia(user, hay_membresia_activa: bool) -> MagicMock:
     """Un `db` falso cuyo primer `.query()` (User) devuelve `user` y cuyo
     segundo `.query()` (OrganizationUser) devuelve una membresía activa o
     ninguna, según `hay_membresia_activa` — en ese orden, porque
-    `_load_current_user` consulta primero User y después OrganizationUser."""
+    `_load_current_user` consulta primero User y después OrganizationUser.
+    La tercera es el estado de la organización y su cuenta
+    (`suspension.bloqueo_de`): las dos activas."""
     db = MagicMock()
     user_query = MagicMock()
     user_query.filter.return_value.first.return_value = user
@@ -61,7 +72,12 @@ def _db_con_usuario_y_membresia(user, hay_membresia_activa: bool) -> MagicMock:
     membership_query.filter.return_value.first.return_value = (
         MagicMock() if hay_membresia_activa else None
     )
-    db.query.side_effect = [user_query, membership_query]
+    estado_query = MagicMock()
+    estado_query.join.return_value.filter.return_value.first.return_value = (
+        "ACTIVE",
+        "ACTIVE",
+    )
+    db.query.side_effect = [user_query, membership_query, estado_query]
     return db
 
 
@@ -154,6 +170,7 @@ def test_auth_cognito_or_paseto_cognito_success(monkeypatch):
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
+    _organizacion_activa(db)
 
     monkeypatch.setattr(
         deps_mod.OrganizationService,
@@ -189,6 +206,7 @@ def test_auth_cognito_or_paseto_rechaza_usuario_inactivo(monkeypatch):
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
+    _organizacion_activa(db)
 
     creds = MagicMock()
     creds.credentials = "jwt-token"
@@ -259,6 +277,7 @@ def test_require_organization_permission_allows_role_with_permission(monkeypatch
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
+    _organizacion_activa(db)
 
     monkeypatch.setattr(deps_mod, "verify_cognito_token", lambda t: {"sub": "s"})
     monkeypatch.setattr(
@@ -289,6 +308,7 @@ def test_require_organization_permission_forbidden(monkeypatch):
     user = MagicMock()
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
+    _organizacion_activa(db)
 
     monkeypatch.setattr(deps_mod, "verify_cognito_token", lambda t: {"sub": "s"})
     monkeypatch.setattr(
@@ -319,6 +339,7 @@ def test_require_capability_raises_when_disabled(monkeypatch):
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = user
+    _organizacion_activa(db)
 
     monkeypatch.setattr(deps_mod, "verify_cognito_token", lambda t: {"sub": "s"})
 

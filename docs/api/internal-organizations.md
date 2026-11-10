@@ -313,6 +313,10 @@ Authorization: Bearer <token_paseto>
 
 Actualiza el estado de una organización. Útil para suspender, activar o eliminar organizaciones.
 
+`SUSPENDED` y `DELETED` cierran el acceso de sus miembros (403 `organization_suspended` /
+`organization_deleted`) y revocan sus data tokens y enlaces compartidos. Para suspender una
+cuenta entera, con todas sus organizaciones, ver [suspension.md](./suspension.md).
+
 #### Headers
 
 ```

@@ -18,7 +18,10 @@ from app.api.deps import (
     AuthResult,
     get_auth_for_gac_admin,
     get_current_organization_id,
+    get_current_organization_id_facturacion,
     get_current_user_full,
+    get_current_user_full_aunque_suspendida,
+    get_current_user_full_facturacion,
     get_current_user_id,
     get_geofences_kafka_producer,
     get_mobility_kafka_producer,
@@ -662,6 +665,17 @@ def authenticated_client(client, test_organization_data, test_user_data):
         override_get_current_organization_id
     )
     app.dependency_overrides[get_current_user_full] = override_get_current_user_full
+    # Las variantes que admiten una organización suspendida (facturación, lo
+    # personal) son otras dependencias: sin esto, sus endpoints irían a Cognito.
+    app.dependency_overrides[get_current_organization_id_facturacion] = (
+        override_get_current_organization_id
+    )
+    app.dependency_overrides[get_current_user_full_facturacion] = (
+        override_get_current_user_full
+    )
+    app.dependency_overrides[get_current_user_full_aunque_suspendida] = (
+        override_get_current_user_full
+    )
     app.dependency_overrides[get_current_user_id] = override_get_current_user_id
     app.dependency_overrides[get_auth_for_gac_admin] = override_get_auth_for_gac_admin
     _stub_kafka_producers()

@@ -13,6 +13,7 @@ from app.api.deps import (
     BearerAuth,
     get_cuenta_de_marca,
     get_current_user_full,
+    get_current_user_full_aunque_suspendida,
     get_current_user_identity,
     get_data_token_issuer,
     get_identity_provider,
@@ -41,6 +42,7 @@ from app.schemas.account import (
     OnboardingRequest,
     OnboardingResponse,
 )
+from app.schemas.suspension import bloqueo_a_salida
 from app.schemas.tenant_config import MarcaDeSesionOut
 from app.schemas.user import (
     ChangePasswordRequest,
@@ -60,7 +62,7 @@ from app.schemas.user import (
     UserLoginResponse,
     UserOrganizationOut,
 )
-from app.services import account_capabilities, permisos
+from app.services import account_capabilities, permisos, suspension
 from app.services.data_token_issuance import revoke_sessions_for_user
 from app.services.identity import (
     AutenticacionIncompleta,
@@ -392,7 +394,7 @@ def _get_account_for_user(db: Session, user: User, locale: str = "es") -> Accoun
 @router.get("/me", response_model=AuthMeResponse)
 def get_my_account(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
     locale: str = Depends(get_request_locale),
 ):
     """
@@ -400,6 +402,9 @@ def get_my_account(
 
     Resuelve el Account a través de la organización del usuario.
     Incluye el rol del usuario en su organización actual.
+
+    Contesta aunque la organización esté suspendida o borrada —es por donde
+    el cliente se entera—, con el motivo en `access_blocked`.
     """
     account = _get_account_for_user(db, current_user, locale=locale)
 
@@ -445,6 +450,9 @@ def get_my_account(
         ),
         account_capabilities=_capabilities_de_cuenta(db, account.id),
         brand=MarcaDeSesionOut(**marca_de_sesion(current_user.brand_account_id, db)),
+        access_blocked=bloqueo_a_salida(
+            suspension.bloqueo_de(db, current_user.organization_id), role
+        ),
     )
 
 
@@ -518,6 +526,10 @@ def list_my_organizations(
             # esa propiedad devuelve la organización activa si la petición
             # trajo `X-Organization-Id`, y aquí se pregunta por la de siempre.
             is_default=organization.id == current_user.default_organization_id,
+            access_blocked=bloqueo_a_salida(
+                suspension.bloqueo_de(db, organization.id),
+                getattr(membership.role, "value", membership.role),
+            ),
         )
         for membership, organization in filas
     ]
@@ -684,6 +696,10 @@ def _try_issue_data_token(db, user, issuer, store) -> Optional[DataTokenResponse
     mapa en vez de no poder entrar; y el cliente reintentará por su cuenta contra
     `POST /auth/data-token`, que sí devuelve 503 porque ahí el token es el único
     producto de la llamada.
+
+    Con la organización por defecto suspendida o borrada tampoco se emite: el
+    login sí funciona, para que el cliente pueda mostrar la pantalla de
+    suspensión, pero sin acceso a los datos.
     """
     from app.services.access_control import subject_for_user
     from app.services.data_token_issuance import issue_for_subject
@@ -692,6 +708,9 @@ def _try_issue_data_token(db, user, issuer, store) -> Optional[DataTokenResponse
         ScopeStoreUnavailable,
     )
     from app.utils.data_token import DataTokenKeyNotConfigured
+
+    if suspension.bloqueo_de(db, user.organization_id) is not None:
+        return None
 
     try:
         issued = issue_for_subject(
@@ -967,7 +986,7 @@ def reset_password(
 def change_password(
     request: ChangePasswordRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
     idp: IdentityProvider = Depends(get_identity_provider),
     store=Depends(get_scope_store),
     locale: str = Depends(get_request_locale),
@@ -1718,7 +1737,7 @@ def refresh_token(
 def logout_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
     store=Depends(get_scope_store),
     idp: IdentityProvider = Depends(get_identity_provider),
     locale: str = Depends(get_request_locale),

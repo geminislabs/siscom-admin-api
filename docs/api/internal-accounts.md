@@ -474,6 +474,8 @@ export const internalAccountsService = new InternalAccountsService(tokenManager)
 | `GET /internal/accounts/{id}` | Obtener un account específico |
 | `GET /internal/accounts/{id}/organizations` | Listar organizaciones del account |
 | `GET /internal/accounts/stats` | Estadísticas globales del sistema |
+| `GET /internal/accounts/{id}/subaccounts` | Subcuentas de una marca, en todo su árbol — ver [suspension.md](./suspension.md) |
+| `PATCH /internal/accounts/{id}/status` | Suspender o reactivar un account — ver [suspension.md](./suspension.md) |
 | `GET /internal/organizations` | Lista todas las organizaciones |
 | `GET /internal/organizations/stats` | Estadísticas de organizaciones por estado |
 

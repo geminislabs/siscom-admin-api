@@ -16,29 +16,40 @@ Endpoints disponibles:
 - GET /stats: Estadísticas globales del sistema
 - GET /{account_id}: Obtener un account por ID
 - GET /{account_id}/organizations: Listar organizaciones del account
+- GET /{account_id}/subaccounts: Subcuentas de una marca, en todo su árbol
+- PATCH /{account_id}/status: Suspender o reactivar un account
 """
 
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import and_, distinct, func
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthResult, get_auth_solo_servicio
 from app.db.session import get_db
-from app.models.account import Account, AccountStatus
+from app.models.account import Account, AccountStatus, AccountType
+from app.models.account_event import ActorType, EventType, TargetType
 from app.models.account_user import AccountRole, AccountUser
 from app.models.device import Device
 from app.models.organization import Organization
 from app.models.organization_user import MembershipStatus, OrganizationUser
 from app.models.unit_device import UnitDevice
 from app.models.user import User
+from app.schemas.suspension import (
+    AccountStatusChange,
+    AccountStatusOut,
+    AccountStatusUpdate,
+)
+from app.services import suspension
 from app.services.account_nexus_status import (
     get_account_nexus_status,
     get_accounts_nexus_status_map,
     get_organization_nexus_status,
 )
+from app.services.audit import AuditService
+from app.utils.datetime import utcnow
 
 router = APIRouter()
 
@@ -375,3 +386,136 @@ def get_account_organizations(
         }
         for org in organizations
     ]
+
+
+def _estado(cuenta: Account) -> str:
+    return getattr(cuenta.status, "value", cuenta.status)
+
+
+@router.get("/{account_id}/subaccounts")
+def get_account_subaccounts(
+    account_id: UUID,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_internal_accounts),
+):
+    """
+    Las subcuentas de una cuenta en todo su árbol, sin incluirla a ella.
+
+    Es la lista que GAC enseña antes de suspender o reactivar una marca con
+    `include_subaccounts`, para que se vea a quién más le llega el cambio.
+    Vacía para una cuenta sin subcuentas.
+    """
+    if not db.query(Account.id).filter(Account.id == account_id).first():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account no encontrado",
+        )
+    return [
+        {
+            "id": str(hija.id),
+            "account_name": hija.name,
+            "status": _estado(hija),
+            "account_type": str(getattr(hija.account_type, "value", hija.account_type)),
+            "parent_account_id": str(hija.parent_account_id),
+        }
+        for hija in sorted(
+            suspension.descendientes(db, account_id), key=lambda c: c.name.lower()
+        )
+    ]
+
+
+@router.patch("/{account_id}/status", response_model=AccountStatusOut)
+def update_account_status(
+    account_id: UUID,
+    cambio: AccountStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: AuthResult = Depends(get_auth_for_internal_accounts),
+):
+    """
+    Suspende o reactiva una cuenta.
+
+    Suspender la cuenta suspende todas sus organizaciones
+    (`app/services/suspension.py`): sus usuarios reciben 403
+    `organization_suspended` en todo menos facturación —para el owner o
+    billing— y `/auth/me`. Los data tokens y enlaces compartidos de esas
+    organizaciones se revocan al confirmar (`session_revocation`).
+
+    Una marca **no** arrastra a sus subcuentas salvo que se pida con
+    `include_subaccounts`, que sólo vale para una cuenta `RESELLER` y aplica el
+    cambio a todo su árbol. Al reactivar con `include_subaccounts` se reactivan
+    también las subcuentas que estuvieran suspendidas por su cuenta: GAC debe
+    enseñar cuáles antes de confirmar (`GET /internal/accounts/{account_id}/subaccounts`).
+
+    Las cuentas `DELETED` no se tocan: la raíz responde 409 y las subcuentas
+    borradas se saltan. Repetir el mismo estado no es error: `changed` dice si
+    hubo cambio.
+    """
+    cuenta = db.query(Account).filter(Account.id == account_id).first()
+    if not cuenta:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account no encontrado",
+        )
+    if _estado(cuenta) == AccountStatus.DELETED.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La cuenta está borrada; su estado no se cambia desde aquí",
+        )
+    tipo = getattr(cuenta.account_type, "value", cuenta.account_type)
+    if cambio.include_subaccounts and tipo != AccountType.RESELLER.value:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="include_subaccounts sólo aplica a una marca (RESELLER)",
+        )
+
+    def _aplicar(objetivo: Account, por_marca: bool) -> AccountStatusChange:
+        anterior = _estado(objetivo)
+        salida = AccountStatusChange(
+            id=objetivo.id,
+            account_name=objetivo.name,
+            previous_status=anterior,
+            status=anterior,
+        )
+        if anterior in (AccountStatus.DELETED.value, cambio.status):
+            return salida
+        objetivo.status = cambio.status
+        objetivo.updated_at = utcnow()
+        AuditService.log_event(
+            db=db,
+            account_id=objetivo.id,
+            event_type=EventType.ACCOUNT_STATUS_CHANGED.value,
+            target_type=TargetType.ACCOUNT.value,
+            target_id=objetivo.id,
+            actor_type=ActorType.SERVICE.value,
+            metadata={
+                "anterior": anterior,
+                "nuevo": cambio.status,
+                "reason": cambio.reason,
+                # Si llegó por la marca, cuál: es lo que explica por qué se
+                # suspendió una cuenta que no tenía deuda propia.
+                "via_reseller": str(cuenta.id) if por_marca else None,
+                "service": auth.service,
+                "gac_user": auth.payload.get("internal_id"),
+            },
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+        salida.status = cambio.status
+        return salida
+
+    raiz = _aplicar(cuenta, por_marca=False)
+    subcuentas = []
+    if cambio.include_subaccounts:
+        for hija in suspension.descendientes(db, cuenta.id):
+            resultado = _aplicar(hija, por_marca=True)
+            if resultado.status != resultado.previous_status:
+                subcuentas.append(resultado)
+
+    db.commit()
+
+    return AccountStatusOut(
+        account=raiz,
+        changed=raiz.status != raiz.previous_status,
+        subaccounts=subcuentas,
+    )

@@ -27,6 +27,14 @@ QUÉ ESTRECHA
 "Quien veía la unidad" son sus concesiones en `user_units` más los owners
 activos de su organización (la de antes, si se movió).
 
+Y lo que apaga una organización entera (`app/services/suspension.py`):
+
+- `organizations.status` pasa a `SUSPENDED` o `DELETED` → todos sus miembros
+  activos, y los enlaces compartidos de todas sus unidades.
+- `accounts.status` pasa a `SUSPENDED` o `DELETED` → lo mismo para cada
+  organización de la cuenta. No baja a las subcuentas: suspenderlas es otra
+  escritura, y pasa por aquí por su cuenta.
+
 Lo que **ensancha** no revoca a propósito: el token viejo no da nada de más, y
 revocarlo sólo obligaría al cliente a pedir otro.
 
@@ -48,6 +56,8 @@ logger = logging.getLogger(__name__)
 _USUARIOS = "revocacion_usuarios"
 _UNIDADES = "revocacion_unidades"
 _ORGANIZACIONES = "revocacion_organizaciones"
+_ORGS_APAGADAS = "revocacion_organizaciones_apagadas"
+_CUENTAS_APAGADAS = "revocacion_cuentas_apagadas"
 
 _fabrica_de_store: Optional[Callable[[], Any]] = None
 
@@ -99,6 +109,8 @@ def _clave_anterior(obj: Any, atributo: str) -> Any:
 
 
 def _anotar(session: Session, _flush_context: Any) -> None:
+    from app.models.account import Account, AccountStatus
+    from app.models.organization import Organization, OrganizationStatus
     from app.models.organization_user import (
         MembershipStatus,
         OrganizationRole,
@@ -112,6 +124,10 @@ def _anotar(session: Session, _flush_context: Any) -> None:
     usuarios: set[UUID] = session.info.setdefault(_USUARIOS, set())
     unidades: set[UUID] = session.info.setdefault(_UNIDADES, set())
     organizaciones: set[UUID] = session.info.setdefault(_ORGANIZACIONES, set())
+    orgs_apagadas: set[UUID] = session.info.setdefault(_ORGS_APAGADAS, set())
+    cuentas_apagadas: set[UUID] = session.info.setdefault(_CUENTAS_APAGADAS, set())
+    apaga_org = (OrganizationStatus.SUSPENDED.value, OrganizationStatus.DELETED.value)
+    apaga_cuenta = (AccountStatus.SUSPENDED.value, AccountStatus.DELETED.value)
 
     era_owner = (OrganizationRole.OWNER.value, _DESCONOCIDO)
     era_activa = (MembershipStatus.ACTIVE.value, _DESCONOCIDO)
@@ -124,7 +140,13 @@ def _anotar(session: Session, _flush_context: Any) -> None:
             unidades.add(_clave_anterior(obj, "unit_id"))
 
     for obj in session.dirty:
-        if isinstance(obj, User):
+        if isinstance(obj, Organization):
+            if _anterior(obj, "status")[0] and _valor(obj.status) in apaga_org:
+                orgs_apagadas.add(obj.id)
+        elif isinstance(obj, Account):
+            if _anterior(obj, "status")[0] and _valor(obj.status) in apaga_cuenta:
+                cuentas_apagadas.add(obj.id)
+        elif isinstance(obj, User):
             cambio, _ = _anterior(obj, "status")
             if cambio and _valor(obj.status) != UserStatus.ACTIVE.value:
                 usuarios.add(obj.id)
@@ -176,7 +198,13 @@ def _descartar(session: Session, *_args: Any) -> None:
     # lo anotado antes puede confirmarse todavía. Revocar de más es inofensivo.
     if session.in_transaction():
         return
-    for clave in (_USUARIOS, _UNIDADES, _ORGANIZACIONES):
+    for clave in (
+        _USUARIOS,
+        _UNIDADES,
+        _ORGANIZACIONES,
+        _ORGS_APAGADAS,
+        _CUENTAS_APAGADAS,
+    ):
         session.info.pop(clave, None)
 
 
@@ -219,6 +247,38 @@ def usuarios_que_ven(
     return usuarios
 
 
+def lo_que_apaga(
+    conn: Any, orgs_apagadas: set[UUID], cuentas_apagadas: set[UUID]
+) -> tuple[set[UUID], set[UUID]]:
+    """`(miembros activos, unidades)` de las organizaciones que se apagaron,
+    directamente o por su cuenta."""
+    orgs = set(orgs_apagadas)
+    for cuenta in cuentas_apagadas:
+        for (org_id,) in conn.execute(
+            text("SELECT id FROM public.organizations WHERE account_id = :a"),
+            {"a": cuenta},
+        ):
+            orgs.add(org_id)
+
+    usuarios: set[UUID] = set()
+    unidades: set[UUID] = set()
+    for org in orgs:
+        for (user_id,) in conn.execute(
+            text(
+                "SELECT user_id FROM public.organization_users"
+                " WHERE organization_id = :o AND status = 'ACTIVE'"
+            ),
+            {"o": org},
+        ):
+            usuarios.add(user_id)
+        for (unit_id,) in conn.execute(
+            text("SELECT id FROM public.units WHERE organization_id = :o"),
+            {"o": org},
+        ):
+            unidades.add(unit_id)
+    return usuarios, unidades
+
+
 # ---------------------------------------------------------------------------
 # 3. Revocar tras el commit
 # ---------------------------------------------------------------------------
@@ -228,21 +288,40 @@ def _revocar_lo_anotado(session: Session) -> None:
     usuarios = session.info.pop(_USUARIOS, None) or set()
     unidades = session.info.pop(_UNIDADES, None) or set()
     organizaciones = session.info.pop(_ORGANIZACIONES, None) or set()
-    if not usuarios and not unidades and not organizaciones:
+    orgs_apagadas = session.info.pop(_ORGS_APAGADAS, None) or set()
+    cuentas_apagadas = session.info.pop(_CUENTAS_APAGADAS, None) or set()
+    if not (
+        usuarios or unidades or organizaciones or orgs_apagadas or cuentas_apagadas
+    ):
         return
 
-    from app.services.data_token_issuance import revoke_sessions_for_user
+    from app.services.data_token_issuance import (
+        revoke_sessions_for_user,
+        revoke_shares_for_unit_best_effort,
+    )
+
+    unidades_apagadas: set[UUID] = set()
+
+    def _leer(conn: Any) -> None:
+        nonlocal usuarios, unidades_apagadas
+        if unidades or organizaciones:
+            usuarios |= usuarios_que_ven(conn, unidades, organizaciones)
+        if orgs_apagadas or cuentas_apagadas:
+            miembros, unidades_apagadas = lo_que_apaga(
+                conn, orgs_apagadas, cuentas_apagadas
+            )
+            usuarios |= miembros
 
     try:
-        if unidades or organizaciones:
+        if unidades or organizaciones or orgs_apagadas or cuentas_apagadas:
             # Como en el plano de control: la sesión ya no tiene transacción, se
             # lee con una conexión aparte sobre el mismo bind.
             bind = session.get_bind()
             if hasattr(bind, "connect"):
                 with bind.connect() as conn:
-                    usuarios |= usuarios_que_ven(conn, unidades, organizaciones)
+                    _leer(conn)
             else:
-                usuarios |= usuarios_que_ven(bind, unidades, organizaciones)
+                _leer(bind)
         store = _obtener_store()
     except Exception:
         # El cambio de permisos ya está confirmado en Postgres. Si no se puede
@@ -256,6 +335,10 @@ def _revocar_lo_anotado(session: Session) -> None:
     for user_id in usuarios:
         if user_id is not None:
             revoke_sessions_for_user(store, user_id)
+    # Un enlace compartido no es de ninguna sesión: hay que apagarlo aparte, o
+    # seguiría mostrando la ubicación de una organización suspendida.
+    for unit_id in unidades_apagadas:
+        revoke_shares_for_unit_best_effort(store, unit_id)
 
 
 # ---------------------------------------------------------------------------

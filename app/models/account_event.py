@@ -53,6 +53,7 @@ class EventType(str, enum.Enum):
     # Account
     ACCOUNT_CREATED = "account_created"
     ACCOUNT_UPDATED = "account_updated"
+    ACCOUNT_STATUS_CHANGED = "account_status_changed"
 
     # Marca (B4)
     BRANDING_DRAFT_SAVED = "branding_draft_saved"

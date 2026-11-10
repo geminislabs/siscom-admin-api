@@ -9,7 +9,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_organization_id, get_current_user_full
+from app.api.deps import (
+    get_current_organization_id_facturacion,
+    get_current_user_full_facturacion,
+)
 from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.plan import Plan
@@ -124,7 +127,7 @@ def _require_billing_permission(
 @router.get("/config")
 def get_payment_config(
     gateway: str = Query(default=None),
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
 ):
     """
     Configuración pública de la pasarela para el frontend (requiere JWT).
@@ -145,8 +148,8 @@ def get_payment_config(
 def quote_plan(
     plan_id: UUID,
     billing_cycle: str = Query(..., description="MONTHLY o YEARLY"),
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -168,8 +171,8 @@ def quote_plan(
 @router.post("/setup-intent", status_code=201)
 def create_setup_intent(
     gateway: str = Query(default="stripe"),
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -185,8 +188,8 @@ def create_setup_intent(
 def create_payment_intent(
     body: PaymentIntentRequest,
     idempotency_key: str = Depends(require_idempotency_key),
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -246,8 +249,8 @@ def create_payment_intent(
 @router.get("/payment-methods")
 def list_payment_methods(
     gateway: str = Query(default="stripe"),
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """Lista métodos de pago guardados del account para la pasarela indicada."""
@@ -258,8 +261,8 @@ def list_payment_methods(
 @router.post("/payment-methods/confirm")
 def confirm_setup_intent(
     body: ConfirmSetupRequest,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -280,8 +283,8 @@ def confirm_setup_intent(
 def delete_payment_method(
     external_token: str,
     gateway: str = Query(default="stripe"),
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """
@@ -297,8 +300,8 @@ def delete_payment_method(
 @router.patch("/payment-methods/default")
 def set_default_payment_method(
     body: SetDefaultPMRequest,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """Establece un método de pago como predeterminado."""
@@ -312,8 +315,8 @@ def set_default_payment_method(
 @router.patch("/auto-renew")
 def set_auto_renew(
     body: AutoRenewRequest,
-    organization_id: UUID = Depends(get_current_organization_id),
-    current_user: User = Depends(get_current_user_full),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
+    current_user: User = Depends(get_current_user_full_facturacion),
     db: Session = Depends(get_db),
 ):
     """

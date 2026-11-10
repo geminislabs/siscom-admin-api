@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user_full
+from app.api.deps import get_current_user_full_aunque_suspendida
 from app.db.session import get_db
 from app.models.mobility_device import MobilityDevice
 from app.models.user import User
@@ -44,7 +44,7 @@ def _build_mobility_device_out(device: MobilityDevice) -> MobilityDeviceOut:
 @router.get("", response_model=list[MobilityDeviceOut])
 def list_mobility_devices(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
     is_active: bool | None = Query(default=None),
     device_type: str | None = Query(default=None),
 ):
@@ -66,7 +66,7 @@ def register_mobility_device(
     payload: MobilityDeviceCreateIn,
     response: Response,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """Registra o actualiza (upsert) un dispositivo de movilidad del usuario."""
     if payload.notification_device_id:
@@ -163,7 +163,7 @@ def register_mobility_device(
 def get_mobility_device(
     device_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """Obtiene el detalle de un dispositivo de movilidad."""
     device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
@@ -175,7 +175,7 @@ def update_mobility_device(
     device_id: UUID,
     payload: MobilityDeviceUpdateIn,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """Actualiza campos editables de un dispositivo de movilidad."""
     device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
@@ -187,7 +187,7 @@ def update_mobility_device(
 def activate_mobility_device(
     device_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """Activa un dispositivo de movilidad (is_active = true)."""
     device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
@@ -199,7 +199,7 @@ def activate_mobility_device(
 def deactivate_mobility_device(
     device_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """Desactiva un dispositivo de movilidad (is_active = false)."""
     device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
@@ -214,7 +214,7 @@ def associate_notification_device(
     device_id: UUID,
     payload: MobilityDeviceNotificationDeviceIn,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """Asocia un dispositivo de notificaciones a un dispositivo de movilidad."""
     device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)
@@ -230,7 +230,7 @@ def associate_notification_device(
 def dissociate_notification_device(
     device_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """Desasocia un dispositivo de notificaciones de un dispositivo de movilidad."""
     device = MobilityDeviceService.get_device_by_id(db, device_id, current_user)

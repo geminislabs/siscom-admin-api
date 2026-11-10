@@ -28,6 +28,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.models.account import AccountStatus
+from app.schemas.suspension import AccessBlockedOut
 from app.schemas.tenant_config import MarcaDeSesionOut
 from app.utils.validators import validate_password
 
@@ -303,6 +304,15 @@ class AuthMeResponse(BaseModel):
     brand: Optional[MarcaDeSesionOut] = Field(
         default=None,
         description="La marca de la credencial con la que se inició sesión.",
+    )
+    access_blocked: Optional[AccessBlockedOut] = Field(
+        default=None,
+        description=(
+            "Null si la organización actual da acceso. Si no, por qué: el "
+            "resto del API responde 403 con estos mismos campos. Este endpoint "
+            "contesta igual, para que el cliente pueda mostrar la pantalla de "
+            "suspensión en vez de un error."
+        ),
     )
 
     class Config:

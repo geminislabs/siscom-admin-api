@@ -163,6 +163,13 @@ Sincronizacion de SIMs con KORE para poblar y actualizar `sim_cards` y `sim_kore
 **Endpoint:**
 - `POST /api/v1/sims/sync/kore` - Sincronizar SIMs desde KORE
 
+### [suspension.md](./suspension.md)
+Suspensión de organizaciones y cuentas: la regla, el 403 `organization_suspended`, lo que sigue abierto y los endpoints de GAC.
+
+**Endpoints:**
+- `GET /api/v1/internal/accounts/{id}/subaccounts` - Subcuentas de una marca
+- `PATCH /api/v1/internal/accounts/{id}/status` - Suspender o reactivar una cuenta
+
 ### [client-version-policy.md](./client-version-policy.md)
 Política de versiones de las apps móviles, administrada desde GAC.
 
