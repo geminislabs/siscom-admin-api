@@ -46,6 +46,7 @@ from app.services.access_control import es_miembro
 from app.services.data_token_issuance import (
     issue_share_token,
     revoke_shares_for_unit,
+    revoke_shares_for_unit_best_effort,
 )
 from app.services.scope_store import (
     RevocationIndexNotConfigured,
@@ -607,6 +608,7 @@ def assign_device_to_unit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_full),
     user_id: UUID = Depends(get_current_user_id),
+    store=Depends(get_scope_store),
     locale: str = Depends(get_request_locale),
 ):
     """
@@ -759,6 +761,12 @@ def assign_device_to_unit(
         )
 
     db.refresh(new_assignment)
+
+    # Si se reemplazó el dispositivo, los enlaces compartidos de la unidad
+    # siguen apuntando al anterior, que ya no es de esta unidad. Igual que al
+    # desasignar (`unit_devices.delete_unit_device`).
+    if current_assignment:
+        revoke_shares_for_unit_best_effort(store, unit_id)
 
     return new_assignment
 
