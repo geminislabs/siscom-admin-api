@@ -7,9 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.68.0] - 2026-11-10
+
+**Sin migraciones.** La cabeza sigue en `047_politica_de_versiones`.
+
+**Rollback.** Redesplegar `v1.67.0`; no toca el esquema. Lo suspendido con este tag sigue
+suspendido después del rollback (es `status` en `accounts`/`organizations`), pero vuelve el 403
+genérico y el pago deja de reactivar. Comprobado el 10/11: en producción no había ninguna cuenta ni
+organización `SUSPENDED` o `DELETED` antes de liberar.
+
 ### Added
 
+- Suspensión de cuentas y organizaciones: una organización suspendida o borrada —ella o su cuenta— cierra el acceso a sus datos con un 403 propio (`error_code` `organization_suspended`/`organization_deleted`, `suspended_by`, `can_manage_billing`) en vez del genérico. Siguen abiertos el perfil, la sesión, `/auth/me` y `/auth/organizations` (con `access_blocked` en cada fila), el registro del teléfono para push y, para owner y billing, la facturación. GAC suspende con `PATCH /internal/accounts/{id}/status`, que puede arrastrar a las subcuentas de una marca, y al suspender revoca las sesiones. El login funciona y devuelve `data_token: null`. Contrato en `docs/api/suspension.md` (#195)
 - Reactivar al pagar: un pago exitoso levanta la suspensión por falta de pago de la cuenta (y de las subcuentas que su marca arrastró) y de la organización, en la misma transacción del pago, con su `account_events` (`actor_type = system`, `reason = payment`). GAC dice la causa al suspender: `cause` en `PATCH /internal/accounts/{id}/status` y en `PATCH /internal/organizations/{id}/status`, `non_payment` por defecto u `other`, que sólo se levanta desde GAC. El cambio de estado de una organización ahora se audita (`org_status_changed`). Contrato en `docs/api/suspension.md#reactivar-al-pagar`
+
+### Fixed
+
+- Mover un equipo de unidad apaga los enlaces compartidos de la unidad que lo pierde. Antes solo se apagaban al desasignarlo; al reasignarlo, devolverlo o reemplazarlo seguían vivos hasta caducar y mostraban un equipo que ya era de otra unidad, o de otra organización. De paso, reasignar un equipo a una unidad donde ya estuvo daba 500 (#193)
+- El detalle de un viaje en curso devolvía 500 (#192)
 
 ## [1.67.0] - 2026-11-07
 
