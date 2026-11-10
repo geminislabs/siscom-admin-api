@@ -174,6 +174,7 @@ Auth: PASETO `service=gac`, `role=GAC_ADMIN`.
 | `status` | `ACTIVE` · `SUSPENDED` | Borrar no se hace aquí (`DELETED` → 422) |
 | `include_subaccounts` | bool, opcional (`false`) | Sólo para una cuenta `RESELLER` (otra → 422). Aplica el cambio a todo su árbol. Al reactivar, reactiva también las subcuentas que estuvieran suspendidas por su cuenta: enseñar la lista antes de confirmar |
 | `reason` | string ≤ 500, opcional | Va a la auditoría |
+| `cause` | `non_payment` · `other`, opcional (`non_payment`) | Al suspender, por qué. Decide si un pago la reactiva (ver [Reactivar al pagar](#reactivar-al-pagar)). Se ignora al reactivar |
 
 **200:**
 
@@ -203,10 +204,42 @@ Auth: PASETO `service=gac`, `role=GAC_ADMIN`.
 
 Cada cuenta que cambia deja un `account_events` con
 `event_type = account_status_changed` y, en `metadata`: `anterior`, `nuevo`,
-`reason`, `via_reseller` (la marca, si llegó por ella), `service` y `gac_user`.
+`reason`, `cause` (al suspender), `via_reseller` (la marca, si llegó por ella),
+`service` y `gac_user`.
 
 ### Suspender una sola organización
 
 Sigue siendo `PATCH /api/v1/internal/organizations/{id}/status?new_status=SUSPENDED`
-(ver [internal-organizations.md](./internal-organizations.md)). Desde esta
-versión ese cambio también cierra el acceso y revoca.
+(ver [internal-organizations.md](./internal-organizations.md)), ahora con
+`&cause=non_payment|other`. Desde esta versión ese cambio también cierra el
+acceso, revoca y queda auditado (`org_status_changed`).
+
+---
+
+## Reactivar al pagar
+
+Un pago exitoso (el webhook `payment_intent.succeeded`, o una renovación
+cobrada) levanta la suspensión **por falta de pago**, en la misma transacción
+que el pago (`suspension.reactivar_por_pago`, llamado desde
+`StripeGateway._fulfill_local_success`). La causa se lee del último cambio de
+estado en `account_events`.
+
+| Suspendido | ¿Lo reactiva el pago de una organización suya? |
+|------------|-------------------------------------------------|
+| La cuenta, con `cause = non_payment` | Sí |
+| La organización, con `cause = non_payment` | Sí |
+| La cuenta o la organización, con `cause = other` | No: sólo GAC |
+| Sin registro de causa (suspendido antes de esto, o a mano en la base) | Sí, como falta de pago |
+| Una subcuenta suspendida **por su marca** (`via_reseller`) | No con su propio pago; sí cuando paga la marca |
+| Una subcuenta que ya estaba suspendida por su cuenta cuando se suspendió la marca | No con el pago de la marca |
+| `DELETED` | Nunca |
+
+Cada reactivación deja su `account_events` con `actor_type = system`,
+`reason = payment` y el `payment_id`.
+
+Para el cliente: después de pagar, vuelve a pedir `GET /auth/organizations`
+(o `/auth/me`). La fila ya trae `access_blocked: null` y el data token se puede
+volver a pedir. No hay que esperar a nadie.
+
+**Lo que no hace:** suspender por falta de pago. Que la renovación se agote
+(`dunning`) no suspende nada todavía; sigue siendo GAC quien suspende.

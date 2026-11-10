@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Reactivar al pagar: un pago exitoso levanta la suspensión por falta de pago de la cuenta (y de las subcuentas que su marca arrastró) y de la organización, en la misma transacción del pago, con su `account_events` (`actor_type = system`, `reason = payment`). GAC dice la causa al suspender: `cause` en `PATCH /internal/accounts/{id}/status` y en `PATCH /internal/organizations/{id}/status`, `non_payment` por defecto u `other`, que sólo se levanta desde GAC. El cambio de estado de una organización ahora se audita (`org_status_changed`). Contrato en `docs/api/suspension.md#reactivar-al-pagar`
+
 ## [1.67.0] - 2026-11-07
 
 **Sin migraciones.** La cabeza sigue en `047_politica_de_versiones`.

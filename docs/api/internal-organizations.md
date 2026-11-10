@@ -328,6 +328,9 @@ Authorization: Bearer <token_paseto>
 | Parámetro    | Tipo   | Requerido | Descripción |
 |--------------|--------|-----------|-------------|
 | `new_status` | string | Sí | Nuevo estado (PENDING, ACTIVE, SUSPENDED, DELETED) |
+| `cause` | string | No | Al suspender: `non_payment` (por defecto; un pago exitoso la reactiva sola) u `other` (sólo se reactiva desde GAC). Ver [suspension.md](./suspension.md#reactivar-al-pagar) |
+
+Cada cambio real de estado deja un `org_status_changed` en `account_events` con `anterior`, `nuevo`, `cause`, `service` y `gac_user`.
 
 #### Estados y Transiciones
 

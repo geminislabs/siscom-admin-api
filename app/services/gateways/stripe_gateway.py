@@ -27,7 +27,7 @@ from app.models.payment_models import (
 )
 from app.models.plan import Plan
 from app.models.subscription import BillingCycle, Subscription, SubscriptionStatus
-from app.services import billing_period, money, subscription_query
+from app.services import billing_period, money, subscription_query, suspension
 from app.services.invoice_numbering import next_invoice_number
 
 logger = logging.getLogger(__name__)
@@ -1483,6 +1483,13 @@ class StripeGateway:
         )
         if invoice is not None and sub is not None:
             invoice.subscription_id = sub.id
+        # Pagar levanta la suspensión por falta de pago, en la misma transacción:
+        # si el pago se revierte, la reactivación también.
+        reactivadas = suspension.reactivar_por_pago(
+            db, UUID(str(org_id)), payment_id=payment.id
+        )
+        if reactivadas:
+            logger.info("Pago %s reactivó %s", payment.id, reactivadas)
         db.flush()
 
     # ── Reembolsos y disputas ────────────────────────────────────────────────
