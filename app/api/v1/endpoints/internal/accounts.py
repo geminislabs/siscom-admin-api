@@ -492,6 +492,11 @@ def update_account_status(
                 "anterior": anterior,
                 "nuevo": cambio.status,
                 "reason": cambio.reason,
+                "cause": (
+                    cambio.cause
+                    if cambio.status == AccountStatus.SUSPENDED.value
+                    else None
+                ),
                 # Si llegó por la marca, cuál: es lo que explica por qué se
                 # suspendió una cuenta que no tenía deuda propia.
                 "via_reseller": str(cuenta.id) if por_marca else None,

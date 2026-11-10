@@ -110,3 +110,145 @@ def descendientes(db: Session, account_id: UUID) -> list:
         .filter(Account.account_path.any(account_id), Account.id != account_id)
         .all()
     )
+
+
+# ---------------------------------------------------------------------------
+# Reactivar al pagar
+# ---------------------------------------------------------------------------
+#
+# Quien suspende (GAC) dice por qué: `non_payment` (el valor por defecto) u
+# `other` (abuso, fraude, una petición del cliente…). La causa queda en la
+# auditoría, en el evento de la suspensión, y es lo único que mira el pago:
+# un pago exitoso reactiva lo que se suspendió por falta de pago y deja como
+# está lo demás, que sólo se reactiva desde GAC.
+
+CAUSA_FALTA_DE_PAGO = "non_payment"
+CAUSA_OTRA = "other"
+Causa = Literal["non_payment", "other"]
+
+
+def _ultima_suspension(db: Session, event_type: str, target_id: UUID) -> Optional[dict]:
+    """Los metadatos del último cambio de estado, si fue una suspensión."""
+    from app.models.account_event import AccountEvent
+
+    evento = (
+        db.query(AccountEvent)
+        .filter(
+            AccountEvent.event_type == event_type,
+            AccountEvent.target_id == target_id,
+        )
+        .order_by(AccountEvent.created_at.desc())
+        .first()
+    )
+    meta = (evento.event_metadata or {}) if evento is not None else None
+    if meta is None or meta.get("nuevo") != "SUSPENDED":
+        return None
+    return meta
+
+
+def _se_reactiva_al_pagar(
+    meta: Optional[dict], via_reseller: Optional[UUID] = None
+) -> bool:
+    """
+    Si una suspensión se levanta con un pago.
+
+    Sin registro (se suspendió antes de que hubiera causa, o a mano en la base)
+    se trata como falta de pago, que es el caso común; sólo para la cuenta
+    misma, nunca para una subcuenta, que necesita saber que llegó por la marca.
+    """
+    if meta is None:
+        return via_reseller is None
+    if meta.get("cause", CAUSA_FALTA_DE_PAGO) != CAUSA_FALTA_DE_PAGO:
+        return False
+    esperado = str(via_reseller) if via_reseller is not None else None
+    return meta.get("via_reseller") == esperado
+
+
+def reactivar_por_pago(
+    db: Session, organization_id: UUID, *, payment_id: Optional[UUID] = None
+) -> list[UUID]:
+    """
+    Levanta lo que un pago de `organization_id` deja sin motivo de suspensión.
+
+    - La cuenta, si está suspendida por falta de pago y no le llegó por su
+      marca: la deuda de la marca la paga la marca.
+    - Si la cuenta es una marca, las subcuentas que se suspendieron con ella
+      (`via_reseller`) por falta de pago.
+    - La organización, si se suspendió ella misma por falta de pago.
+
+    No hace commit: va en la transacción del pago. Devuelve los ids de lo que
+    reactivó, cuentas y organización.
+    """
+    from app.models.account import Account, AccountStatus
+    from app.models.account_event import ActorType, EventType, TargetType
+    from app.models.organization import Organization, OrganizationStatus
+    from app.services.audit import AuditService
+    from app.utils.datetime import utcnow
+
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+    if org is None:
+        return []
+    cuenta = db.query(Account).filter(Account.id == org.account_id).first()
+    suspendida = AccountStatus.SUSPENDED.value
+    reactivadas: list[UUID] = []
+
+    def _registrar(account_id, event_type, target_type, target_id, via=None):
+        AuditService.log_event(
+            db=db,
+            account_id=account_id,
+            organization_id=org.id,
+            event_type=event_type,
+            target_type=target_type,
+            target_id=target_id,
+            actor_type=ActorType.SYSTEM.value,
+            metadata={
+                "anterior": suspendida,
+                "nuevo": AccountStatus.ACTIVE.value,
+                "reason": "payment",
+                "payment_id": str(payment_id) if payment_id else None,
+                "via_reseller": str(via) if via is not None else None,
+            },
+        )
+
+    def _reactivar_cuenta(objetivo, via=None):
+        objetivo.status = AccountStatus.ACTIVE.value
+        objetivo.updated_at = utcnow()
+        _registrar(
+            objetivo.id,
+            EventType.ACCOUNT_STATUS_CHANGED.value,
+            TargetType.ACCOUNT.value,
+            objetivo.id,
+            via,
+        )
+        reactivadas.append(objetivo.id)
+
+    evento_cuenta = EventType.ACCOUNT_STATUS_CHANGED.value
+    if (
+        cuenta is not None
+        and _valor(cuenta.status) == suspendida
+        and _se_reactiva_al_pagar(_ultima_suspension(db, evento_cuenta, cuenta.id))
+    ):
+        _reactivar_cuenta(cuenta)
+        for hija in descendientes(db, cuenta.id):
+            if _valor(hija.status) == suspendida and _se_reactiva_al_pagar(
+                _ultima_suspension(db, evento_cuenta, hija.id), via_reseller=cuenta.id
+            ):
+                _reactivar_cuenta(hija, via=cuenta.id)
+
+    if _valor(
+        org.status
+    ) == OrganizationStatus.SUSPENDED.value and _se_reactiva_al_pagar(
+        _ultima_suspension(db, EventType.ORG_STATUS_CHANGED.value, org.id)
+    ):
+        org.status = OrganizationStatus.ACTIVE
+        _registrar(
+            org.account_id,
+            EventType.ORG_STATUS_CHANGED.value,
+            TargetType.ORGANIZATION.value,
+            org.id,
+        )
+        reactivadas.append(org.id)
+
+    if reactivadas:
+        db.flush()
+    return reactivadas

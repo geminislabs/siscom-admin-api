@@ -68,6 +68,14 @@ class AccountStatusUpdate(BaseModel):
         max_length=500,
         description="Motivo, para la auditoría (`account_events`).",
     )
+    cause: Literal["non_payment", "other"] = Field(
+        default="non_payment",
+        description=(
+            "Por qué se suspende. `non_payment`: un pago exitoso la reactiva sola "
+            "(`app/services/suspension.py`). `other` (abuso, fraude…): sólo se "
+            "reactiva desde GAC. Se ignora al reactivar."
+        ),
+    )
 
 
 class AccountStatusChange(BaseModel):

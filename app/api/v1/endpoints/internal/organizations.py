@@ -12,15 +12,16 @@ Account = Raíz comercial (billing, facturación)
 Organization = Raíz operativa (permisos, uso diario)
 """
 
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import AuthResult, get_auth_solo_servicio
 from app.db.session import get_db
 from app.models.account import Account
+from app.models.account_event import ActorType, EventType, TargetType
 from app.models.organization import Organization, OrganizationStatus
 from app.models.user import User
 from app.schemas.organization import (
@@ -30,6 +31,7 @@ from app.schemas.organization import (
 )
 from app.services.access_control import es_miembro
 from app.services.account_nexus_status import get_organization_nexus_status
+from app.services.audit import AuditService
 from app.utils.datetime import utcnow
 
 router = APIRouter()
@@ -276,6 +278,14 @@ def get_organization_users(
 def update_organization_status(
     organization_id: UUID,
     new_status: OrganizationStatus,
+    request: Request,
+    cause: Literal["non_payment", "other"] = Query(
+        "non_payment",
+        description=(
+            "Al suspender, por qué. `non_payment`: un pago exitoso la reactiva "
+            "sola. `other`: sólo se reactiva desde GAC."
+        ),
+    ),
     db: Session = Depends(get_db),
     auth: AuthResult = Depends(get_auth_for_internal_organizations),
 ):
@@ -289,6 +299,10 @@ def update_organization_status(
     - ACTIVE: Organización activa
     - SUSPENDED: Organización suspendida
     - DELETED: Organización eliminada lógicamente
+
+    Cada cambio deja un `org_status_changed` en `account_events`; al suspender,
+    con su `cause`, que es lo que mira el pago para reactivarla
+    (`suspension.reactivar_por_pago`).
     """
     organization = (
         db.query(Organization).filter(Organization.id == organization_id).first()
@@ -302,6 +316,28 @@ def update_organization_status(
 
     old_status = organization.status
     organization.status = new_status
+    anterior = getattr(old_status, "value", old_status)
+    if anterior != new_status.value:
+        AuditService.log_event(
+            db=db,
+            account_id=organization.account_id,
+            organization_id=organization.id,
+            event_type=EventType.ORG_STATUS_CHANGED.value,
+            target_type=TargetType.ORGANIZATION.value,
+            target_id=organization.id,
+            actor_type=ActorType.SERVICE.value,
+            metadata={
+                "anterior": anterior,
+                "nuevo": new_status.value,
+                "cause": (
+                    cause if new_status == OrganizationStatus.SUSPENDED else None
+                ),
+                "service": auth.service,
+                "gac_user": auth.payload.get("internal_id") if auth.payload else None,
+            },
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
     db.commit()
     db.refresh(organization)
 
