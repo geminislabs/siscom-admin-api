@@ -38,6 +38,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "es": "Sin membresía activa en la organización solicitada",
         "en": "No active membership in the requested organization",
     },
+    "deps.organization_suspended": {
+        "es": "El servicio de esta organización está suspendido",
+        "en": "Service for this organization is suspended",
+    },
+    "deps.organization_deleted": {
+        "es": "Esta organización ya no está disponible",
+        "en": "This organization is no longer available",
+    },
     "deps.service_to_service_only": {
         "es": "Esta ruta es de servicio a servicio: requiere un token PASETO válido.",
         "en": "This route is service-to-service only: a valid PASETO token is required.",

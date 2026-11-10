@@ -14,7 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_organization_id
+from app.api.deps import get_current_organization_id_facturacion
 from app.db.session import get_db
 from app.models.organization import Organization
 from app.models.payment import Payment, PaymentStatus
@@ -34,7 +34,7 @@ def _resolve_account_id(db: Session, organization_id: UUID) -> Optional[UUID]:
 
 @router.get("", response_model=List[PaymentOut])
 def list_payments(
-    organization_id: UUID = Depends(get_current_organization_id),
+    organization_id: UUID = Depends(get_current_organization_id_facturacion),
     db: Session = Depends(get_db),
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),

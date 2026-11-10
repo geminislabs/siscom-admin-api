@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     get_current_organization_id,
     get_current_user_full,
+    get_current_user_full_aunque_suspendida,
     get_identity_provider,
     get_request_locale,
 )
@@ -59,7 +60,7 @@ def list_users(
 
 @router.get("/me", response_model=UserOut)
 def get_current_user_info(
-    current_user: User = Depends(get_current_user_full),
+    current_user: User = Depends(get_current_user_full_aunque_suspendida),
 ):
     """
     Obtiene la información del usuario actualmente autenticado.

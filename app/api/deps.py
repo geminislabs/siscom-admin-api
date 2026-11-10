@@ -354,11 +354,83 @@ def _load_user_by_sub(
     return user
 
 
+class OrganizacionNoDisponible(HTTPException):
+    """
+    403 de una organización suspendida o borrada (`app/services/suspension.py`).
+
+    `detail` sigue siendo texto —es lo que muestran los clientes que ya están
+    publicados—; lo nuevo va a su lado, en el cuerpo, como el 426 de la
+    política de versiones: `error_code`, `organization_id`, `suspended_by`
+    (`organization` o `account`) y `can_manage_billing`, que dice si esta
+    persona puede abrir facturación para reactivarla. Lo serializa el
+    manejador de `app/main.py`.
+    """
+
+    def __init__(self, bloqueo, organization_id: UUID, rol: Optional[str], locale: str):
+        from app.services import suspension
+
+        self.error_code = bloqueo.error_code
+        self.organization_id = organization_id
+        self.suspended_by = bloqueo.origen
+        self.can_manage_billing = (
+            bloqueo.es_suspension and suspension.puede_administrar_facturacion(rol)
+        )
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=t(f"deps.{bloqueo.error_code}", locale),
+        )
+
+    def cuerpo(self) -> dict:
+        return {
+            "detail": self.detail,
+            "error_code": self.error_code,
+            "organization_id": str(self.organization_id),
+            "suspended_by": self.suspended_by,
+            "can_manage_billing": self.can_manage_billing,
+        }
+
+
+# Qué hace `_load_current_user` con una organización suspendida o borrada.
+SuspensionBloquea = "bloquea"
+# Facturación: pasa quien la administra (owner o billing) si sólo está
+# suspendida, para que pueda pagar y reactivarla. Borrada no pasa nadie.
+SuspensionFacturacion = "facturacion"
+# Pasa siempre: `/auth/me`, que es por donde el cliente se entera de que la
+# organización está suspendida.
+SuspensionPermite = "permite"
+ModoSuspension = Literal["bloquea", "facturacion", "permite"]
+
+
+def exigir_organizacion_disponible(
+    db: Session,
+    organization_id: Optional[UUID],
+    rol: Optional[str],
+    locale: str = "es",
+    modo: ModoSuspension = SuspensionBloquea,
+) -> None:
+    """Falla con `OrganizacionNoDisponible` según `modo`. Ver `_load_current_user`."""
+    from app.services import suspension
+
+    if modo == SuspensionPermite:
+        return
+    bloqueo = suspension.bloqueo_de(db, organization_id)
+    if bloqueo is None:
+        return
+    if (
+        modo == SuspensionFacturacion
+        and bloqueo.es_suspension
+        and suspension.puede_administrar_facturacion(rol)
+    ):
+        return
+    raise OrganizacionNoDisponible(bloqueo, organization_id, rol, locale)
+
+
 def _load_current_user(
     db: Session,
     cognito_sub: Optional[str],
     organization_id: Optional[UUID] = None,
     locale: str = "es",
+    suspension: ModoSuspension = SuspensionBloquea,
 ):
     """
     Busca al usuario por `cognito_sub` y valida que la organización en la que
@@ -389,6 +461,10 @@ def _load_current_user(
     habría bloqueado con 403 a cualquiera invitado por correo antes del
     30/09/2026 — `accept_invitation` nunca creaba la membresía, sólo la
     columna.
+
+    Después, la organización tiene que estar disponible: ni suspendida —ella o
+    su cuenta— ni borrada (`app/services/suspension.py`). `suspension` dice
+    qué excepción admite el endpoint; por defecto, ninguna.
     """
     from app.models.organization_user import MembershipStatus, OrganizationUser
 
@@ -398,7 +474,7 @@ def _load_current_user(
         organization_id if organization_id is not None else user.default_organization_id
     )
 
-    has_active_membership = (
+    membresia = (
         db.query(OrganizationUser)
         .filter(
             OrganizationUser.user_id == user.id,
@@ -406,13 +482,20 @@ def _load_current_user(
             OrganizationUser.status == MembershipStatus.ACTIVE.value,
         )
         .first()
-        is not None
     )
-    if not has_active_membership:
+    if membresia is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=t("deps.no_active_membership", locale),
         )
+
+    exigir_organizacion_disponible(
+        db,
+        organizacion_objetivo,
+        getattr(membresia.role, "value", membresia.role),
+        locale,
+        suspension,
+    )
 
     if organization_id is not None:
         user._active_organization_id = organization_id
@@ -425,6 +508,7 @@ def resolve_current_organization(
     cognito_payload: dict,
     organization_id: Optional[UUID] = None,
     locale: str = "es",
+    suspension: ModoSuspension = SuspensionBloquea,
 ) -> UUID:
     """
     Busca el usuario por cognito_sub y retorna la organización en la que
@@ -433,7 +517,11 @@ def resolve_current_organization(
     `_load_current_user`.
     """
     return _load_current_user(
-        db, cognito_payload.get("sub"), organization_id, locale=locale
+        db,
+        cognito_payload.get("sub"),
+        organization_id,
+        locale=locale,
+        suspension=suspension,
     ).organization_id
 
 
@@ -460,6 +548,24 @@ def get_current_organization_id(
     return resolve_current_organization(db, current_user, organization_id)
 
 
+def get_current_organization_id_facturacion(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    organization_id: Optional[UUID] = Depends(organizacion_solicitada),
+    locale: str = Depends(get_request_locale),
+) -> UUID:
+    """`get_current_organization_id` para los endpoints de facturación: en una
+    organización suspendida deja pasar a su owner o a su billing, que es como
+    se paga y se reactiva. Ver `exigir_organizacion_disponible`."""
+    return resolve_current_organization(
+        db,
+        current_user,
+        organization_id,
+        locale=locale,
+        suspension=SuspensionFacturacion,
+    )
+
+
 # Alias de compatibilidad (DEPRECATED)
 def get_current_client_id(
     db: Session = Depends(get_db),
@@ -481,6 +587,46 @@ def get_current_user_full(
     """
     return _load_current_user(
         db, current_user.get("sub"), organization_id, locale=locale
+    )
+
+
+def get_current_user_full_facturacion(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    organization_id: Optional[UUID] = Depends(organizacion_solicitada),
+    locale: str = Depends(get_request_locale),
+):
+    """`get_current_user_full` para facturación. Ver
+    `get_current_organization_id_facturacion`."""
+    return _load_current_user(
+        db,
+        current_user.get("sub"),
+        organization_id,
+        locale=locale,
+        suspension=SuspensionFacturacion,
+    )
+
+
+def get_current_user_full_aunque_suspendida(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    organization_id: Optional[UUID] = Depends(organizacion_solicitada),
+    locale: str = Depends(get_request_locale),
+):
+    """
+    `get_current_user_full` sin el chequeo de suspensión: la membresía se sigue
+    validando. Para lo que es de la persona y no de la organización:
+    `GET /auth/me` (por donde el cliente se entera del estado), `GET /users/me`,
+    cerrar sesión, cambiar la contraseña y registrar el teléfono para push
+    (`mobility_devices` no tiene organización). No usarlo en endpoints que lean
+    o escriban datos de la organización.
+    """
+    return _load_current_user(
+        db,
+        current_user.get("sub"),
+        organization_id,
+        locale=locale,
+        suspension=SuspensionPermite,
     )
 
 
@@ -655,6 +801,9 @@ def get_auth_cognito_or_paseto(
             )
             # Convertir a string para el AuthResult
             org_role_str = org_role.value if org_role else None
+            exigir_organizacion_disponible(
+                db, user.organization_id, org_role_str, locale
+            )
 
             return AuthResult(
                 auth_type="cognito",
@@ -664,6 +813,11 @@ def get_auth_cognito_or_paseto(
                 organization_role=org_role_str,
             )
 
+        except OrganizacionNoDisponible:
+            # La credencial es buena: lo que no vale es la organización. Caer
+            # al camino PASETO lo convertiría en un 401, y el cliente
+            # reautenticaría en bucle contra algo que ningún token arregla.
+            raise
         except HTTPException as exc:
             # Solo se cae al camino PASETO cuando el fallo es de CREDENCIAL. Un
             # fallo del lado del servidor —Cognito inalcanzable, sin JWKS ni
@@ -703,7 +857,9 @@ def get_auth_cognito_or_paseto(
     return _verify_auth
 
 
-def require_organization_permission(permission: str):
+def require_organization_permission(
+    permission: str, suspension: ModoSuspension = SuspensionBloquea
+):
     """
     Factory de una dependencia que exige un permiso de alcance **organización**.
 
@@ -716,7 +872,9 @@ def require_organization_permission(permission: str):
     `require_account_permission`, su par para lo comercial.
 
     Solo acepta Cognito. Falla cerrado con 403 sin membresía activa, con un rol
-    que no tiene el permiso o con un permiso que el catálogo no conoce.
+    que no tiene el permiso o con un permiso que el catálogo no conoce, y con
+    el 403 de `OrganizacionNoDisponible` si la organización está suspendida o
+    borrada (salvo lo que admita `suspension`).
 
     Uso:
         @router.post("/{organization_id}/users")
@@ -765,6 +923,9 @@ def require_organization_permission(permission: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=t("deps.org_permission_required", locale, permission=permission),
             )
+        exigir_organizacion_disponible(
+            db, user.organization_id, org_role_str, locale, suspension
+        )
 
         return AuthResult(
             auth_type="cognito",
@@ -820,6 +981,12 @@ def require_capability(capability_code: str):
                 detail=t("deps.user_not_found", locale),
             )
         _exigir_usuario_activo(user, locale)
+        exigir_organizacion_disponible(
+            db,
+            user.organization_id,
+            None,
+            locale,
+        )
 
         # Verificar capability
         if not CapabilityService.has_capability(
@@ -842,6 +1009,26 @@ def require_capability(capability_code: str):
         )
 
     return _require_capability
+
+
+def _exigir_cuenta_disponible(db: Session, account_id: UUID, locale: str) -> None:
+    """Lo comercial de una cuenta suspendida o borrada tampoco se toca. Va
+    después del permiso, para no revelar el estado de una cuenta ajena."""
+    from app.models.account import Account, AccountStatus
+    from app.services import suspension
+
+    estado = db.query(Account.status).filter(Account.id == account_id).scalar()
+    estado = getattr(estado, "value", estado)
+    if estado == AccountStatus.SUSPENDED.value:
+        codigo = suspension.ORGANIZATION_SUSPENDED
+    elif estado == AccountStatus.DELETED.value:
+        codigo = suspension.ORGANIZATION_DELETED
+    else:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=t(f"deps.{codigo}", locale),
+    )
 
 
 def require_account_permission(permission: str):
@@ -905,6 +1092,7 @@ def require_account_permission(permission: str):
                     permission=permission,
                 ),
             )
+        _exigir_cuenta_disponible(db, account_id, locale)
 
         return AuthResult(
             auth_type="cognito",

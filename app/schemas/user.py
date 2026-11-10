@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from app.schemas.suspension import AccessBlockedOut
 from app.schemas.tenant_config import MarcaDeSesionOut
 from app.utils.validators import validate_name, validate_password
 
@@ -493,6 +494,13 @@ class UserOrganizationOut(BaseModel):
             "(`default_organization_id`): la que usa una petición sin "
             "`X-Organization-Id`. Sin este campo el cliente no tiene cómo "
             "saber cuál es la «de siempre» y tiene que adivinarla."
+        ),
+    )
+    access_blocked: Optional[AccessBlockedOut] = Field(
+        default=None,
+        description=(
+            "Null si la organización da acceso; si no, por qué (suspendida o "
+            "borrada). El selector la sigue listando para que se vea el motivo."
         ),
     )
 
