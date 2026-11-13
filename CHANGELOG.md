@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dependencias en parche/minor (reemplaza a #194 de Dependabot): FastAPI 0.162, Starlette 1.10,
+  SQLAlchemy 2.1.8, pydantic 2.14.3, boto3/botocore 1.43.125, sentry-sdk 2.74, pytest 9.2 y 25 más.
+  El grupo subía `opentelemetry-api`/`sdk`/`exporter` a 1.45.2 pero dejaba las
+  `opentelemetry-instrumentation-*` en 0.66b1, que fijan `semantic-conventions==0.66b1` contra el
+  `==0.66b2` del SDK: `pip` no resolvía. Las cinco instrumentaciones suben a 0.66b2.
+
 ## [1.68.0] - 2026-11-10
 
 **Sin migraciones.** La cabeza sigue en `047_politica_de_versiones`.
