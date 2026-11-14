@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.69.0] - 2026-11-14
+
+**Sin migraciones.** La cabeza sigue en `047_politica_de_versiones`.
+
+**Rollback.** Redesplegar `v1.68.0`; no toca el esquema. Lo único que se pierde es
+`POST /internal/data-token`: si gac-web ya está desplegado con el mapa que lo usa
+(gac-web#41), ese mapa se queda sin datos hasta volver a liberar esta versión.
+
 ### Added
 
 - `POST /api/v1/internal/data-token`: el data token del mapa de dispositivos de GAC. GAC lee de
@@ -23,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   El grupo subía `opentelemetry-api`/`sdk`/`exporter` a 1.45.2 pero dejaba las
   `opentelemetry-instrumentation-*` en 0.66b1, que fijan `semantic-conventions==0.66b1` contra el
   `==0.66b2` del SDK: `pip` no resolvía. Las cinco instrumentaciones suben a 0.66b2.
+- Segundo grupo de parches (#198): FastAPI 0.162.4, boto3/botocore 1.44.0, typer 0.29,
+  fastapi-cloud-cli 0.27.1, click 8.5.1, markdown-it-py 4.3, filelock 4.2.10 y annotated-doc 0.0.6.
+- websockets 17.4 (#167). Es transitiva: el código no la importa.
 
 ## [1.68.0] - 2026-11-10
 
