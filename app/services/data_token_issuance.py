@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
-from uuid import UUID, uuid4
+from typing import Optional, Sequence, Tuple
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
@@ -143,6 +143,56 @@ def issue_share_token(
         token_ttl_seconds=ttl,
         jti=jti,
         purpose=ScopePurpose.SHARE,
+    )
+
+    return issuer.issue(scope_ref, expires_at=expires_at, issued_at=moment, jti=jti)
+
+
+def gac_owner_id(operator: str) -> UUID:
+    """
+    Dueño, en el índice de revocación, de los tokens de un operador de GAC.
+
+    El `internal_id` de GAC no es un UUID de este servicio; se deriva uno estable
+    para que todas las emisiones de un operador compartan índice.
+    """
+    return uuid5(NAMESPACE_URL, f"gac:{operator}")
+
+
+def issue_gac_token(
+    *,
+    devices: Sequence[Tuple[UUID, str]],
+    operator: str,
+    issuer: DataTokenIssuer,
+    store: ScopeStore,
+    now: Optional[datetime] = None,
+) -> IssuedDataToken:
+    """
+    Emite el token con el que GAC lee del plano de datos los dispositivos que
+    pide, como pares `(device_ref, device_id)`.
+
+    GAC administra el inventario entero: no hay alcance que resolver, sólo los
+    dispositivos de la petición. La ventana es completa —histórico y en vivo—
+    porque es lo que su mapa ya muestra hoy. Lo que sí se acota es el número de
+    dispositivos (lo valida el endpoint) y la vida del token, la misma que la de
+    una sesión de Nexus.
+    """
+    moment = now or datetime.now(timezone.utc)
+    expires_at = compute_expiry(moment)
+
+    jti = uuid4()
+    scope_ref = uuid4()
+    siempre = (TimeWindow(),)
+    store.write_scope(
+        scope_ref,
+        subject_id=gac_owner_id(operator),
+        devices={
+            ref: Grant(internal_id=device_id, windows=siempre)
+            for ref, device_id in devices
+        },
+        units={},
+        token_ttl_seconds=int((expires_at - moment).total_seconds()),
+        jti=jti,
+        purpose=ScopePurpose.GAC,
     )
 
     return issuer.issue(scope_ref, expires_at=expires_at, issued_at=moment, jti=jti)

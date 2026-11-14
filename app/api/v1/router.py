@@ -74,6 +74,7 @@ from app.api.v1.endpoints.api_platform.router import api_platform_router
 from app.api.v1.endpoints.internal import account_tenancy as internal_account_tenancy
 from app.api.v1.endpoints.internal import accounts as internal_accounts
 from app.api.v1.endpoints.internal import billing as internal_billing
+from app.api.v1.endpoints.internal import data_token as internal_data_token
 from app.api.v1.endpoints.internal import (
     organization_billing as internal_organization_billing,
 )
@@ -256,6 +257,12 @@ api_router.include_router(
     internal_users.router,
     prefix="/internal/users",
     tags=["internal-users"],
+)
+# Data token del mapa de dispositivos de GAC (plano de datos, siscom-api).
+api_router.include_router(
+    internal_data_token.router,
+    prefix="/internal/data-token",
+    tags=["internal-data-token"],
 )
 
 # Internal Plans (Gestión de planes, productos y capabilities)
