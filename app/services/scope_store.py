@@ -135,6 +135,10 @@ class ScopePurpose(str, Enum):
 
     SESSION = "session"
     SHARE = "share"
+    # Los tokens que GAC pide para su mapa de dispositivos. Espacio propio en el
+    # índice: el dueño es un operador de GAC, no un usuario de Nexus, y así
+    # ninguna revocación de sesiones de Nexus los toca ni al revés.
+    GAC = "gac"
 
 
 def owner_key(subject_id: UUID, purpose: ScopePurpose = ScopePurpose.SESSION) -> str:

@@ -449,6 +449,12 @@ Gestión administrativa de organizaciones.
 - `GET /api/v1/internal/organizations/{organization_id}/users` - Usuarios de organización
 - `PATCH /api/v1/internal/organizations/{organization_id}/status` - Cambiar estado
 
+### [internal-data-token.md](./internal-data-token.md)
+Data token de GAC para leer del plano de datos (siscom-api) los dispositivos de su mapa.
+
+**Endpoints:**
+- `POST /api/v1/internal/data-token` - Token y `device_ref` de los IMEIs pedidos
+
 ### [internal-plans.md](./internal-plans.md)
 Gestión administrativa de planes y capabilities.
 

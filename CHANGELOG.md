@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `POST /api/v1/internal/data-token`: el data token del mapa de dispositivos de GAC. GAC lee de
+  siscom-api por IMEI y sin credencial, así que al encender `DATA_TOKEN_ENFORCED` su mapa se
+  quedaría sin datos. Recibe IMEIs (de 1 a 50) y devuelve el token y el `device_ref` de cada uno.
+  El alcance son solo esos dispositivos, con ventana completa y la misma vida que una sesión de
+  Nexus. Queda en un índice de revocación propio (`gac`) y deja el log
+  `internal.data_token.emitido`. Ver `docs/api/internal-data-token.md`.
+
 ### Changed
 
 - Dependencias en parche/minor (reemplaza a #194 de Dependabot): FastAPI 0.162, Starlette 1.10,
