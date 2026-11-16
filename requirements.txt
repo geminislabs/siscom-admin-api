@@ -19,7 +19,7 @@ cyclonedx-python-lib==11.12.0
 defusedxml==0.7.1
 dnspython==2.9.2
 email-validator==2.3.0
-fastapi==0.162.4
+fastapi==0.162.6
 fastapi-cli==0.0.32
 fastapi-cloud-cli==0.27.1
 fastar==0.12.0
